@@ -1,0 +1,22 @@
+[package]
+name = "yunet-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "YuNet model loading, preprocessing, and postprocessing."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true
+rayon.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tract-onnx.workspace = true
+yunet-utils = { path = "../yunet-utils" }
+
+[dev-dependencies]
+tempfile = "3"

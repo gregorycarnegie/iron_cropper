@@ -1,0 +1,17 @@
+[package]
+name = "yunet-gui"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "egui desktop app for YuNet face detection."
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+image.workspace = true
+log.workspace = true
+rayon.workspace = true
+serde.workspace = true
+yunet-core = { path = "../yunet-core" }
+yunet-utils = { path = "../yunet-utils" }

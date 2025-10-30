@@ -1,0 +1,12 @@
+/target
+/models/*
+!/models/README.md
+/fixtures/*
+!/fixtures/README.md
+!/fixtures/images/**
+!/fixtures/opencv/**
+/screenshots/*
+!/screenshots/.gitkeep
+*.onnx
+*.log
+/cache

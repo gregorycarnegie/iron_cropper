@@ -1,0 +1,21 @@
+[package]
+name = "yunet-utils"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "Shared utilities for YuNet workspace."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+ndarray.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
