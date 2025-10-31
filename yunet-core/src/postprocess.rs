@@ -161,14 +161,10 @@ pub fn apply_postprocess(
         });
     }
 
-    detections.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
-
-    if config.top_k > 0 && detections.len() > config.top_k {
-        detections.truncate(config.top_k);
-    }
+    sort_by_score_desc(&mut detections, config.top_k);
 
     if config.nms_threshold > 0.0 && detections.len() > 1 {
-        detections = non_max_suppression(detections, config.nms_threshold);
+        apply_nms_in_place(&mut detections, config.nms_threshold);
     }
 
     Ok(detections)
@@ -195,21 +191,52 @@ fn detection_rows<'a>(output: &'a Tensor) -> Result<ArrayView2<'a, f32>> {
 }
 
 /// Apply non-maximum suppression to a list of detections.
-fn non_max_suppression(mut detections: Vec<Detection>, threshold: f32) -> Vec<Detection> {
-    let mut result: Vec<Detection> = Vec::with_capacity(detections.len());
-    for detection in detections.drain(..) {
-        let mut suppressed = false;
-        for kept in &result {
-            if detection.bbox.iou(&kept.bbox) > threshold {
-                suppressed = true;
-                break;
+fn sort_by_score_desc(detections: &mut Vec<Detection>, top_k: usize) {
+    fn cmp(a: &Detection, b: &Detection) -> Ordering {
+        b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal)
+    }
+
+    if top_k > 0 && detections.len() > top_k {
+        let nth = top_k - 1;
+        detections.select_nth_unstable_by(nth, cmp);
+        let (head, _) = detections.split_at_mut(top_k);
+        head.sort_unstable_by(cmp);
+        detections.truncate(top_k);
+    } else {
+        detections.sort_unstable_by(cmp);
+    }
+}
+
+fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
+    let len = detections.len();
+    if len <= 1 {
+        return;
+    }
+
+    let mut suppressed = vec![false; len];
+    let mut keep = 0;
+
+    for i in 0..len {
+        if suppressed[i] {
+            continue;
+        }
+
+        if keep != i {
+            detections.swap(keep, i);
+            suppressed.swap(keep, i);
+        }
+
+        let reference_bbox = detections[keep].bbox;
+        for j in (keep + 1)..len {
+            if !suppressed[j] && reference_bbox.iou(&detections[j].bbox) > threshold {
+                suppressed[j] = true;
             }
         }
-        if !suppressed {
-            result.push(detection);
-        }
+
+        keep += 1;
     }
-    result
+
+    detections.truncate(keep);
 }
 
 impl From<DetectionSettings> for PostprocessConfig {

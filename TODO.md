@@ -64,7 +64,7 @@ This document outlines the development plan for the YuNet face detection project
 - [x] **Configuration**: Share threshold/input-size config structs between CLI and GUI.
 - [x] **Documentation**: Add `///` doc comments to all public functions and modules.
 - [x] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
-- [ ] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.
+- [x] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.
 - [ ] **Telemetry**: Add optional timing/logging hooks in `yunet-utils` for inference tracing.
 - [ ] **Parity validation**: Compare detections against OpenCV YuNet on a shared dataset.
     - [ ] Evaluate IoU overlap, detection recall/precision, and score deltas.
