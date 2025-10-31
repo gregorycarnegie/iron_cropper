@@ -26,22 +26,23 @@ This is a multi-crate Rust workspace for face detection using the YuNet ONNX mod
     cargo check --workspace
     ```
 
-* **Run All Tests:**
+* **Run All Tests (requires models/face_detection_yunet_2023mar_640.onnx):**
 
     ```sh
     cargo test --workspace --all-features
     ```
 
-* **Run GUI:**
+* **Run GUI (defaults to 640x640 resolution):**
 
     ```sh
     cargo run -p yunet-gui
     ```
 
-* **Run CLI:**
+* **Run CLI (defaults to 640x640 resolution):**
 
     ```sh
-    cargo run -p yunet-cli -- detect --help
+    cargo run -p yunet-cli -- --help
+    cargo run -p yunet-cli -- --input fixtures/ --model models/face_detection_yunet_2023mar_640.onnx
     ```
 
 * **Formatting & Linting (Run before push):**
@@ -65,9 +66,10 @@ This is a multi-crate Rust workspace for face detection using the YuNet ONNX mod
 
 ### Testing
 
-* **Defaults:** Tests should use OpenCV YuNet's default thresholds (`score_threshold=0.9`, `nms_threshold=0.3`, `top_k=5000`) to catch regressions.
+* **Defaults:** Tests should use OpenCV YuNet's default thresholds (`score_threshold=0.9`, `nms_threshold=0.3`, `top_k=5000`) to catch regressions. Default input resolution is 640x640.
 * **Fixtures:** Golden inputs/outputs are in `fixtures/` and loaded via `yunet-utils`.
 * **Scenarios:** Ensure test coverage for images with no faces, a single face, and multiple faces.
+* **Model Requirements:** Tests require the 640x640 model (`models/face_detection_yunet_2023mar_640.onnx`). The 320x320 model has tract compatibility issues.
 
 ### Commits & Pull Requests
 

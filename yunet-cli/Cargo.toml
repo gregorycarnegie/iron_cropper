@@ -18,5 +18,5 @@ yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 
 [dev-dependencies]
-assert_cmd = "2"
-tempfile = "3"
+assert_cmd = "2.1.1"
+tempfile = "3.23.0"

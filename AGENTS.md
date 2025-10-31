@@ -9,8 +9,8 @@
 ## Build, Test, and Development Commands
 
 - `cargo check --workspace` - quick type check.
-- `cargo test --workspace --all-features` - run unit plus integration suites.
-- `cargo run -p yunet-gui [--dev-log]` or `cargo run -p yunet-cli -- detect --help` - smoke test desktop and CLI surfaces.
+- `cargo test --workspace --all-features` - run unit plus integration suites (requires `models/face_detection_yunet_2023mar_640.onnx`).
+- `cargo run -p yunet-gui` (defaults to 640x640 resolution) or `cargo run -p yunet-cli -- --help` (defaults to 640x640 resolution) - smoke test desktop and CLI surfaces.
 - `cargo fmt --all` && `cargo clippy --workspace -- -D warnings` - enforce formatting and lint hygiene before pushing.
 
 ## Coding Style & Naming Conventions
@@ -22,9 +22,10 @@
 
 ## Testing Guidelines
 
-- Mirror OpenCV YuNet defaults (`score_threshold=0.9`, `nms_threshold=0.3`, `top_k=5000`) so parity regressions surface quickly.
+- Mirror OpenCV YuNet defaults (`score_threshold=0.9`, `nms_threshold=0.3`, `top_k=5000`) with 640x640 input resolution so parity regressions surface quickly.
 - Store golden inputs/outputs in `fixtures/` and load them via `yunet-utils`; name tests for user-visible behaviors.
 - Run `cargo test --release` for latency checks and ensure coverage for empty, single-face, and crowded images.
+- Tests require the 640x640 model (`models/face_detection_yunet_2023mar_640.onnx`). The 320x320 model has tract compatibility issues (fails at Conv_0 node during optimization).
 
 ## Commit & Pull Request Guidelines
 

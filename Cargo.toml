@@ -14,17 +14,17 @@ version = "0.1.0"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
-anyhow = "1.0"
+anyhow = "1.0.100"
 clap = { version = "4.5", features = ["derive"] }
-egui = "0.27"
-eframe = "0.27"
-env_logger = "0.11"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-log = "0.4"
-ndarray = { version = "0.15", features = ["rayon"] }
-rayon = "1.10"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "1.0"
-tract-onnx = "0.21"
-imageproc = "0.25"
+egui = "0.33.0"
+eframe = "0.33.0"
+env_logger = "0.11.8"
+image = { version = "0.25.8", default-features = false, features = ["png", "jpeg"] }
+log = "0.4.28"
+ndarray = { version = "0.16.1", features = ["rayon"] }
+rayon = "1.11.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+tract-onnx = "0.22.0"
+imageproc = "0.25.0"
