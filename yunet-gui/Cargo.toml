@@ -16,3 +16,7 @@ serde.workspace = true
 rfd = "0.15.4"
 yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true

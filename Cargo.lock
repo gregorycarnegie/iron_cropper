@@ -5668,6 +5668,8 @@ dependencies = [
  "rayon",
  "rfd",
  "serde",
+ "serde_json",
+ "tempfile",
  "yunet-core",
  "yunet-utils",
 ]

@@ -101,9 +101,14 @@ struct DetectionCacheEntry {
 
 impl YuNetApp {
     fn new(cc: &CreationContext<'_>) -> Self {
-        theme::apply(&cc.egui_ctx);
-
         let settings_path = default_settings_path();
+        Self::create(&cc.egui_ctx, settings_path)
+    }
+
+    pub(crate) fn create(ctx: &egui::Context, settings_path: PathBuf) -> Self {
+        theme::apply(ctx);
+
+        info!("Loading GUI settings from {}", settings_path.display());
         let settings = load_settings(&settings_path);
         let (job_tx, job_rx) = mpsc::channel();
 
@@ -708,4 +713,35 @@ fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<Dete
         detections: detection_output.detections,
         original_size: detection_output.original_size,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[test]
+    fn smoke_initializes_and_persists_settings() {
+        let temp = tempdir().expect("tempdir");
+        let settings_path = temp.path().join("config").join("gui_settings_smoke.json");
+        let ctx = egui::Context::default();
+
+        let mut app = YuNetApp::create(&ctx, settings_path.clone());
+        assert!(app.detector.is_none());
+        assert!(
+            app.status_line.contains("Model not loaded")
+                || app.status_line.contains("Select an image"),
+            "status line should mention initial state, got {}",
+            app.status_line
+        );
+        assert_eq!(app.settings_path, settings_path);
+
+        app.settings.detection.score_threshold = 0.42;
+        app.persist_settings().expect("persist settings");
+
+        let saved = std::fs::read_to_string(&app.settings_path).expect("read settings");
+        let json: serde_json::Value = serde_json::from_str(&saved).expect("parse settings");
+        assert_eq!(json["detection"]["score_threshold"], json!(0.42));
+    }
 }

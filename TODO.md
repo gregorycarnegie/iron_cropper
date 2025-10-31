@@ -54,8 +54,8 @@ This document outlines the development plan for the YuNet face detection project
     - [x] Persist user preferences (last model, thresholds) between sessions.
 - [x] **Styling**: Centralize `egui` styling in `yunet-gui/src/theme.rs`.
 - [ ] **Testing**: Add smoke tests for the GUI application.
-    - [ ] Test application startup and basic interaction.
-    - [ ] Test settings serialization.
+    - [x] Test application startup and basic interaction.
+    - [x] Test settings serialization.
     - [ ] Add screenshot regression harness for key panels (optional).
 
 ## Phase 4: Integration & Refinement
