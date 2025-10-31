@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Inspect and optionally modify ONNX model to support dynamic input shapes."""
 
-import sys
 import onnx
 from onnx import shape_inference
 import argparse
@@ -12,7 +11,7 @@ def inspect_model(model_path):
 
     print(f"Model IR version: {model.ir_version}")
     print(f"Producer: {model.producer_name} {model.producer_version}")
-    print(f"\nInputs:")
+    print("\nInputs:")
     for inp in model.graph.input:
         print(f"  {inp.name}: {inp.type}")
         if inp.type.HasField('tensor_type'):
@@ -21,7 +20,7 @@ def inspect_model(model_path):
                     for d in shape.dim]
             print(f"    Shape: {dims}")
 
-    print(f"\nOutputs:")
+    print("\nOutputs:")
     for out in model.graph.output:
         print(f"  {out.name}: {out.type}")
         if out.type.HasField('tensor_type'):
@@ -76,11 +75,11 @@ def main():
     print(f"Inspecting {args.model}\n")
     print("=" * 60)
 
-    model = inspect_model(args.model)
+    _model = inspect_model(args.model)
 
     if args.make_dynamic:
         print("\n" + "=" * 60)
-        print(f"Creating dynamic version...")
+        print("Creating dynamic version...")
         print("=" * 60)
         make_dynamic(args.model, args.make_dynamic)
 
