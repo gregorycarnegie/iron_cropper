@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 
-DEFAULT_INPUT_SIZE = (320, 320)
+DEFAULT_INPUT_SIZE = (640, 640)
 DEFAULT_SCORE_THRESHOLD = 0.9
 DEFAULT_NMS_THRESHOLD = 0.3
 DEFAULT_TOP_K = 5000
@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path("../models/face_detection_yunet_2023mar.onnx"),
+        default=Path("../models/face_detection_yunet_2023mar_640.onnx"),
         help="Path to YuNet ONNX model.",
     )
     parser.add_argument(
@@ -54,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input-size",
-        default="320x320",
-        help="Inference input size as WIDTHxHEIGHT (default: 320x320).",
+        default="640x640",
+        help="Inference input size as WIDTHxHEIGHT (default: 640x640).",
     )
     parser.add_argument(
         "--score-threshold",

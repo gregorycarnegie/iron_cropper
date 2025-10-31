@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
-use yunet_utils::{compute_resize_scales, load_image, resize_image, rgb_to_normalized_chw};
+use yunet_utils::{compute_resize_scales, load_image, resize_image, rgb_to_bgr_chw};
 
 /// Desired input resolution for YuNet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,8 +21,8 @@ impl InputSize {
 impl Default for InputSize {
     fn default() -> Self {
         Self {
-            width: 320,
-            height: 320,
+            width: 640,
+            height: 640,
         }
     }
 }
@@ -41,7 +41,7 @@ impl Default for PreprocessConfig {
     }
 }
 
-/// Output of preprocessing: normalized tensor plus metadata for rescaling detections.
+/// Output of preprocessing: tensor plus metadata for rescaling detections.
 #[derive(Debug)]
 pub struct PreprocessOutput {
     pub tensor: Tensor,
@@ -50,7 +50,7 @@ pub struct PreprocessOutput {
     pub original_size: (u32, u32),
 }
 
-/// Preprocess an image file into a YuNet-ready tensor in `[1, 3, H, W]` (CHW) format with values in `[0, 1]`.
+/// Preprocess an image file into a YuNet-ready tensor in `[1, 3, H, W]` (CHW) BGR format matching OpenCV's `blobFromImage`.
 pub fn preprocess_image<P: AsRef<Path>>(
     path: P,
     config: &PreprocessConfig,
@@ -81,7 +81,7 @@ pub fn preprocess_dynamic_image(
 
     let (orig_w, orig_h) = image.dimensions();
     let resized = resize_image(image, input_w, input_h, FilterType::Triangle);
-    let chw = rgb_to_normalized_chw(&resized);
+    let chw = rgb_to_bgr_chw(&resized);
 
     let shape = [1usize, 3, input_h as usize, input_w as usize];
     #[allow(deprecated)]
@@ -105,7 +105,7 @@ mod tests {
     use image::{ImageBuffer, Rgb};
 
     #[test]
-    fn preprocess_generates_normalized_tensor() {
+    fn preprocess_generates_bgr_tensor() {
         let mut img = ImageBuffer::<Rgb<u8>, _>::new(4, 4);
         for (x, y, pixel) in img.enumerate_pixels_mut() {
             let value = ((x + y) * 32) as u8;
@@ -126,6 +126,6 @@ mod tests {
         assert_eq!(output.tensor.shape(), &[1, 3, 2, 2]);
 
         let data = output.tensor.as_slice::<f32>().unwrap();
-        assert!(data.iter().all(|v| *v >= 0.0 && *v <= 1.0));
+        assert!(data.iter().all(|v| *v >= 0.0 && *v <= 255.0));
     }
 }

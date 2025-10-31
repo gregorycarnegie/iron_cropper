@@ -17,14 +17,14 @@ YuNet is a pure Rust implementation of face detection using the YuNet ONNX model
 # Quick type check across workspace
 cargo check --workspace
 
-# Run all tests (some tests require models/ directory with ONNX file)
+# Run all tests (requires models/face_detection_yunet_2023mar_640.onnx)
 cargo test --workspace --all-features
 
-# Run CLI tool
-cargo run -p yunet-cli -- detect --help
-cargo run -p yunet-cli -- detect --input fixtures/ --model models/face_detection_yunet_2023mar.onnx
+# Run CLI tool (defaults to 640x640 resolution)
+cargo run -p yunet-cli -- --help
+cargo run -p yunet-cli -- --input fixtures/ --model models/face_detection_yunet_2023mar_640.onnx
 
-# Run GUI application
+# Run GUI application (defaults to 640x640 resolution)
 cargo run -p yunet-gui
 
 # Format and lint (required before commits)
@@ -40,13 +40,14 @@ cargo build --release -p yunet-cli
 
 ### Inference Pipeline (yunet-core)
 
-1. **Preprocessing** (preprocess.rs): Loads images, resizes to InputSize (default 320x320), converts RGB to normalized CHW tensor format, tracks scale factors for coordinate mapping
+1. **Preprocessing** (preprocess.rs): Loads images, resizes to InputSize (default 640x640), converts RGB to normalized CHW tensor format, tracks scale factors for coordinate mapping
 2. **Model Execution** (model.rs): YuNetModel wraps tract-onnx SimplePlan, constrains input dimensions at load time, runs inference returning raw output tensor
 3. **Postprocessing** (postprocess.rs): Parses model output into Detection structs (bbox, landmarks, score), applies score thresholding and Non-Maximum Suppression (NMS), scales coordinates back to original image dimensions
 
 ### Configuration System
 
 - `yunet-utils/src/config.rs` defines AppSettings with nested InputSettings and DetectionSettings structs
+- Default resolution: 640x640 (required for tract compatibility with available ONNX model)
 - Default thresholds match OpenCV YuNet: `score_threshold=0.9`, `nms_threshold=0.3`, `top_k=5000`
 - CLI accepts JSON config file (`--config`) and individual parameter overrides (`--width`, `--score-threshold`, etc.)
 
@@ -83,6 +84,7 @@ cargo build --release -p yunet-cli
 ## Development Conventions
 
 ### Code Style
+
 - Rust 2024 edition, stable toolchain
 - rustfmt with 4-space indentation, trailing commas
 - snake_case modules/functions, PascalCase types, SCREAMING_SNAKE_CASE constants
@@ -90,10 +92,12 @@ cargo build --release -p yunet-cli
 - GUI styling centralized in yunet-gui/src/theme.rs
 
 ### Task Management
+
 - Update TODO.md when completing scoped tasks
 - Tests should fail descriptively with context about expected vs actual values
 
 ### Python Scripts
+
 - Place utility scripts under `scripts/`
 - Use local virtual environments, never install to system interpreter
 
@@ -103,3 +107,4 @@ cargo build --release -p yunet-cli
 - **Coordinate scaling**: Always use scale_x and scale_y from PreprocessOutput when mapping detections back to original image space
 - **NMS behavior**: IoU calculation and suppression logic in postprocess.rs follows YuNet paper
 - **Image loading**: yunet-utils abstracts image loading; use those helpers for consistency
+- **Model compatibility**: The 320x320 YuNet model (`face_detection_yunet_2023mar.onnx`) has a tract compatibility issue (fails at Conv_0 node during optimization). Use the 640x640 model (`face_detection_yunet_2023mar_640.onnx`) instead. Attempts to use tract Symbols for dynamic shapes did not resolve the underlying model export issue.

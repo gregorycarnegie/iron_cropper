@@ -33,8 +33,8 @@ pub struct InputDimensions {
 impl Default for InputDimensions {
     fn default() -> Self {
         Self {
-            width: 320,
-            height: 320,
+            width: 640,
+            height: 640,
         }
     }
 }
@@ -52,7 +52,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            model_path: Some("models/face_detection_yunet_2023mar.onnx".into()),
+            model_path: Some("models/face_detection_yunet_2023mar_640.onnx".into()),
             input: InputDimensions::default(),
             detection: DetectionSettings::default(),
         }

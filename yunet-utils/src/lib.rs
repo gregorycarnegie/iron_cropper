@@ -13,8 +13,7 @@ pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
 };
 pub use image_utils::{
-    compute_resize_scales, dynamic_to_normalized_chw, load_image, resize_image,
-    rgb_to_normalized_chw,
+    compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
 };
 
 /// Initialize logging once for CLI and GUI environments.

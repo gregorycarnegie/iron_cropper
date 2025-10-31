@@ -25,7 +25,7 @@ struct DetectArgs {
     #[arg(
         short,
         long,
-        default_value = "models/face_detection_yunet_2023mar.onnx"
+        default_value = "models/face_detection_yunet_2023mar_640.onnx"
     )]
     model: PathBuf,
 

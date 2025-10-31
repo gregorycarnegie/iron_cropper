@@ -39,10 +39,10 @@ This document outlines the development plan for the YuNet face detection project
     - [x] Support batch directory processing and glob patterns.
 - [ ] **Testing**: Create integration tests for the CLI.
     - [x] Basic detection flow producing JSON output (skips if model unavailable).
-    - [ ] Test command with various images from `fixtures/`.
+    - [x] Test command with various images from `fixtures/`.
         - [x] Add parity fixtures with expected detections and compare bounding boxes/landmarks to JSON snapshots.
-    - [ ] Verify output against golden data.
-    - [ ] Add snapshot tests for JSON output shape and ordering.
+    - [x] Verify output against golden data.
+    - [x] Add snapshot tests for JSON output shape and ordering.
 
 ## Phase 3: Graphical User Interface (GUI)
 
@@ -76,4 +76,3 @@ This document outlines the development plan for the YuNet face detection project
 - [ ] **Packaging**: Produce cross-platform binaries/installers (Windows MSI, macOS `.app`, Linux AppImage).
 - [ ] **Release**: Tag `v1.0.0` and create a release on GitHub.
 - [ ] **Review**: Review and update all documentation (`README.md`, `AGENTS.md`, `GEMINI.md`).
-

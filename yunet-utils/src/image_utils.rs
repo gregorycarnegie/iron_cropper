@@ -4,8 +4,6 @@ use anyhow::{Context, Result};
 use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 
-const NORMALIZE_FACTOR: f32 = 1.0 / 255.0;
-
 /// Load an image from disk into memory.
 pub fn load_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage> {
     let path_ref = path.as_ref();
@@ -17,22 +15,22 @@ pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: Filte
     image.resize_exact(width, height, filter).to_rgb8()
 }
 
-/// Convert an RGB image into a normalized CHW array with values in `[0, 1]`.
-pub fn rgb_to_normalized_chw(image: &RgbImage) -> Array3<f32> {
+/// Convert an RGB image into a BGR CHW array with values matching OpenCV's `blobFromImage`.
+pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let (width, height) = image.dimensions();
     let mut array = Array3::<f32>::zeros((3, height as usize, width as usize));
     for (x, y, pixel) in image.enumerate_pixels() {
         let (xi, yi) = (x as usize, y as usize);
-        array[(0, yi, xi)] = pixel[0] as f32 * NORMALIZE_FACTOR;
-        array[(1, yi, xi)] = pixel[1] as f32 * NORMALIZE_FACTOR;
-        array[(2, yi, xi)] = pixel[2] as f32 * NORMALIZE_FACTOR;
+        array[(0, yi, xi)] = pixel[2] as f32;
+        array[(1, yi, xi)] = pixel[1] as f32;
+        array[(2, yi, xi)] = pixel[0] as f32;
     }
     array
 }
 
-/// Convert any dynamic image into a normalized CHW array by first converting to RGB.
-pub fn dynamic_to_normalized_chw(image: &DynamicImage) -> Array3<f32> {
-    rgb_to_normalized_chw(&image.to_rgb8())
+/// Convert any dynamic image into a BGR CHW array by first converting to RGB.
+pub fn dynamic_to_bgr_chw(image: &DynamicImage) -> Array3<f32> {
+    rgb_to_bgr_chw(&image.to_rgb8())
 }
 
 /// Compute scale factors used to reproject detections from model space to original space.
@@ -58,19 +56,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rgb_to_normalized_chw_converts_correctly() {
+    fn rgb_to_bgr_chw_converts_correctly() {
         let mut image = RgbImage::new(2, 2);
         image.put_pixel(0, 0, image::Rgb([0, 128, 255]));
         image.put_pixel(1, 0, image::Rgb([255, 128, 0]));
         image.put_pixel(0, 1, image::Rgb([64, 64, 64]));
         image.put_pixel(1, 1, image::Rgb([255, 255, 255]));
 
-        let array = rgb_to_normalized_chw(&image);
+        let array = rgb_to_bgr_chw(&image);
         assert_eq!(array.shape(), &[3, 2, 2]);
 
-        assert!((array[(0, 0, 0)] - 0.0).abs() < f32::EPSILON);
-        assert!((array[(2, 0, 0)] - 1.0).abs() < f32::EPSILON);
-        assert!((array[(1, 0, 1)] - (128.0 / 255.0)).abs() < f32::EPSILON);
+        assert_eq!(array[(0, 0, 0)], 255.0);
+        assert_eq!(array[(2, 0, 0)], 0.0);
+        assert_eq!(array[(1, 0, 1)], 128.0);
     }
 
     #[test]
