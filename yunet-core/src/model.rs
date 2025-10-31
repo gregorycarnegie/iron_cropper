@@ -2,8 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use tract_onnx::prelude::{
-    Datum, Framework, Graph, InferenceFact, InferenceModelExt, IntoTensor, SimplePlan, Tensor,
-    TypedFact, TypedOp, tvec,
+    Framework, Graph, InferenceModelExt, IntoTensor, SimplePlan, Tensor, TypedFact, TypedOp, tvec,
 };
 
 use crate::preprocess::InputSize;
@@ -84,7 +83,7 @@ impl YuNetModel {
 
 fn load_runnable_model(
     path: &Path,
-    input_size: InputSize,
+    _input_size: InputSize,
     optimized: bool,
 ) -> Result<RunnableModel> {
     // Load model and let it infer shape from ONNX file

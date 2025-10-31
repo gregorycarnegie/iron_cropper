@@ -8,9 +8,7 @@ use clap::Parser;
 use log::{debug, info, warn};
 use serde::Serialize;
 use walkdir::WalkDir;
-use yunet_core::{
-    BoundingBox, Detection, InputSize, PostprocessConfig, PreprocessConfig, YuNetDetector,
-};
+use yunet_core::{BoundingBox, Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use yunet_utils::{config::AppSettings, init_logging, normalize_path};
 
 /// Run YuNet face detection over images or directories.
@@ -94,13 +92,9 @@ fn main() -> Result<()> {
     let mut settings = load_settings(args.config.as_ref())?;
     apply_cli_overrides(&mut settings, &args);
 
-    let input_size = InputSize::new(settings.input.width, settings.input.height);
-    let preprocess_config = PreprocessConfig { input_size };
-    let postprocess_config = PostprocessConfig {
-        score_threshold: settings.detection.score_threshold,
-        nms_threshold: settings.detection.nms_threshold,
-        top_k: settings.detection.top_k,
-    };
+    let preprocess_config: PreprocessConfig = settings.input.into();
+    let postprocess_config: PostprocessConfig = (&settings.detection).into();
+    let input_size = preprocess_config.input_size;
 
     info!(
         "Loading YuNet model from {} at resolution {}x{}",

@@ -20,3 +20,5 @@ yunet-utils = { path = "../yunet-utils" }
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
+imageproc.workspace = true
+sha2 = "0.10.9"

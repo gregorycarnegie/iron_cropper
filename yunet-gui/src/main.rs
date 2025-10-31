@@ -14,7 +14,7 @@ use egui::{
 };
 use log::{error, info, warn};
 use rfd::FileDialog;
-use yunet_core::{Detection, InputSize, PostprocessConfig, PreprocessConfig, YuNetDetector};
+use yunet_core::{Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use yunet_utils::{config::AppSettings, init_logging, load_image};
 
 fn main() -> eframe::Result<()> {
@@ -678,15 +678,9 @@ fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("no model path configured"))?;
 
-    let preprocess = PreprocessConfig {
-        input_size: InputSize::new(settings.input.width, settings.input.height),
-    };
+    let preprocess: PreprocessConfig = settings.input.into();
 
-    let postprocess = PostprocessConfig {
-        score_threshold: settings.detection.score_threshold,
-        nms_threshold: settings.detection.nms_threshold,
-        top_k: settings.detection.top_k,
-    };
+    let postprocess: PostprocessConfig = (&settings.detection).into();
 
     YuNetDetector::new(model_path, preprocess, postprocess).with_context(|| {
         format!(

@@ -56,12 +56,12 @@ This document outlines the development plan for the YuNet face detection project
 - [ ] **Testing**: Add smoke tests for the GUI application.
     - [x] Test application startup and basic interaction.
     - [x] Test settings serialization.
-    - [ ] Add screenshot regression harness for key panels (optional).
+    - [x] Add screenshot regression harness for key panels (optional).
 
 ## Phase 4: Integration & Refinement
 
 - [ ] **Workspace**: Ensure all crates work together seamlessly.
-- [ ] **Configuration**: Share threshold/input-size config structs between CLI and GUI.
+- [x] **Configuration**: Share threshold/input-size config structs between CLI and GUI.
 - [ ] **Documentation**: Add `///` doc comments to all public functions and modules.
 - [ ] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
 - [ ] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.

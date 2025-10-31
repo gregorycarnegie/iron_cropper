@@ -3,7 +3,9 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
-use yunet_utils::{compute_resize_scales, load_image, resize_image, rgb_to_bgr_chw};
+use yunet_utils::{
+    compute_resize_scales, config::InputDimensions, load_image, resize_image, rgb_to_bgr_chw,
+};
 
 /// Desired input resolution for YuNet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,10 +101,37 @@ pub fn preprocess_dynamic_image(
     })
 }
 
+impl From<InputDimensions> for InputSize {
+    fn from(dimensions: InputDimensions) -> Self {
+        InputSize::new(dimensions.width, dimensions.height)
+    }
+}
+
+impl From<&InputDimensions> for InputSize {
+    fn from(dimensions: &InputDimensions) -> Self {
+        (*dimensions).into()
+    }
+}
+
+impl From<InputDimensions> for PreprocessConfig {
+    fn from(dimensions: InputDimensions) -> Self {
+        PreprocessConfig {
+            input_size: dimensions.into(),
+        }
+    }
+}
+
+impl From<&InputDimensions> for PreprocessConfig {
+    fn from(dimensions: &InputDimensions) -> Self {
+        (*dimensions).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgb};
+    use yunet_utils::config::InputDimensions;
 
     #[test]
     fn preprocess_generates_bgr_tensor() {
@@ -127,5 +156,21 @@ mod tests {
 
         let data = output.tensor.as_slice::<f32>().unwrap();
         assert!(data.iter().all(|v| *v >= 0.0 && *v <= 255.0));
+    }
+
+    #[test]
+    fn converts_dimensions_into_configs() {
+        let dims = InputDimensions {
+            width: 320,
+            height: 240,
+        };
+
+        let size: InputSize = dims.into();
+        assert_eq!(size.width, 320);
+        assert_eq!(size.height, 240);
+
+        let config: PreprocessConfig = dims.into();
+        assert_eq!(config.input_size.width, 320);
+        assert_eq!(config.input_size.height, 240);
     }
 }

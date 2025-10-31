@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::cmp::Ordering;
 use tract_onnx::prelude::{Tensor, tract_ndarray::ArrayView2};
+use yunet_utils::config::DetectionSettings;
 
 /// Canonical YuNet detection configuration.
 #[derive(Debug, Clone)]
@@ -181,9 +182,26 @@ fn non_max_suppression(mut detections: Vec<Detection>, threshold: f32) -> Vec<De
     result
 }
 
+impl From<DetectionSettings> for PostprocessConfig {
+    fn from(settings: DetectionSettings) -> Self {
+        PostprocessConfig {
+            score_threshold: settings.score_threshold,
+            nms_threshold: settings.nms_threshold,
+            top_k: settings.top_k,
+        }
+    }
+}
+
+impl From<&DetectionSettings> for PostprocessConfig {
+    fn from(settings: &DetectionSettings) -> Self {
+        settings.clone().into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use yunet_utils::config::DetectionSettings;
 
     fn tensor_from_rows(rows: &[[f32; 15]]) -> Tensor {
         let flat: Vec<f32> = rows.iter().flatten().copied().collect();
@@ -269,5 +287,24 @@ mod tests {
         let detections = apply_postprocess(&tensor, 1.0, 1.0, &PostprocessConfig::default())
             .expect("postprocess should succeed");
         assert_eq!(detections.len(), 1);
+    }
+
+    #[test]
+    fn converts_detection_settings_into_config() {
+        let settings = DetectionSettings {
+            score_threshold: 0.75,
+            nms_threshold: 0.25,
+            top_k: 123,
+        };
+
+        let config: PostprocessConfig = settings.clone().into();
+        assert_eq!(config.score_threshold, settings.score_threshold);
+        assert_eq!(config.nms_threshold, settings.nms_threshold);
+        assert_eq!(config.top_k, settings.top_k);
+
+        let config_from_ref: PostprocessConfig = (&settings).into();
+        assert_eq!(config_from_ref.score_threshold, settings.score_threshold);
+        assert_eq!(config_from_ref.nms_threshold, settings.nms_threshold);
+        assert_eq!(config_from_ref.top_k, settings.top_k);
     }
 }
