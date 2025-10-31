@@ -46,24 +46,24 @@ This document outlines the development plan for the YuNet face detection project
 
 ## Phase 3: Graphical User Interface (GUI)
 
-- [ ] **`yunet-gui`**: Build the desktop application with `egui`/`eframe`. _(in progress)_
+- [x] **`yunet-gui`**: Build the desktop application with `egui`/`eframe`.
     - [x] Implement file selection for input images.
     - [x] Create UI controls for model parameters (thresholds, etc.).
     - [x] Display the output image with bounding boxes overlaid.
     - [x] Offload heavy inference tasks to a background thread (`rayon`) to keep the UI responsive.
     - [x] Persist user preferences (last model, thresholds) between sessions.
 - [x] **Styling**: Centralize `egui` styling in `yunet-gui/src/theme.rs`.
-- [ ] **Testing**: Add smoke tests for the GUI application.
+- [x] **Testing**: Add smoke tests for the GUI application.
     - [x] Test application startup and basic interaction.
     - [x] Test settings serialization.
     - [x] Add screenshot regression harness for key panels (optional).
 
 ## Phase 4: Integration & Refinement
 
-- [ ] **Workspace**: Ensure all crates work together seamlessly.
+- [x] **Workspace**: Ensure all crates work together seamlessly.
 - [x] **Configuration**: Share threshold/input-size config structs between CLI and GUI.
-- [ ] **Documentation**: Add `///` doc comments to all public functions and modules.
-- [ ] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
+- [x] **Documentation**: Add `///` doc comments to all public functions and modules.
+- [x] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
 - [ ] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.
 - [ ] **Telemetry**: Add optional timing/logging hooks in `yunet-utils` for inference tracing.
 - [ ] **Parity validation**: Compare detections against OpenCV YuNet on a shared dataset.

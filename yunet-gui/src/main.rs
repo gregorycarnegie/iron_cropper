@@ -1,3 +1,5 @@
+//! Desktop GUI for YuNet face detection.
+
 mod theme;
 
 use std::{
@@ -17,6 +19,7 @@ use rfd::FileDialog;
 use yunet_core::{Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use yunet_utils::{config::AppSettings, init_logging, load_image};
 
+/// Main entry point for the GUI application.
 fn main() -> eframe::Result<()> {
     init_logging(log::LevelFilter::Info).expect("failed to initialize logging");
     let options = NativeOptions::default();
@@ -28,33 +31,55 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+/// The main application state for the YuNet GUI.
 struct YuNetApp {
+    /// User-configurable settings.
     settings: AppSettings,
+    /// Path to the settings file on disk.
     settings_path: PathBuf,
+    /// The current status message displayed in the top bar.
     status_line: String,
+    /// The last error message, if any.
     last_error: Option<String>,
+    /// The face detector instance.
     detector: Option<Arc<YuNetDetector>>,
+    /// Sender for submitting detection jobs to a background thread.
     job_tx: mpsc::Sender<JobMessage>,
+    /// Receiver for collecting results from detection jobs.
     job_rx: mpsc::Receiver<JobMessage>,
+    /// State of the image preview panel.
     preview: PreviewState,
+    /// Cache for detection results to avoid re-running on the same image and settings.
     cache: HashMap<CacheKey, DetectionCacheEntry>,
+    /// The current value of the model path text input.
     model_path_input: String,
+    /// Flag indicating if the model path input has been modified.
     model_path_dirty: bool,
+    /// Flag indicating if a detection job is currently running.
     is_busy: bool,
+    /// A counter to generate unique texture names.
     texture_seq: u64,
+    /// A counter to generate unique job IDs.
     job_counter: u64,
+    /// The ID of the currently running detection job.
     current_job: Option<u64>,
 }
 
+/// State related to the image preview panel.
 #[derive(Default)]
 struct PreviewState {
+    /// The path to the currently displayed image.
     image_path: Option<PathBuf>,
+    /// The handle to the egui texture for the image.
     texture: Option<TextureHandle>,
+    /// The dimensions of the original image.
     image_size: Option<(u32, u32)>,
+    /// The list of detections for the current image.
     detections: Vec<Detection>,
 }
 
 impl PreviewState {
+    /// Resets the preview state to a loading state for a new image.
     fn begin_loading(&mut self, path: PathBuf) {
         self.image_path = Some(path);
         self.texture = None;
@@ -63,18 +88,19 @@ impl PreviewState {
     }
 }
 
+/// A message sent from a background detection job to the GUI thread.
 enum JobMessage {
+    /// Indicates that a detection job has finished successfully.
     DetectionFinished {
         job_id: u64,
         cache_key: CacheKey,
         data: DetectionJobSuccess,
     },
-    DetectionFailed {
-        job_id: u64,
-        error: String,
-    },
+    /// Indicates that a detection job has failed.
+    DetectionFailed { job_id: u64, error: String },
 }
 
+/// The data returned from a successful detection job.
 struct DetectionJobSuccess {
     path: PathBuf,
     color_image: egui::ColorImage,
@@ -82,6 +108,7 @@ struct DetectionJobSuccess {
     original_size: (u32, u32),
 }
 
+/// A key used to cache detection results.
 #[derive(Hash, PartialEq, Eq, Clone)]
 struct CacheKey {
     path: PathBuf,
@@ -93,6 +120,7 @@ struct CacheKey {
     top_k: usize,
 }
 
+/// An entry in the detection cache.
 struct DetectionCacheEntry {
     texture: TextureHandle,
     image_size: (u32, u32),
@@ -100,11 +128,13 @@ struct DetectionCacheEntry {
 }
 
 impl YuNetApp {
+    /// Creates a new `YuNetApp` instance.
     fn new(cc: &CreationContext<'_>) -> Self {
         let settings_path = default_settings_path();
         Self::create(&cc.egui_ctx, settings_path)
     }
 
+    /// Creates a new `YuNetApp` instance with a specific settings path.
     pub(crate) fn create(ctx: &egui::Context, settings_path: PathBuf) -> Self {
         theme::apply(ctx);
 
@@ -150,6 +180,7 @@ impl YuNetApp {
         }
     }
 
+    /// Renders the top status bar.
     fn show_status_bar(&mut self, ctx: &EguiContext) {
         TopBottomPanel::top("yunet_status_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -164,6 +195,7 @@ impl YuNetApp {
         });
     }
 
+    /// Renders the left-hand configuration panel.
     fn show_configuration_panel(&mut self, ctx: &EguiContext) {
         SidePanel::left("yunet_settings_panel")
             .resizable(true)
@@ -310,6 +342,7 @@ impl YuNetApp {
             });
     }
 
+    /// Renders the main image preview panel.
     fn show_preview(&mut self, ctx: &EguiContext) {
         CentralPanel::default().show(ctx, |ui| {
             if let Some(texture) = &self.preview.texture {
@@ -329,6 +362,7 @@ impl YuNetApp {
         });
     }
 
+    /// Paints the detection bounding boxes and landmarks over the preview image.
     fn paint_detections(&self, ui: &egui::Ui, image_rect: Rect, image_size: (u32, u32)) {
         let painter = ui.painter().with_clip_rect(image_rect);
         let scale_x = image_rect.width() / image_size.0 as f32;
@@ -357,6 +391,7 @@ impl YuNetApp {
         }
     }
 
+    /// Applies changes to the settings, invalidating the detector or cache as needed.
     fn apply_settings_changes(
         &mut self,
         requires_detector_reset: bool,
@@ -370,6 +405,7 @@ impl YuNetApp {
         self.persist_settings_with_feedback();
     }
 
+    /// Persists the current settings to disk and provides feedback to the user.
     fn persist_settings_with_feedback(&mut self) {
         if let Err(err) = self.persist_settings() {
             let message = format!("Failed to persist settings: {err}");
@@ -378,13 +414,14 @@ impl YuNetApp {
         }
     }
 
+    /// Saves the current settings to the JSON file.
     fn persist_settings(&self) -> Result<()> {
-        if let Some(parent) = self.settings_path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).with_context(|| {
-                    format!("failed to create settings directory {}", parent.display())
-                })?;
-            }
+        if let Some(parent) = self.settings_path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create settings directory {}", parent.display())
+            })?;
         }
         self.settings
             .save_to_path(&self.settings_path)
@@ -396,6 +433,7 @@ impl YuNetApp {
             })
     }
 
+    /// Invalidates the current detector, forcing it to be rebuilt on the next detection run.
     fn invalidate_detector(&mut self) {
         if self.detector.is_some() {
             info!("Invalidating YuNet detector due to configuration change");
@@ -404,6 +442,7 @@ impl YuNetApp {
         self.clear_cache("Detector configuration changed. Re-run detection.");
     }
 
+    /// Clears the detection cache and updates the status message.
     fn clear_cache(&mut self, status_message: &str) {
         if !self.cache.is_empty() {
             info!("Clearing detection cache ({} entries)", self.cache.len());
@@ -416,6 +455,7 @@ impl YuNetApp {
         self.status_line = status_message.to_owned();
     }
 
+    /// Applies the model path from the text input field.
     fn apply_model_path_input(&mut self) {
         let trimmed = self.model_path_input.trim().to_owned();
         self.model_path_input = trimmed.clone();
@@ -426,6 +466,7 @@ impl YuNetApp {
         });
     }
 
+    /// Updates the model path in the settings and invalidates the detector.
     fn update_model_path(&mut self, new_path: Option<String>) {
         let normalized = new_path.and_then(|value| {
             let trimmed = value.trim().to_owned();
@@ -439,10 +480,10 @@ impl YuNetApp {
             .clone()
             .or_else(|| AppSettings::default().model_path.clone());
 
-        if normalized.is_none() {
-            if let Some(default_path) = resolved.as_deref() {
-                info!("Falling back to default model path: {}", default_path);
-            }
+        if normalized.is_none()
+            && let Some(default_path) = resolved.as_deref()
+        {
+            info!("Falling back to default model path: {}", default_path);
         }
 
         if self.settings.model_path != resolved {
@@ -454,6 +495,7 @@ impl YuNetApp {
         self.model_path_dirty = false;
     }
 
+    /// Opens a file dialog to select an image.
     fn open_image_dialog(&mut self) {
         if let Some(path) = FileDialog::new()
             .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp"])
@@ -463,6 +505,7 @@ impl YuNetApp {
         }
     }
 
+    /// Opens a file dialog to select an ONNX model.
     fn open_model_dialog(&mut self) {
         if let Some(path) = FileDialog::new()
             .add_filter("ONNX model", &["onnx"])
@@ -473,6 +516,7 @@ impl YuNetApp {
         }
     }
 
+    /// Starts a new detection job for the given image path.
     fn start_detection(&mut self, path: PathBuf) {
         let cache_key = self.cache_key_for_path(&path);
         if let Some(entry) = self.cache.get(&cache_key) {
@@ -527,6 +571,7 @@ impl YuNetApp {
         });
     }
 
+    /// Ensures that the detector is loaded, building it if necessary.
     fn ensure_detector(&mut self) -> Result<Arc<YuNetDetector>> {
         if let Some(detector) = &self.detector {
             return Ok(detector.clone());
@@ -537,6 +582,7 @@ impl YuNetApp {
         Ok(detector)
     }
 
+    /// Creates a cache key for the given image path and current settings.
     fn cache_key_for_path(&self, path: &Path) -> CacheKey {
         CacheKey {
             path: path.to_path_buf(),
@@ -549,6 +595,7 @@ impl YuNetApp {
         }
     }
 
+    /// Polls for completed detection jobs and updates the UI.
     fn poll_worker(&mut self, ctx: &EguiContext) {
         let mut updated = false;
         while let Ok(message) = self.job_rx.try_recv() {
@@ -561,6 +608,7 @@ impl YuNetApp {
         }
     }
 
+    /// Handles a message from a detection job.
     fn handle_job_message(&mut self, ctx: &EguiContext, message: JobMessage) {
         match message {
             JobMessage::DetectionFinished {
@@ -631,6 +679,7 @@ impl YuNetApp {
         }
     }
 
+    /// Returns the next available job ID.
     fn next_job_id(&mut self) -> u64 {
         self.job_counter = self.job_counter.wrapping_add(1);
         if self.job_counter == 0 {
@@ -653,6 +702,7 @@ impl App for YuNetApp {
     }
 }
 
+/// Loads application settings from a file, or returns default settings if loading fails.
 fn load_settings(path: &Path) -> AppSettings {
     match AppSettings::load_from_path(path) {
         Ok(settings) => settings,
@@ -666,12 +716,14 @@ fn load_settings(path: &Path) -> AppSettings {
     }
 }
 
+/// Returns the default path for the GUI settings file.
 fn default_settings_path() -> PathBuf {
     std::env::current_dir()
         .map(|dir| dir.join("config/gui_settings.json"))
         .unwrap_or_else(|_| PathBuf::from("config/gui_settings.json"))
 }
 
+/// Builds a `YuNetDetector` from the given application settings.
 fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
     let model_path = settings
         .model_path
@@ -690,6 +742,7 @@ fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
     })
 }
 
+/// Performs face detection on an image and returns the results.
 fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<DetectionJobSuccess> {
     let image = load_image(&path)
         .with_context(|| format!("failed to load image from {}", path.display()))?;

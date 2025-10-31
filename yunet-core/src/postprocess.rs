@@ -4,10 +4,15 @@ use tract_onnx::prelude::{Tensor, tract_ndarray::ArrayView2};
 use yunet_utils::config::DetectionSettings;
 
 /// Canonical YuNet detection configuration.
+///
+/// These parameters control how raw model outputs are filtered and refined.
 #[derive(Debug, Clone)]
 pub struct PostprocessConfig {
+    /// Minimum confidence score for a detection to be considered valid.
     pub score_threshold: f32,
+    /// Threshold for non-maximum suppression to merge overlapping bounding boxes.
     pub nms_threshold: f32,
+    /// The maximum number of detections to return after sorting by score.
     pub top_k: usize,
 }
 
@@ -21,20 +26,26 @@ impl Default for PostprocessConfig {
     }
 }
 
-/// Axis-aligned bounding box.
+/// Axis-aligned bounding box in image coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoundingBox {
+    /// The x-coordinate of the top-left corner.
     pub x: f32,
+    /// The y-coordinate of the top-left corner.
     pub y: f32,
+    /// The width of the box.
     pub width: f32,
+    /// The height of the box.
     pub height: f32,
 }
 
 impl BoundingBox {
+    /// Calculates the area of the bounding box.
     pub fn area(&self) -> f32 {
         (self.width.max(0.0)) * (self.height.max(0.0))
     }
 
+    /// Calculates the Intersection over Union (IoU) with another bounding box.
     pub fn iou(&self, other: &Self) -> f32 {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
@@ -61,19 +72,36 @@ impl BoundingBox {
 /// Facial landmark coordinate (x, y) in image space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Landmark {
+    /// The x-coordinate of the landmark.
     pub x: f32,
+    /// The y-coordinate of the landmark.
     pub y: f32,
 }
 
-/// A single YuNet detection result.
+/// A single YuNet detection result, including a bounding box, landmarks, and confidence score.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
+    /// The bounding box of the detected face.
     pub bbox: BoundingBox,
+    /// An array of 5 facial landmarks (right eye, left eye, nose tip, right mouth corner, left mouth corner).
     pub landmarks: [Landmark; 5],
+    /// The confidence score of the detection.
     pub score: f32,
 }
 
 /// Decode YuNet outputs into filtered detections.
+///
+/// This function takes the raw tensor output from the model and applies:
+/// 1. Score filtering.
+/// 2. Coordinate scaling to match the original image dimensions.
+/// 3. Non-maximum suppression (NMS).
+///
+/// # Arguments
+///
+/// * `output` - The raw output tensor from the YuNet model.
+/// * `scale_x` - The horizontal scale factor to map coordinates to the original image.
+/// * `scale_y` - The vertical scale factor to map coordinates to the original image.
+/// * `config` - The post-processing parameters.
 pub fn apply_postprocess(
     output: &Tensor,
     scale_x: f32,
@@ -146,6 +174,7 @@ pub fn apply_postprocess(
     Ok(detections)
 }
 
+/// Extract the detection rows from the model's output tensor.
 fn detection_rows<'a>(output: &'a Tensor) -> Result<ArrayView2<'a, f32>> {
     let shape = output.shape();
     let rows = match shape {
@@ -165,6 +194,7 @@ fn detection_rows<'a>(output: &'a Tensor) -> Result<ArrayView2<'a, f32>> {
         .map_err(|_| anyhow::anyhow!("YuNet output data is not contiguous"))
 }
 
+/// Apply non-maximum suppression to a list of detections.
 fn non_max_suppression(mut detections: Vec<Detection>, threshold: f32) -> Vec<Detection> {
     let mut result: Vec<Detection> = Vec::with_capacity(detections.len());
     for detection in detections.drain(..) {

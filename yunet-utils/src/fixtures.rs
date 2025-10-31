@@ -10,6 +10,12 @@ use serde::de::DeserializeOwned;
 const FIXTURE_ENV: &str = "YUNET_FIXTURE_ROOT";
 
 /// Resolve the root directory that stores project fixtures.
+///
+/// This function searches for a `fixtures` directory in the following order:
+/// 1. The path specified by the `YUNET_FIXTURE_ROOT` environment variable.
+/// 2. Ancestor directories of the current crate's manifest directory.
+///
+/// Returns an error if the directory cannot be found.
 pub fn fixtures_dir() -> Result<PathBuf> {
     if let Ok(value) = env::var(FIXTURE_ENV) {
         let path = PathBuf::from(value);
@@ -31,6 +37,12 @@ pub fn fixtures_dir() -> Result<PathBuf> {
 }
 
 /// Resolve a path inside the fixture folder.
+///
+/// This ensures that the requested fixture file exists before returning the full path.
+///
+/// # Arguments
+///
+/// * `relative` - A relative path to a file within the `fixtures` directory.
 pub fn fixture_path<P: AsRef<Path>>(relative: P) -> Result<PathBuf> {
     let relative = relative.as_ref();
     let root = fixtures_dir()?;
@@ -45,18 +57,31 @@ pub fn fixture_path<P: AsRef<Path>>(relative: P) -> Result<PathBuf> {
 }
 
 /// Load a fixture image as a `DynamicImage`.
+///
+/// # Arguments
+///
+/// * `relative` - A relative path to an image file within the `fixtures` directory.
 pub fn load_fixture_image<P: AsRef<Path>>(relative: P) -> Result<DynamicImage> {
     let path = fixture_path(relative)?;
     image::open(&path).with_context(|| format!("failed to open fixture image {}", path.display()))
 }
 
 /// Load fixture contents as bytes.
+///
+/// # Arguments
+///
+/// * `relative` - A relative path to a file within the `fixtures` directory.
 pub fn load_fixture_bytes<P: AsRef<Path>>(relative: P) -> Result<Vec<u8>> {
     let path = fixture_path(relative)?;
     fs::read(&path).with_context(|| format!("failed to read fixture {}", path.display()))
 }
 
 /// Load fixture JSON into a strongly-typed structure.
+///
+/// # Arguments
+///
+/// * `relative` - A relative path to a JSON file within the `fixtures` directory.
+/// * `T` - The type to deserialize the JSON into.
 pub fn load_fixture_json<P, T>(relative: P) -> Result<T>
 where
     P: AsRef<Path>,

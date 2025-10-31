@@ -1,6 +1,10 @@
+//! Global theme customizations for the YuNet GUI.
+
 use egui::{Color32, Context, Margin, Stroke, Visuals};
 
 /// Apply the global YuNet GUI theme to the provided egui context.
+///
+/// This function sets up custom spacing, padding, and color schemes.
 pub fn apply(ctx: &Context) {
     let mut style = (*ctx.style()).clone();
 
@@ -12,6 +16,7 @@ pub fn apply(ctx: &Context) {
     ctx.set_style(style);
 }
 
+/// Creates a custom dark theme for the application.
 fn dark_visuals() -> Visuals {
     let mut visuals = Visuals::dark();
     visuals.override_text_color = Some(Color32::from_rgb(220, 220, 230));

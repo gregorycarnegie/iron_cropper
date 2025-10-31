@@ -14,6 +14,8 @@ const OUTPUTS_PER_STRIDE: usize = 4; // cls, obj, bbox, kps
 const OUTPUT_COLS: usize = 15; // bbox (4) + landmarks (10) + score (1)
 
 /// Wrapper around the YuNet ONNX runnable model.
+///
+/// This struct handles loading the ONNX graph, preparing it for execution, and running inference.
 #[derive(Debug)]
 pub struct YuNetModel {
     runnable: RunnableModel,
@@ -39,7 +41,7 @@ impl YuNetModel {
         };
 
         Ok(Self {
-            runnable: runnable,
+            runnable,
             input_size,
         })
     }
@@ -126,12 +128,16 @@ fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Ten
     let mut total_rows = 0usize;
     for &stride in STRIDES.iter() {
         anyhow::ensure!(
-            pad_w % stride == 0,
+            pad_w
+                .checked_rem(stride)
+                .is_some_and(|remainder| remainder == 0),
             "input width not divisible by stride {}",
             stride
         );
         anyhow::ensure!(
-            pad_h % stride == 0,
+            pad_h
+                .checked_rem(stride)
+                .is_some_and(|remainder| remainder == 0),
             "input height not divisible by stride {}",
             stride
         );
@@ -236,7 +242,8 @@ fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Ten
 }
 
 fn align_to(value: usize, divisor: usize) -> usize {
-    ((value + divisor - 1) / divisor) * divisor
+    assert!(divisor > 0, "divisor must be non-zero");
+    value.div_ceil(divisor) * divisor
 }
 
 #[cfg(test)]

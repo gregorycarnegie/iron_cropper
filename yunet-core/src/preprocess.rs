@@ -10,11 +10,14 @@ use yunet_utils::{
 /// Desired input resolution for YuNet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputSize {
+    /// The width of the input tensor.
     pub width: u32,
+    /// The height of the input tensor.
     pub height: u32,
 }
 
 impl InputSize {
+    /// Creates a new `InputSize`.
     pub const fn new(width: u32, height: u32) -> Self {
         Self { width, height }
     }
@@ -30,29 +33,31 @@ impl Default for InputSize {
 }
 
 /// Configuration for preprocessing an image before inference.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PreprocessConfig {
+    /// The target input size for the model.
     pub input_size: InputSize,
-}
-
-impl Default for PreprocessConfig {
-    fn default() -> Self {
-        Self {
-            input_size: InputSize::default(),
-        }
-    }
 }
 
 /// Output of preprocessing: tensor plus metadata for rescaling detections.
 #[derive(Debug)]
 pub struct PreprocessOutput {
+    /// The preprocessed image tensor, ready for inference.
     pub tensor: Tensor,
+    /// The horizontal scale factor to convert detection coordinates to the original image space.
     pub scale_x: f32,
+    /// The vertical scale factor to convert detection coordinates to the original image space.
     pub scale_y: f32,
+    /// The original dimensions of the input image.
     pub original_size: (u32, u32),
 }
 
 /// Preprocess an image file into a YuNet-ready tensor in `[1, 3, H, W]` (CHW) BGR format matching OpenCV's `blobFromImage`.
+///
+/// # Arguments
+///
+/// * `path` - The path to the image file.
+/// * `config` - The configuration for preprocessing.
 pub fn preprocess_image<P: AsRef<Path>>(
     path: P,
     config: &PreprocessConfig,
@@ -70,6 +75,11 @@ pub fn preprocess_image<P: AsRef<Path>>(
 }
 
 /// Preprocess an in-memory image (useful for tests).
+///
+/// # Arguments
+///
+/// * `image` - The dynamic image to process.
+/// * `config` - The configuration for preprocessing.
 pub fn preprocess_dynamic_image(
     image: &DynamicImage,
     config: &PreprocessConfig,

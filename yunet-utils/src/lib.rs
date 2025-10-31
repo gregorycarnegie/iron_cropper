@@ -1,7 +1,10 @@
 //! Common helpers shared across YuNet crates.
 
+/// Application configuration and settings management.
 pub mod config;
+/// Test fixture loading and path resolution.
 pub mod fixtures;
+/// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
 
 use std::path::Path;
@@ -17,6 +20,13 @@ pub use image_utils::{
 };
 
 /// Initialize logging once for CLI and GUI environments.
+///
+/// This function respects the `RUST_LOG` environment variable if it is set.
+/// Otherwise, it falls back to the provided default filter level.
+///
+/// # Arguments
+///
+/// * `default_filter` - The `LevelFilter` to use if `RUST_LOG` is not set.
 pub fn init_logging(default_filter: LevelFilter) -> Result<()> {
     if env_logger::try_init_from_env(
         env_logger::Env::default().default_filter_or(default_filter.as_str()),
@@ -29,6 +39,10 @@ pub fn init_logging(default_filter: LevelFilter) -> Result<()> {
 }
 
 /// Validate that a path exists and resolve it to an absolute path.
+///
+/// # Arguments
+///
+/// * `path` - The path to validate and normalize.
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> Result<std::path::PathBuf> {
     let path = path.as_ref();
     anyhow::ensure!(path.exists(), "path does not exist: {}", path.display());

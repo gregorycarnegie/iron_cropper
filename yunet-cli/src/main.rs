@@ -1,3 +1,5 @@
+//! Command-line interface for running YuNet face detection.
+
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
@@ -60,6 +62,7 @@ struct DetectArgs {
     annotate: Option<PathBuf>,
 }
 
+/// A serializable representation of a single detection.
 #[derive(Debug, Serialize)]
 struct DetectionRecord {
     score: f32,
@@ -67,6 +70,7 @@ struct DetectionRecord {
     landmarks: [[f32; 2]; 5],
 }
 
+/// A serializable representation of all detections for a single image.
 #[derive(Debug, Serialize)]
 struct ImageDetections {
     image: String,
@@ -179,6 +183,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Load application settings from a file or use defaults.
 fn load_settings(config_path: Option<&PathBuf>) -> Result<AppSettings> {
     if let Some(path) = config_path {
         let resolved = normalize_path(path)?;
@@ -188,6 +193,7 @@ fn load_settings(config_path: Option<&PathBuf>) -> Result<AppSettings> {
     }
 }
 
+/// Apply command-line arguments to override loaded or default settings.
 fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     if let Some(width) = args.width {
         settings.input.width = width;
@@ -206,6 +212,7 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     }
 }
 
+/// Collect all image paths from a file or directory.
 fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() {
         return Ok(vec![path.to_path_buf()]);
@@ -239,6 +246,7 @@ fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
     Ok(images)
 }
 
+/// Draw detections on an image and save it to a directory.
 fn annotate_image(
     image_path: &Path,
     detections: &[Detection],
@@ -289,6 +297,7 @@ fn annotate_image(
     Ok(output_path)
 }
 
+/// Convert a floating-point `BoundingBox` to an integer `imageproc::rect::Rect`.
 fn rect_from_bbox(bbox: &BoundingBox, img_w: u32, img_h: u32) -> imageproc::rect::Rect {
     use imageproc::rect::Rect;
 
@@ -306,6 +315,7 @@ fn rect_from_bbox(bbox: &BoundingBox, img_w: u32, img_h: u32) -> imageproc::rect
     Rect::at(x1.round() as i32, y1.round() as i32).of_size(width, height)
 }
 
+/// Clamp a floating-point coordinate to a valid integer pixel index.
 fn clamp_to_i32(value: f32, max_extent: u32) -> i32 {
     if max_extent == 0 {
         return 0;

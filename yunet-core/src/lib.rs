@@ -1,11 +1,15 @@
 //! Core YuNet inference primitives.
 //!
-//! This crate will eventually load the YuNet ONNX model, run inference with tract,
-//! and expose ergonomic preprocessing and postprocessing helpers.
+//! This crate loads the YuNet ONNX model, runs inference with `tract-onnx`,
+//! and provides preprocessing and postprocessing helpers.
 
+/// High-level face detection runner.
 pub mod detector;
+/// ONNX model loading and execution.
 pub mod model;
+/// Detection post-processing (NMS, score filtering).
 pub mod postprocess;
+/// Image pre-processing (resizing, tensor conversion).
 pub mod preprocess;
 
 pub use detector::{DetectionOutput, YuNetDetector};

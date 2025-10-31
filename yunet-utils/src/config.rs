@@ -4,11 +4,17 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 /// Shared detection parameters that should mirror YuNet defaults.
+///
+/// These settings directly control the behavior of the post-processing steps,
+/// such as non-maximum suppression (NMS) and score filtering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DetectionSettings {
+    /// Minimum confidence score for a detection to be considered valid.
     pub score_threshold: f32,
+    /// Threshold for non-maximum suppression to merge overlapping bounding boxes.
     pub nms_threshold: f32,
+    /// The maximum number of detections to return.
     pub top_k: usize,
 }
 
@@ -23,6 +29,8 @@ impl Default for DetectionSettings {
 }
 
 /// Inference input resolution in pixels (width x height).
+///
+/// The input image will be resized to these dimensions before being passed to the model.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct InputDimensions {
@@ -40,12 +48,18 @@ impl Default for InputDimensions {
 }
 
 /// Persistent application settings consumed by CLI and GUI front ends.
+///
+/// This struct aggregates all user-configurable parameters, allowing them to be
+/// loaded from and saved to a JSON file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     /// Optional override for the YuNet ONNX model path.
+    /// If `None`, a default path is used.
     pub model_path: Option<String>,
+    /// The input dimensions for model inference.
     pub input: InputDimensions,
+    /// The parameters for detection post-processing.
     pub detection: DetectionSettings,
 }
 
@@ -61,6 +75,9 @@ impl Default for AppSettings {
 
 impl AppSettings {
     /// Load settings from a JSON file.
+    ///
+    /// If the file does not exist or cannot be parsed, an error is returned.
+    /// If the `model_path` is missing from the JSON, it falls back to the default.
     pub fn load_from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let contents = fs::read_to_string(path)
@@ -76,6 +93,8 @@ impl AppSettings {
     }
 
     /// Serialize settings to disk in pretty-printed JSON.
+    ///
+    /// This will overwrite the file if it already exists.
     pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         let payload =

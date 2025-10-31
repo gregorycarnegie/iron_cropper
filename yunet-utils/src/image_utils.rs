@@ -5,35 +5,64 @@ use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 
 /// Load an image from disk into memory.
+///
+/// # Arguments
+///
+/// * `path` - The path to the image file.
 pub fn load_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage> {
     let path_ref = path.as_ref();
     image::open(path_ref).with_context(|| format!("failed to open image {}", path_ref.display()))
 }
 
 /// Resize an image to the requested resolution using the provided filter.
+///
+/// # Arguments
+///
+/// * `image` - The image to resize.
+/// * `width` - The target width.
+/// * `height` - The target height.
+/// * `filter` - The sampling filter to use for resizing.
 pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: FilterType) -> RgbImage {
     image.resize_exact(width, height, filter).to_rgb8()
 }
 
 /// Convert an RGB image into a BGR CHW array with values matching OpenCV's `blobFromImage`.
+///
+/// This function rearranges the memory layout from HWC (height, width, channels) to
+/// CHW (channels, height, width) and swaps the red and blue channels.
+///
+/// # Arguments
+///
+/// * `image` - The RGB image to convert.
 pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let (width, height) = image.dimensions();
     let mut array = Array3::<f32>::zeros((3, height as usize, width as usize));
     for (x, y, pixel) in image.enumerate_pixels() {
         let (xi, yi) = (x as usize, y as usize);
-        array[(0, yi, xi)] = pixel[2] as f32;
-        array[(1, yi, xi)] = pixel[1] as f32;
-        array[(2, yi, xi)] = pixel[0] as f32;
+        array[(0, yi, xi)] = pixel[2] as f32; // Blue
+        array[(1, yi, xi)] = pixel[1] as f32; // Green
+        array[(2, yi, xi)] = pixel[0] as f32; // Red
     }
     array
 }
 
 /// Convert any dynamic image into a BGR CHW array by first converting to RGB.
+///
+/// # Arguments
+///
+/// * `image` - The dynamic image to convert.
 pub fn dynamic_to_bgr_chw(image: &DynamicImage) -> Array3<f32> {
     rgb_to_bgr_chw(&image.to_rgb8())
 }
 
 /// Compute scale factors used to reproject detections from model space to original space.
+///
+/// This is necessary when the model runs on a resized version of the original image.
+///
+/// # Arguments
+///
+/// * `original` - A tuple of the original image's (width, height).
+/// * `target` - A tuple of the resized image's (width, height).
 pub fn compute_resize_scales(original: (u32, u32), target: (u32, u32)) -> Result<(f32, f32)> {
     let (orig_w, orig_h) = original;
     let (target_w, target_h) = target;
