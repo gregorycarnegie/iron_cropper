@@ -1,8 +1,8 @@
 use std::time::Instant;
 use yunet_core::{
-    preprocess::{preprocess_image, InputSize, PreprocessConfig},
-    postprocess::{apply_postprocess, PostprocessConfig},
     YuNetModel,
+    postprocess::{PostprocessConfig, apply_postprocess},
+    preprocess::{InputSize, PreprocessConfig, preprocess_image},
 };
 
 fn main() -> anyhow::Result<()> {
@@ -16,8 +16,11 @@ fn main() -> anyhow::Result<()> {
     let start = Instant::now();
     let model = YuNetModel::load(model_path, input_size)?;
     let load_time = start.elapsed();
-    println!("1. Model Loading:     {:>8.4}s ({:>5.1}%)",
-        load_time.as_secs_f64(), 0.0);
+    println!(
+        "1. Model Loading:     {:>8.4}s ({:>5.1}%)",
+        load_time.as_secs_f64(),
+        0.0
+    );
 
     // 2. Preprocessing
     let preprocess_config = PreprocessConfig { input_size };
@@ -44,15 +47,21 @@ fn main() -> anyhow::Result<()> {
     let total = load_time + preprocess_time + inference_time + postprocess_time;
     let total_secs = total.as_secs_f64();
 
-    println!("2. Preprocessing:     {:>8.4}s ({:>5.1}%)",
+    println!(
+        "2. Preprocessing:     {:>8.4}s ({:>5.1}%)",
         preprocess_time.as_secs_f64(),
-        preprocess_time.as_secs_f64() / total_secs * 100.0);
-    println!("3. Model Inference:   {:>8.4}s ({:>5.1}%)",
+        preprocess_time.as_secs_f64() / total_secs * 100.0
+    );
+    println!(
+        "3. Model Inference:   {:>8.4}s ({:>5.1}%)",
         inference_time.as_secs_f64(),
-        inference_time.as_secs_f64() / total_secs * 100.0);
-    println!("4. Postprocessing:    {:>8.4}s ({:>5.1}%)",
+        inference_time.as_secs_f64() / total_secs * 100.0
+    );
+    println!(
+        "4. Postprocessing:    {:>8.4}s ({:>5.1}%)",
         postprocess_time.as_secs_f64(),
-        postprocess_time.as_secs_f64() / total_secs * 100.0);
+        postprocess_time.as_secs_f64() / total_secs * 100.0
+    );
     println!("{}", "─".repeat(45));
     println!("   TOTAL:             {:>8.4}s (100.0%)\n", total_secs);
 

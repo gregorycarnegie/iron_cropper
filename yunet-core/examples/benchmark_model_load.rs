@@ -1,5 +1,5 @@
 use std::time::Instant;
-use yunet_core::{preprocess::InputSize, YuNetModel};
+use yunet_core::{YuNetModel, preprocess::InputSize};
 
 fn main() -> anyhow::Result<()> {
     let model_path = "models/face_detection_yunet_2023mar_640.onnx";

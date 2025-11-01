@@ -18,7 +18,8 @@
       "Bash(do echo \"=== Run $i ===\")",
       "Bash(done)",
       "Read(//c/Users/grego/JavaScriptProjects/opencv-face-crop/**)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(cargo clippy:*)"
     ],
     "deny": [],
     "ask": []

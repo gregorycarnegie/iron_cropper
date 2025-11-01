@@ -107,23 +107,23 @@ fn cli_detections_match_opencv_parity_samples() -> Result<(), Box<dyn Error>> {
         let work_dir = tempdir()?;
         let json_path = work_dir.path().join("out.json");
         let mut extra = Vec::new();
-        if let Some(score) = fixture.score_threshold {
-            if (score - 0.9).abs() > f64::EPSILON {
-                extra.push("--score-threshold".to_string());
-                extra.push(score.to_string());
-            }
+        if let Some(score) = fixture.score_threshold
+            && (score - 0.9).abs() > f64::EPSILON
+        {
+            extra.push("--score-threshold".to_string());
+            extra.push(score.to_string());
         }
-        if let Some(nms) = fixture.nms_threshold {
-            if (nms - 0.3).abs() > f64::EPSILON {
-                extra.push("--nms-threshold".to_string());
-                extra.push(nms.to_string());
-            }
+        if let Some(nms) = fixture.nms_threshold
+            && (nms - 0.3).abs() > f64::EPSILON
+        {
+            extra.push("--nms-threshold".to_string());
+            extra.push(nms.to_string());
         }
-        if let Some(top_k) = fixture.top_k {
-            if top_k != 5000 {
-                extra.push("--top-k".to_string());
-                extra.push(top_k.to_string());
-            }
+        if let Some(top_k) = fixture.top_k
+            && top_k != 5000
+        {
+            extra.push("--top-k".to_string());
+            extra.push(top_k.to_string());
         }
         let detections = run_cli_detection(&image_path, &json_path, &model, &extra)?;
         assert_eq!(
@@ -292,23 +292,19 @@ fn sanitize_cli_json(raw: &str) -> Result<String, Box<dyn Error>> {
     if let Some(entries) = value.as_array_mut() {
         for entry in entries {
             if let Some(obj) = entry.as_object_mut() {
-                if let Some(image) = obj.get_mut("image") {
-                    if let Some(path_str) = image.as_str() {
-                        if let Some(file_name) =
-                            Path::new(path_str).file_name().and_then(|n| n.to_str())
-                        {
-                            *image = Value::String(file_name.to_string());
-                        }
-                    }
+                if let Some(image) = obj.get_mut("image")
+                    && let Some(path_str) = image.as_str()
+                    && let Some(file_name) =
+                        Path::new(path_str).file_name().and_then(|n| n.to_str())
+                {
+                    *image = Value::String(file_name.to_string());
                 }
-                if let Some(annotated) = obj.get_mut("annotated") {
-                    if let Some(path_str) = annotated.as_str() {
-                        if let Some(file_name) =
-                            Path::new(path_str).file_name().and_then(|n| n.to_str())
-                        {
-                            *annotated = Value::String(file_name.to_string());
-                        }
-                    }
+                if let Some(annotated) = obj.get_mut("annotated")
+                    && let Some(path_str) = annotated.as_str()
+                    && let Some(file_name) =
+                        Path::new(path_str).file_name().and_then(|n| n.to_str())
+                {
+                    *annotated = Value::String(file_name.to_string());
                 }
             }
         }

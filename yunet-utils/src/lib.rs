@@ -2,22 +2,29 @@
 
 /// Application configuration and settings management.
 pub mod config;
+/// Image enhancement utilities (unsharp mask, contrast, exposure, etc.)
+pub mod enhance;
 /// Test fixture loading and path resolution.
 pub mod fixtures;
 /// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
+/// Image quality analysis (Laplacian variance blur detection).
+pub mod quality;
 
 use std::path::Path;
 
 use anyhow::Result;
 use log::LevelFilter;
 
+pub use enhance::{EnhancementSettings, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
 };
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
 };
+pub use quality::QualityFilter;
+pub use quality::{Quality, estimate_sharpness, laplacian_variance};
 
 /// Initialize logging once for CLI and GUI environments.
 ///

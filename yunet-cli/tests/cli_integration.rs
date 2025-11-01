@@ -1,0 +1,71 @@
+use std::fs;
+
+use image::DynamicImage;
+use tempfile::tempdir;
+
+use yunet_core::{BoundingBox, CropSettings, Detection, crop_face_from_image};
+use yunet_utils::{EnhancementSettings, apply_enhancements};
+
+#[test]
+fn cli_like_crop_and_enhance_saves_file() {
+    // Create a temp directory
+    let dir = tempdir().expect("tempdir");
+    let base = dir.path();
+
+    // Create synthetic input image
+    let img_path = base.join("input.png");
+    let img = image::RgbaImage::from_pixel(300, 300, image::Rgba([150, 120, 200, 255]));
+    let dyn_img = DynamicImage::ImageRgba8(img.clone());
+    dyn_img.save(&img_path).expect("save input");
+
+    // Build a fake detection centered in the image
+    let det = Detection {
+        bbox: BoundingBox {
+            x: 75.0,
+            y: 75.0,
+            width: 150.0,
+            height: 150.0,
+        },
+        landmarks: [
+            yunet_core::Landmark { x: 100.0, y: 100.0 },
+            yunet_core::Landmark { x: 200.0, y: 100.0 },
+            yunet_core::Landmark { x: 150.0, y: 140.0 },
+            yunet_core::Landmark { x: 115.0, y: 200.0 },
+            yunet_core::Landmark { x: 185.0, y: 200.0 },
+        ],
+        score: 0.98,
+    };
+
+    // Crop using default settings
+    let settings = CropSettings {
+        output_width: 256,
+        output_height: 256,
+        face_height_pct: 60.0,
+        positioning_mode: yunet_core::PositioningMode::Center,
+        horizontal_offset: 0.0,
+        vertical_offset: 0.0,
+    };
+
+    let cropped = crop_face_from_image(&dyn_img, &det, &settings);
+
+    // Build a small enhancement and apply
+    let enh = EnhancementSettings {
+        unsharp_amount: 0.5,
+        unsharp_radius: 1.0,
+        contrast: 6.0,
+        exposure: 0,
+        brightness: 0,
+        saturation: 1.0,
+        auto_color: false,
+        sharpness: 0.2,
+    };
+    let final_crop = apply_enhancements(&cropped, &enh);
+
+    // Save final crop to disk and assert file exists and is non-empty
+    let out = base.join("out.png");
+    final_crop.save(&out).expect("save crop");
+    let md = fs::metadata(&out).expect("metadata");
+    assert!(md.len() > 0, "saved file should be non-empty");
+
+    // Cleanup handled by tempdir
+}
