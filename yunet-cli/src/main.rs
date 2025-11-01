@@ -3,11 +3,13 @@
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, info, warn};
+use rayon::prelude::*;
 use serde::Serialize;
 use walkdir::WalkDir;
 use yunet_core::{BoundingBox, Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
@@ -117,46 +119,61 @@ fn main() -> Result<()> {
     }
 
     info!("Processing {} image(s)...", images.len());
-    let mut results = Vec::with_capacity(images.len());
-    for image_path in images {
-        match detector.detect_path(&image_path) {
-            Ok(output) => {
-                info!(
-                    "{} -> {} detection(s)",
-                    image_path.display(),
-                    output.detections.len()
-                );
-                let annotated_path = if let Some(dir) = annotate_dir.as_ref() {
-                    match annotate_image(&image_path, &output.detections, dir) {
-                        Ok(path) => {
-                            info!("Annotated image saved to {}", path.display());
-                            Some(path.display().to_string())
-                        }
-                        Err(err) => {
-                            warn!("Failed to annotate {}: {err}", image_path.display());
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
 
-                let detection_records: Vec<DetectionRecord> = output
-                    .detections
-                    .iter()
-                    .map(DetectionRecord::from)
-                    .collect();
-                results.push(ImageDetections {
-                    image: image_path.display().to_string(),
-                    detections: detection_records,
-                    annotated: annotated_path,
-                });
-            }
-            Err(err) => {
-                warn!("Failed to process {}: {err}", image_path.display());
-            }
-        }
-    }
+    // Wrap detector in Arc<Mutex<>> for thread-safe shared access
+    let detector = Arc::new(Mutex::new(detector));
+    let annotate_dir = Arc::new(annotate_dir);
+
+    // Process images in parallel
+    let results: Vec<ImageDetections> = images
+        .par_iter()
+        .filter_map(|image_path| {
+            let detector = Arc::clone(&detector);
+            let annotate_dir = Arc::clone(&annotate_dir);
+
+            // Lock the detector for this thread
+            let output = match detector.lock().unwrap().detect_path(image_path) {
+                Ok(out) => out,
+                Err(err) => {
+                    warn!("Failed to process {}: {err}", image_path.display());
+                    return None;
+                }
+            };
+
+            info!(
+                "{} -> {} detection(s)",
+                image_path.display(),
+                output.detections.len()
+            );
+
+            let annotated_path = if let Some(dir) = annotate_dir.as_ref() {
+                match annotate_image(image_path, &output.detections, dir) {
+                    Ok(path) => {
+                        info!("Annotated image saved to {}", path.display());
+                        Some(path.display().to_string())
+                    }
+                    Err(err) => {
+                        warn!("Failed to annotate {}: {err}", image_path.display());
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            let detection_records: Vec<DetectionRecord> = output
+                .detections
+                .iter()
+                .map(DetectionRecord::from)
+                .collect();
+
+            Some(ImageDetections {
+                image: image_path.display().to_string(),
+                detections: detection_records,
+                annotated: annotated_path,
+            })
+        })
+        .collect();
 
     if results.is_empty() {
         anyhow::bail!("all detections failed; cannot produce output");

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use rayon::prelude::*;
 use tract_onnx::prelude::{
     Framework, Graph, InferenceModelExt, IntoTensor, SimplePlan, Tensor, TypedFact, TypedOp, tvec,
 };
@@ -125,7 +126,6 @@ fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Ten
     let pad_w = align_to(input_w, 32);
     let pad_h = align_to(input_h, 32);
 
-    let mut total_rows = 0usize;
     for &stride in STRIDES.iter() {
         anyhow::ensure!(
             pad_w
@@ -141,100 +141,110 @@ fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Ten
             "input height not divisible by stride {}",
             stride
         );
-        total_rows += (pad_w / stride) * (pad_h / stride);
     }
 
-    let mut fused = Vec::<f32>::with_capacity(total_rows * OUTPUT_COLS);
+    // Process each stride in parallel and collect results
+    let stride_results: Result<Vec<Vec<f32>>> = STRIDES
+        .par_iter()
+        .enumerate()
+        .map(|(stride_index, &stride)| -> Result<Vec<f32>> {
+            let cols = pad_w / stride;
+            let rows = pad_h / stride;
+            let cell_count = rows * cols;
+            let stride_f = stride as f32;
 
-    for (stride_index, &stride) in STRIDES.iter().enumerate() {
-        let cols = pad_w / stride;
-        let rows = pad_h / stride;
-        let cell_count = rows * cols;
-        let stride_f = stride as f32;
+            let cls_tensor = &outputs[stride_index];
+            let obj_tensor = &outputs[stride_index + STRIDES.len()];
+            let bbox_tensor = &outputs[stride_index + STRIDES.len() * 2];
+            let kps_tensor = &outputs[stride_index + STRIDES.len() * 3];
 
-        let cls_tensor = &outputs[stride_index];
-        let obj_tensor = &outputs[stride_index + STRIDES.len()];
-        let bbox_tensor = &outputs[stride_index + STRIDES.len() * 2];
-        let kps_tensor = &outputs[stride_index + STRIDES.len() * 3];
+            let cls_slice = cls_tensor
+                .as_slice::<f32>()
+                .map_err(|e| anyhow::anyhow!("cls output not f32: {e}"))?;
+            let obj_slice = obj_tensor
+                .as_slice::<f32>()
+                .map_err(|e| anyhow::anyhow!("obj output not f32: {e}"))?;
+            let bbox_slice = bbox_tensor
+                .as_slice::<f32>()
+                .map_err(|e| anyhow::anyhow!("bbox output not f32: {e}"))?;
+            let kps_slice = kps_tensor
+                .as_slice::<f32>()
+                .map_err(|e| anyhow::anyhow!("kps output not f32: {e}"))?;
 
-        let cls_slice = cls_tensor
-            .as_slice::<f32>()
-            .map_err(|e| anyhow::anyhow!("cls output not f32: {e}"))?;
-        let obj_slice = obj_tensor
-            .as_slice::<f32>()
-            .map_err(|e| anyhow::anyhow!("obj output not f32: {e}"))?;
-        let bbox_slice = bbox_tensor
-            .as_slice::<f32>()
-            .map_err(|e| anyhow::anyhow!("bbox output not f32: {e}"))?;
-        let kps_slice = kps_tensor
-            .as_slice::<f32>()
-            .map_err(|e| anyhow::anyhow!("kps output not f32: {e}"))?;
+            anyhow::ensure!(
+                cls_slice.len() == cell_count,
+                "cls length mismatch: expected {}, got {}",
+                cell_count,
+                cls_slice.len()
+            );
+            anyhow::ensure!(
+                obj_slice.len() == cell_count,
+                "obj length mismatch: expected {}, got {}",
+                cell_count,
+                obj_slice.len()
+            );
+            anyhow::ensure!(
+                bbox_slice.len() == cell_count * 4,
+                "bbox length mismatch: expected {}, got {}",
+                cell_count * 4,
+                bbox_slice.len()
+            );
+            anyhow::ensure!(
+                kps_slice.len() == cell_count * 10,
+                "kps length mismatch: expected {}, got {}",
+                cell_count * 10,
+                kps_slice.len()
+            );
 
-        anyhow::ensure!(
-            cls_slice.len() == cell_count,
-            "cls length mismatch: expected {}, got {}",
-            cell_count,
-            cls_slice.len()
-        );
-        anyhow::ensure!(
-            obj_slice.len() == cell_count,
-            "obj length mismatch: expected {}, got {}",
-            cell_count,
-            obj_slice.len()
-        );
-        anyhow::ensure!(
-            bbox_slice.len() == cell_count * 4,
-            "bbox length mismatch: expected {}, got {}",
-            cell_count * 4,
-            bbox_slice.len()
-        );
-        anyhow::ensure!(
-            kps_slice.len() == cell_count * 10,
-            "kps length mismatch: expected {}, got {}",
-            cell_count * 10,
-            kps_slice.len()
-        );
+            // Pre-allocate buffer for this stride's output
+            let mut stride_data = Vec::with_capacity(cell_count * OUTPUT_COLS);
 
-        for row in 0..rows {
-            for col in 0..cols {
-                let idx = row * cols + col;
-                let cls_score = cls_slice[idx].clamp(0.0, 1.0);
-                let obj_score = obj_slice[idx].clamp(0.0, 1.0);
-                let mut score = (cls_score * obj_score).sqrt();
-                if !score.is_finite() {
-                    score = 0.0;
+            for row in 0..rows {
+                for col in 0..cols {
+                    let idx = row * cols + col;
+                    let cls_score = cls_slice[idx].clamp(0.0, 1.0);
+                    let obj_score = obj_slice[idx].clamp(0.0, 1.0);
+                    let mut score = (cls_score * obj_score).sqrt();
+                    if !score.is_finite() {
+                        score = 0.0;
+                    }
+
+                    let bbox_offset = idx * 4;
+                    let dx = bbox_slice[bbox_offset];
+                    let dy = bbox_slice[bbox_offset + 1];
+                    let dw = bbox_slice[bbox_offset + 2];
+                    let dh = bbox_slice[bbox_offset + 3];
+
+                    let cx = (col as f32 + dx) * stride_f;
+                    let cy = (row as f32 + dy) * stride_f;
+                    let w = dw.exp() * stride_f;
+                    let h = dh.exp() * stride_f;
+                    let x = cx - w * 0.5;
+                    let y = cy - h * 0.5;
+
+                    stride_data.push(x);
+                    stride_data.push(y);
+                    stride_data.push(w);
+                    stride_data.push(h);
+
+                    let kps_offset = idx * 10;
+                    for lm in 0..5 {
+                        let lx = (kps_slice[kps_offset + lm * 2] + col as f32) * stride_f;
+                        let ly = (kps_slice[kps_offset + lm * 2 + 1] + row as f32) * stride_f;
+                        stride_data.push(lx);
+                        stride_data.push(ly);
+                    }
+
+                    stride_data.push(score);
                 }
-
-                let bbox_offset = idx * 4;
-                let dx = bbox_slice[bbox_offset];
-                let dy = bbox_slice[bbox_offset + 1];
-                let dw = bbox_slice[bbox_offset + 2];
-                let dh = bbox_slice[bbox_offset + 3];
-
-                let cx = (col as f32 + dx) * stride_f;
-                let cy = (row as f32 + dy) * stride_f;
-                let w = dw.exp() * stride_f;
-                let h = dh.exp() * stride_f;
-                let x = cx - w * 0.5;
-                let y = cy - h * 0.5;
-
-                fused.push(x);
-                fused.push(y);
-                fused.push(w);
-                fused.push(h);
-
-                let kps_offset = idx * 10;
-                for lm in 0..5 {
-                    let lx = (kps_slice[kps_offset + lm * 2] + col as f32) * stride_f;
-                    let ly = (kps_slice[kps_offset + lm * 2 + 1] + row as f32) * stride_f;
-                    fused.push(lx);
-                    fused.push(ly);
-                }
-
-                fused.push(score);
             }
-        }
-    }
+
+            Ok(stride_data)
+        })
+        .collect();
+
+    // Concatenate results from all strides
+    let fused: Vec<f32> = stride_results?.into_iter().flatten().collect();
 
     let rows = fused.len() / OUTPUT_COLS;
     Tensor::from_shape(&[rows, OUTPUT_COLS], &fused)
