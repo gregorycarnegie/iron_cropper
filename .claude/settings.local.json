@@ -9,7 +9,8 @@
       "Bash(python scripts/inspect_onnx.py:*)",
       "Bash(.venv/Scripts/python:*)",
       "Bash(cat:*)",
-      "Read(//c/tmp/**)"
+      "Read(//c/tmp/**)",
+      "Bash(powershell -Command \"Measure-Command { cargo run -p yunet-cli -- --input fixtures/images/006.jpg --model models/face_detection_yunet_2023mar_640.onnx 2>&1 | Out-Null } | Select-Object TotalSeconds\")"
     ],
     "deny": [],
     "ask": []

@@ -96,8 +96,9 @@ pub fn preprocess_dynamic_image(
     let chw = rgb_to_bgr_chw(&resized);
 
     let shape = [1usize, 3, input_h as usize, input_w as usize];
-    #[allow(deprecated)]
-    let data = chw.into_raw_vec();
+    // Convert ndarray to Vec without extra copy - into_raw_vec_and_offset returns (vec, offset)
+    let (data, offset) = chw.into_raw_vec_and_offset();
+    debug_assert_eq!(offset, Some(0), "expected contiguous array");
     let tensor = Tensor::from_shape(&shape, &data)
         .map_err(|e| anyhow::anyhow!("failed to build tensor: {e}"))?;
 

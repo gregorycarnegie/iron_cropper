@@ -36,14 +36,41 @@ pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: Filte
 /// * `image` - The RGB image to convert.
 pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let (width, height) = image.dimensions();
-    let mut array = Array3::<f32>::zeros((3, height as usize, width as usize));
-    for (x, y, pixel) in image.enumerate_pixels() {
-        let (xi, yi) = (x as usize, y as usize);
-        array[(0, yi, xi)] = pixel[2] as f32; // Blue
-        array[(1, yi, xi)] = pixel[1] as f32; // Green
-        array[(2, yi, xi)] = pixel[0] as f32; // Red
+    let w = width as usize;
+    let h = height as usize;
+    let plane_size = w * h;
+
+    // Pre-allocate the output buffer
+    let mut data = Vec::with_capacity(3 * plane_size);
+    let pixels = image.as_raw();
+
+    // Split into 3 passes (one per channel) for better cache locality
+    // Blue channel (index 2 in RGB)
+    for y in 0..h {
+        let row_start = y * w * 3;
+        for x in 0..w {
+            data.push(pixels[row_start + x * 3 + 2] as f32);
+        }
     }
-    array
+
+    // Green channel (index 1 in RGB)
+    for y in 0..h {
+        let row_start = y * w * 3;
+        for x in 0..w {
+            data.push(pixels[row_start + x * 3 + 1] as f32);
+        }
+    }
+
+    // Red channel (index 0 in RGB)
+    for y in 0..h {
+        let row_start = y * w * 3;
+        for x in 0..w {
+            data.push(pixels[row_start + x * 3] as f32);
+        }
+    }
+
+    Array3::from_shape_vec((3, h, w), data)
+        .expect("shape matches data length")
 }
 
 /// Convert any dynamic image into a BGR CHW array by first converting to RGB.
