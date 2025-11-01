@@ -277,6 +277,30 @@ ort = { version = "2.0", features = ["cuda"] }  # or "tensorrt", "directml"
 - ✅ Detection caching - already implemented in GUI
 - ✅ Image loading - delegated to `image` crate
 
+### Optimization Experiments: What DIDN'T Work
+
+#### ❌ Nested Loop Parallelization in decode_yunet_outputs
+
+**Attempted**: Parallelize the inner `row`/`col` loops within each stride using rayon's `par_iter()`
+
+**Location**: `yunet-core/src/model.rs:202-239`
+
+**Results**:
+
+- **Baseline** (sequential rows): 0.3932s model inference
+- **With parallel rows**: 0.39-0.44s model inference (slower!)
+
+**Why it failed**:
+
+1. **Thread overhead exceeds benefits**: The work per row is small (just arithmetic), so spawning parallel tasks costs more than parallelism saves
+2. **Already optimal granularity**: The code already parallelizes across 3 strides, which matches typical CPU core counts well
+3. **Memory allocation overhead**: Creating separate `Vec<f32>` for each row and flattening adds allocation/copying cost
+4. **Thread contention**: Adding more parallelism when already using 3 parallel tasks creates context switching overhead
+
+**Key lesson**: More parallelism ≠ better performance. Parallelize at the right level of granularity where the work per task justifies the thread coordination overhead.
+
+**Current approach is optimal**: Parallelizing at the stride level (3 parallel tasks) is the sweet spot for this workload.
+
 ---
 
 ## Testing & Verification

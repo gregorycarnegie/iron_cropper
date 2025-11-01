@@ -13,7 +13,12 @@
       "Bash(powershell -Command \"Measure-Command { cargo run -p yunet-cli -- --input fixtures/images/006.jpg --model models/face_detection_yunet_2023mar_640.onnx 2>&1 | Out-Null } | Select-Object TotalSeconds\")",
       "Bash(cargo bench:*)",
       "Bash(powershell -Command:*)",
-      "Bash(cargo fmt:*)"
+      "Bash(cargo fmt:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== Run $i ===\")",
+      "Bash(done)",
+      "Read(//c/Users/grego/JavaScriptProjects/opencv-face-crop/**)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
