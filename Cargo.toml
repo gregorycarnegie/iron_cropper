@@ -10,12 +10,13 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5", features = ["derive"] }
+criterion = "0.7.0"
 egui = "0.33.0"
 eframe = "0.33.0"
 env_logger = "0.11.8"

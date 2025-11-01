@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
+use rayon::prelude::*;
 
 /// Load an image from disk into memory.
 ///
@@ -31,6 +32,8 @@ pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: Filte
 /// This function rearranges the memory layout from HWC (height, width, channels) to
 /// CHW (channels, height, width) and swaps the red and blue channels.
 ///
+/// Uses rayon to process channels in parallel for improved performance.
+///
 /// # Arguments
 ///
 /// * `image` - The RGB image to convert.
@@ -38,39 +41,31 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let (width, height) = image.dimensions();
     let w = width as usize;
     let h = height as usize;
-    let plane_size = w * h;
-
-    // Pre-allocate the output buffer
-    let mut data = Vec::with_capacity(3 * plane_size);
     let pixels = image.as_raw();
 
-    // Split into 3 passes (one per channel) for better cache locality
-    // Blue channel (index 2 in RGB)
-    for y in 0..h {
-        let row_start = y * w * 3;
-        for x in 0..w {
-            data.push(pixels[row_start + x * 3 + 2] as f32);
-        }
-    }
+    // Process all three channels in parallel
+    let data: Vec<f32> = (0..3)
+        .into_par_iter()
+        .flat_map(|channel| {
+            // BGR ordering: channel 0 = Blue (RGB index 2), 1 = Green (1), 2 = Red (0)
+            let rgb_index = match channel {
+                0 => 2, // Blue
+                1 => 1, // Green
+                2 => 0, // Red
+                _ => unreachable!(),
+            };
 
-    // Green channel (index 1 in RGB)
-    for y in 0..h {
-        let row_start = y * w * 3;
-        for x in 0..w {
-            data.push(pixels[row_start + x * 3 + 1] as f32);
-        }
-    }
+            // Extract this channel's plane
+            (0..h)
+                .flat_map(|y| {
+                    let row_start = y * w * 3;
+                    (0..w).map(move |x| pixels[row_start + x * 3 + rgb_index] as f32)
+                })
+                .collect::<Vec<f32>>()
+        })
+        .collect();
 
-    // Red channel (index 0 in RGB)
-    for y in 0..h {
-        let row_start = y * w * 3;
-        for x in 0..w {
-            data.push(pixels[row_start + x * 3] as f32);
-        }
-    }
-
-    Array3::from_shape_vec((3, h, w), data)
-        .expect("shape matches data length")
+    Array3::from_shape_vec((3, h, w), data).expect("shape matches data length")
 }
 
 /// Convert any dynamic image into a BGR CHW array by first converting to RGB.

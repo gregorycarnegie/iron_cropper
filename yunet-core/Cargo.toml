@@ -19,4 +19,9 @@ tract-onnx.workspace = true
 yunet-utils = { path = "../yunet-utils" }
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile.workspace = true
+
+[[bench]]
+name = "preprocessing"
+harness = false
