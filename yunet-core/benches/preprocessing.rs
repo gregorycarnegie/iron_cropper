@@ -1,6 +1,7 @@
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use image::DynamicImage;
 use image::{ImageBuffer, Rgb};
+use std::hint::black_box;
 use yunet_core::preprocess::{InputSize, PreprocessConfig, preprocess_dynamic_image};
 
 fn create_test_image(width: u32, height: u32) -> DynamicImage {
