@@ -47,6 +47,83 @@ impl Default for InputDimensions {
     }
 }
 
+/// Settings for face cropping operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CropSettings {
+    /// Crop preset name (e.g., "linkedin", "passport", "custom")
+    pub preset: String,
+    /// Output width in pixels (used when preset is "custom")
+    pub output_width: u32,
+    /// Output height in pixels (used when preset is "custom")
+    pub output_height: u32,
+    /// Face height as percentage of output height (0-100)
+    pub face_height_pct: f32,
+    /// Positioning mode: "center", "rule-of-thirds", or "custom"
+    pub positioning_mode: String,
+    /// Vertical offset for custom positioning (-1.0 to 1.0)
+    pub vertical_offset: f32,
+    /// Horizontal offset for custom positioning (-1.0 to 1.0)
+    pub horizontal_offset: f32,
+    /// Output format: "png", "jpeg", or "webp"
+    pub output_format: String,
+    /// JPEG quality (1-100, only used when format is jpeg)
+    pub jpeg_quality: u8,
+}
+
+/// Settings for image enhancement operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EnhanceSettings {
+    /// Enable enhancements
+    pub enabled: bool,
+    /// Enhancement preset: "none", "natural", "vivid", or "professional"
+    pub preset: String,
+    /// Apply histogram-equalization based auto color correction
+    pub auto_color: bool,
+    /// Exposure adjustment in stops (-2.0 to 2.0)
+    pub exposure_stops: f32,
+    /// Additional brightness offset (-100 to 100)
+    pub brightness: i32,
+    /// Contrast multiplier (0.5 to 2.0)
+    pub contrast: f32,
+    /// Saturation multiplier (0.0 to 2.5)
+    pub saturation: f32,
+    /// Sharpness (0.0 to 2.0)
+    pub sharpness: f32,
+}
+
+impl Default for CropSettings {
+    fn default() -> Self {
+        Self {
+            preset: "linkedin".to_string(),
+            output_width: 400,
+            output_height: 400,
+            face_height_pct: 70.0,
+            positioning_mode: "center".to_string(),
+            vertical_offset: 0.0,
+            horizontal_offset: 0.0,
+            output_format: "png".to_string(),
+            jpeg_quality: 90,
+        }
+    }
+}
+
+impl Default for EnhanceSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            preset: "none".to_string(),
+            auto_color: false,
+            exposure_stops: 0.0,
+            brightness: 0,
+            contrast: 1.0,
+            saturation: 1.0,
+            sharpness: 0.0,
+        }
+    }
+}
+
 /// Persistent application settings consumed by CLI and GUI front ends.
 ///
 /// This struct aggregates all user-configurable parameters, allowing them to be
@@ -61,6 +138,10 @@ pub struct AppSettings {
     pub input: InputDimensions,
     /// The parameters for detection post-processing.
     pub detection: DetectionSettings,
+    /// The parameters for face cropping.
+    pub crop: CropSettings,
+    /// The parameters for image enhancement.
+    pub enhance: EnhanceSettings,
 }
 
 impl Default for AppSettings {
@@ -69,6 +150,8 @@ impl Default for AppSettings {
             model_path: Some("models/face_detection_yunet_2023mar_640.onnx".into()),
             input: InputDimensions::default(),
             detection: DetectionSettings::default(),
+            crop: CropSettings::default(),
+            enhance: EnhanceSettings::default(),
         }
     }
 }

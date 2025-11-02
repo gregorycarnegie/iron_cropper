@@ -19,7 +19,8 @@
       "Bash(done)",
       "Read(//c/Users/grego/JavaScriptProjects/opencv-face-crop/**)",
       "Bash(tree:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

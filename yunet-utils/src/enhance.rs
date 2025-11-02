@@ -6,54 +6,221 @@
 
 use image::{DynamicImage, ImageBuffer, Rgba};
 
+const EPSILON: f32 = 1e-6;
+
 /// Settings for the enhancement pipeline.
 #[derive(Debug, Clone)]
 pub struct EnhancementSettings {
-    /// Amount for unsharp mask; 0.0 = off, typical 0.5..1.5
-    pub unsharp_amount: f32,
-    /// Gaussian blur radius for the unsharp mask (pixels). 0.0 = off
-    pub unsharp_radius: f32,
-    /// Contrast adjustment (percent-like). Positive increases contrast.
-    /// Passed through to `image::imageops::contrast` as-is.
-    pub contrast: f32,
-    /// Brightness/exposure offset in integer steps (-255..255).
-    pub exposure: i32,
-    /// Additional brightness offset (applied after exposure)
-    pub brightness: i32,
-    /// Saturation multiplier (1.0 = no change)
-    pub saturation: f32,
-    /// Apply simple gray-world auto color balance when true
+    /// Apply histogram-equalization based auto color correction.
     pub auto_color: bool,
-    /// Additional sharpen amount (adds to unsharp_amount)
+    /// Exposure adjustment expressed in stops (-2.0..=2.0).
+    pub exposure_stops: f32,
+    /// Additional brightness offset applied after exposure.
+    pub brightness: i32,
+    /// Contrast multiplier (0.5..=2.0, 1.0 = unchanged).
+    pub contrast: f32,
+    /// Saturation multiplier (0.0..=2.5, 1.0 = unchanged).
+    pub saturation: f32,
+    /// Strength of unsharp mask (0.0..=2.0).
+    pub unsharp_amount: f32,
+    /// Blur radius used for the unsharp mask in pixels.
+    pub unsharp_radius: f32,
+    /// Additional sharpening control layered on top of the base amount.
     pub sharpness: f32,
 }
 
 impl Default for EnhancementSettings {
     fn default() -> Self {
         Self {
-            unsharp_amount: 0.8,
-            unsharp_radius: 1.0,
-            contrast: 10.0,
-            exposure: 0,
-            brightness: 0,
-            saturation: 1.0,
             auto_color: false,
+            exposure_stops: 0.0,
+            brightness: 0,
+            contrast: 1.0,
+            saturation: 1.0,
+            unsharp_amount: 0.6,
+            unsharp_radius: 1.0,
             sharpness: 0.0,
         }
     }
 }
 
+fn identity_lut() -> [u8; 256] {
+    let mut lut = [0u8; 256];
+    for i in 0..=255 {
+        lut[i] = i as u8;
+    }
+    lut
+}
+
+fn build_equalization_lut(hist: &[u32; 256], total: u32) -> [u8; 256] {
+    if total == 0 {
+        return identity_lut();
+    }
+
+    let mut cdf = [0u32; 256];
+    let mut cumulative = 0u32;
+    let mut cdf_min = None;
+    for (idx, count) in hist.iter().enumerate() {
+        cumulative += *count;
+        cdf[idx] = cumulative;
+        if cdf_min.is_none() && *count > 0 {
+            cdf_min = Some(cumulative);
+        }
+    }
+
+    let cdf_min = match cdf_min {
+        Some(v) => v,
+        None => return identity_lut(),
+    };
+
+    if cdf_min == total {
+        return identity_lut();
+    }
+
+    let denom = (total - cdf_min) as f32;
+    let mut lut = [0u8; 256];
+    for i in 0..=255 {
+        let cdf_val = cdf[i];
+        let numerator = if cdf_val > cdf_min {
+            (cdf_val - cdf_min) as f32
+        } else {
+            0.0
+        };
+        let mapped = (numerator / denom * 255.0).round().clamp(0.0, 255.0) as u8;
+        lut[i] = mapped;
+    }
+
+    lut
+}
+
+fn apply_histogram_equalization(img: &DynamicImage) -> DynamicImage {
+    let mut buf = img.to_rgba8();
+    let (w, h) = buf.dimensions();
+    if w == 0 || h == 0 {
+        return DynamicImage::ImageRgba8(buf);
+    }
+
+    let mut hist_r = [0u32; 256];
+    let mut hist_g = [0u32; 256];
+    let mut hist_b = [0u32; 256];
+
+    for px in buf.pixels() {
+        hist_r[px[0] as usize] += 1;
+        hist_g[px[1] as usize] += 1;
+        hist_b[px[2] as usize] += 1;
+    }
+    let total = (w * h) as u32;
+    let lut_r = build_equalization_lut(&hist_r, total);
+    let lut_g = build_equalization_lut(&hist_g, total);
+    let lut_b = build_equalization_lut(&hist_b, total);
+
+    for y in 0..h {
+        for x in 0..w {
+            let mut px = buf.get_pixel(x, y).0;
+            px[0] = lut_r[px[0] as usize];
+            px[1] = lut_g[px[1] as usize];
+            px[2] = lut_b[px[2] as usize];
+            buf.put_pixel(x, y, image::Rgba(px));
+        }
+    }
+
+    DynamicImage::ImageRgba8(buf)
+}
+
+fn apply_exposure(img: &DynamicImage, stops: f32) -> DynamicImage {
+    if stops.abs() < EPSILON {
+        return img.clone();
+    }
+    let factor = 2f32.powf(stops.clamp(-2.0, 2.0));
+    let mut buf = img.to_rgba8();
+    let (w, h) = buf.dimensions();
+    for y in 0..h {
+        for x in 0..w {
+            let mut px = buf.get_pixel(x, y).0;
+            for c in 0..3 {
+                let val = (px[c] as f32 * factor).round().clamp(0.0, 255.0) as u8;
+                px[c] = val;
+            }
+            buf.put_pixel(x, y, image::Rgba(px));
+        }
+    }
+    DynamicImage::ImageRgba8(buf)
+}
+
+fn apply_brightness(img: &DynamicImage, offset: i32) -> DynamicImage {
+    if offset == 0 {
+        return img.clone();
+    }
+    DynamicImage::ImageRgba8(image::imageops::brighten(&img.to_rgba8(), offset))
+}
+
+fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
+    if (multiplier - 1.0).abs() < EPSILON {
+        return img.clone();
+    }
+    let multiplier = multiplier.clamp(0.5, 2.0);
+    let mut buf = img.to_rgba8();
+    let (w, h) = buf.dimensions();
+    for y in 0..h {
+        for x in 0..w {
+            let mut px = buf.get_pixel(x, y).0;
+            for c in 0..3 {
+                let normalized = px[c] as f32 / 255.0;
+                let contrasted = ((normalized - 0.5) * multiplier + 0.5)
+                    .clamp(0.0, 1.0)
+                    .mul_add(255.0, 0.0)
+                    .round() as u8;
+                px[c] = contrasted;
+            }
+            buf.put_pixel(x, y, image::Rgba(px));
+        }
+    }
+    DynamicImage::ImageRgba8(buf)
+}
+
+/// Adjust saturation by mixing with per-pixel luminance: new = gray*(1-s) + orig*s.
+fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
+    if (saturation - 1.0).abs() < EPSILON {
+        return img.clone();
+    }
+    let multiplier = saturation.clamp(0.0, 2.5);
+    let mut buf = img.to_rgba8();
+    let (w, h) = buf.dimensions();
+    for y in 0..h {
+        for x in 0..w {
+            let mut p = buf.get_pixel(x, y).0;
+            let r = p[0] as f32;
+            let g = p[1] as f32;
+            let b = p[2] as f32;
+            // Rec. 601 luma
+            let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            let nr = (gray * (1.0 - multiplier) + r * multiplier)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            let ng = (gray * (1.0 - multiplier) + g * multiplier)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            let nb = (gray * (1.0 - multiplier) + b * multiplier)
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            p[0] = nr;
+            p[1] = ng;
+            p[2] = nb;
+            buf.put_pixel(x, y, image::Rgba(p));
+        }
+    }
+    DynamicImage::ImageRgba8(buf)
+}
+
 /// Apply a simple unsharp mask to an RGBA image.
 fn apply_unsharp_mask(img: &DynamicImage, amount: f32, radius: f32) -> DynamicImage {
-    if amount.abs() < f32::EPSILON || radius <= 0.0 {
+    if amount <= 0.0 || radius <= 0.0 {
         return img.clone();
     }
 
-    // Work on an RGBA8 buffer
+    let amount = amount.clamp(0.0, 2.0);
     let src = img.to_rgba8();
-    // operate directly on the ImageBuffer; `blur` accepts an ImageBuffer and returns one
     let blurred = image::imageops::blur(&src, radius);
-
     let (w, h) = src.dimensions();
     let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
 
@@ -63,10 +230,12 @@ fn apply_unsharp_mask(img: &DynamicImage, amount: f32, radius: f32) -> DynamicIm
             let b = blurred.get_pixel(x, y).0;
             let mut new_px = [0u8; 4];
             for c in 0..4usize {
-                // Use signed calculation in f32, ignore alpha for differences but preserve it
-                let val = s[c] as f32 + amount * ((s[c] as f32) - (b[c] as f32));
-                let val = val.round().clamp(0.0, 255.0) as u8;
-                new_px[c] = val;
+                if c == 3 {
+                    new_px[c] = s[c];
+                    continue;
+                }
+                let val = s[c] as f32 + amount * (s[c] as f32 - b[c] as f32);
+                new_px[c] = val.round().clamp(0.0, 255.0) as u8;
             }
             out.put_pixel(x, y, Rgba(new_px));
         }
@@ -75,120 +244,33 @@ fn apply_unsharp_mask(img: &DynamicImage, amount: f32, radius: f32) -> DynamicIm
     DynamicImage::ImageRgba8(out)
 }
 
-/// Apply contrast and exposure adjustments using `image::imageops` helpers.
-fn apply_contrast_and_exposure(img: &DynamicImage, contrast: f32, exposure: i32) -> DynamicImage {
-    // Convert to RGBA buffer, apply contrast and brighten on the buffer and wrap back
-    let src_buf = img.to_rgba8();
-    let contrasted = image::imageops::contrast(&src_buf, contrast);
-    if exposure != 0 {
-        let bright = image::imageops::brighten(&contrasted, exposure);
-        DynamicImage::ImageRgba8(bright)
-    } else {
-        DynamicImage::ImageRgba8(contrasted)
-    }
-}
-
-/// Simple gray-world white-balance: scale each channel so its mean equals overall mean.
-fn apply_auto_color_balance(img: &DynamicImage) -> DynamicImage {
-    let mut buf = img.to_rgba8();
-    let (w, h) = buf.dimensions();
-    let mut sum_r: u64 = 0;
-    let mut sum_g: u64 = 0;
-    let mut sum_b: u64 = 0;
-    let mut count: u64 = 0;
-    for px in buf.pixels() {
-        sum_r += px[0] as u64;
-        sum_g += px[1] as u64;
-        sum_b += px[2] as u64;
-        count += 1;
-    }
-    if count == 0 {
-        return DynamicImage::ImageRgba8(buf);
-    }
-    let avg_r = (sum_r as f32) / (count as f32);
-    let avg_g = (sum_g as f32) / (count as f32);
-    let avg_b = (sum_b as f32) / (count as f32);
-    let avg = (avg_r + avg_g + avg_b) / 3.0;
-    let kr = if avg_r > 0.0 { avg / avg_r } else { 1.0 };
-    let kg = if avg_g > 0.0 { avg / avg_g } else { 1.0 };
-    let kb = if avg_b > 0.0 { avg / avg_b } else { 1.0 };
-
-    for y in 0..h {
-        for x in 0..w {
-            let mut p = buf.get_pixel(x, y).0;
-            let r = (p[0] as f32 * kr).round().clamp(0.0, 255.0) as u8;
-            let g = (p[1] as f32 * kg).round().clamp(0.0, 255.0) as u8;
-            let b = (p[2] as f32 * kb).round().clamp(0.0, 255.0) as u8;
-            p[0] = r;
-            p[1] = g;
-            p[2] = b;
-            buf.put_pixel(x, y, image::Rgba(p));
-        }
-    }
-    DynamicImage::ImageRgba8(buf)
-}
-
-/// Adjust saturation by mixing with per-pixel luminance: new = gray*(1-s) + orig*s
-fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
-    if (saturation - 1.0).abs() < f32::EPSILON {
-        return img.clone();
-    }
-    let mut buf = img.to_rgba8();
-    let (w, h) = buf.dimensions();
-    for y in 0..h {
-        for x in 0..w {
-            let p = buf.get_pixel(x, y).0;
-            let r = p[0] as f32;
-            let g = p[1] as f32;
-            let b = p[2] as f32;
-            // Rec. 601 luma
-            let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            let nr = (gray * (1.0 - saturation) + r * saturation)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            let ng = (gray * (1.0 - saturation) + g * saturation)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            let nb = (gray * (1.0 - saturation) + b * saturation)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            buf.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
-        }
-    }
-    DynamicImage::ImageRgba8(buf)
-}
-
 /// Apply the configured enhancements to the input image and return the result.
 pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) -> DynamicImage {
-    // Start with the input image and apply operations in a fixed order
     let mut out = img.clone();
 
-    // Auto-color balance first (if requested)
     if settings.auto_color {
-        out = apply_auto_color_balance(&out);
+        out = apply_histogram_equalization(&out);
     }
 
-    // Saturation adjustment
-    if (settings.saturation - 1.0).abs() >= f32::EPSILON {
+    if settings.exposure_stops.abs() >= EPSILON {
+        out = apply_exposure(&out, settings.exposure_stops);
+    }
+
+    if settings.brightness != 0 {
+        out = apply_brightness(&out, settings.brightness);
+    }
+
+    if (settings.contrast - 1.0).abs() >= EPSILON {
+        out = apply_contrast(&out, settings.contrast);
+    }
+
+    if (settings.saturation - 1.0).abs() >= EPSILON {
         out = apply_saturation(&out, settings.saturation);
     }
 
-    // Apply sharpening/unsharp. Combine configured unsharp_amount with a separate sharpness control.
-    let combined_sharp = settings.unsharp_amount + settings.sharpness;
-    if combined_sharp.abs() >= f32::EPSILON && settings.unsharp_radius > 0.0 {
+    let combined_sharp = (settings.unsharp_amount + settings.sharpness).clamp(0.0, 2.0);
+    if combined_sharp > 0.0 && settings.unsharp_radius > 0.0 {
         out = apply_unsharp_mask(&out, combined_sharp, settings.unsharp_radius);
-    }
-
-    // Contrast, exposure, and brightness
-    if settings.contrast.abs() >= f32::EPSILON || settings.exposure != 0 || settings.brightness != 0
-    {
-        out = apply_contrast_and_exposure(&out, settings.contrast, settings.exposure);
-        if settings.brightness != 0 {
-            out = DynamicImage::ImageRgba8(image::imageops::brighten(
-                &out.to_rgba8(),
-                settings.brightness,
-            ));
-        }
     }
 
     out
@@ -197,35 +279,127 @@ pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{DynamicImage, RgbaImage};
+    use image::RgbaImage;
 
-    #[test]
-    fn enhancement_pipeline_runs_and_preserves_dimensions() {
-        let src = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
-            64,
-            48,
-            image::Rgba([128, 128, 128, 255]),
-        ));
-        let settings = EnhancementSettings::default();
-        let out = apply_enhancements(&src, &settings);
-        assert_eq!(out.width(), src.width());
-        assert_eq!(out.height(), src.height());
+    fn solid(color: [u8; 4]) -> DynamicImage {
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, image::Rgba(color)))
     }
 
     #[test]
-    fn unsharp_on_high_freq_changes_pixels() {
-        // create a checkerboard to have high-frequency content
-        let mut img = RgbaImage::from_pixel(32, 32, image::Rgba([128, 128, 128, 255]));
-        for y in 0..32 {
-            for x in 0..32 {
-                let v = if (x + y) % 2 == 0 { 0 } else { 255 };
-                img.put_pixel(x, y, image::Rgba([v, v, v, 255]));
+    fn histogram_equalization_stretches_levels() {
+        let mut img = RgbaImage::new(4, 1);
+        for x in 0..2 {
+            img.put_pixel(x, 0, image::Rgba([40, 80, 120, 255]));
+        }
+        for x in 2..4 {
+            img.put_pixel(x, 0, image::Rgba([200, 160, 100, 255]));
+        }
+        let out = apply_histogram_equalization(&DynamicImage::ImageRgba8(img));
+        let buf = out.to_rgba8();
+        let mut mins = [u8::MAX; 3];
+        let mut maxs = [0u8; 3];
+        for pixel in buf.pixels() {
+            for c in 0..3 {
+                mins[c] = mins[c].min(pixel[c]);
+                maxs[c] = maxs[c].max(pixel[c]);
             }
         }
-        let dyn_img = DynamicImage::ImageRgba8(img.clone());
-        let out = apply_unsharp_mask(&dyn_img, 1.5, 1.5);
-        // basic sanity: result has same dimensions
-        assert_eq!(out.width(), dyn_img.width());
-        assert_eq!(out.height(), dyn_img.height());
+        for c in 0..3 {
+            assert!(
+                maxs[c] > mins[c],
+                "expected channel {} max {} > min {}",
+                c,
+                maxs[c],
+                mins[c]
+            );
+            assert!(
+                (maxs[c] as i16 - mins[c] as i16) >= 100,
+                "expected channel {} spread >=100, got {}",
+                c,
+                maxs[c] as i16 - mins[c] as i16
+            );
+        }
+    }
+
+    #[test]
+    fn exposure_positive_increases_values() {
+        let img = solid([64, 64, 64, 255]);
+        let out = apply_exposure(&img, 1.0);
+        let buf = out.to_rgba8();
+        let px = buf.get_pixel(0, 0);
+        assert_eq!(px[0], 128);
+    }
+
+    #[test]
+    fn exposure_negative_darkens_values() {
+        let img = solid([200, 200, 200, 255]);
+        let out = apply_exposure(&img, -1.0);
+        let buf = out.to_rgba8();
+        let px = buf.get_pixel(0, 0);
+        assert_eq!(px[0], 100);
+    }
+
+    #[test]
+    fn brightness_offsets_channels() {
+        let img = solid([100, 100, 100, 255]);
+        let out = apply_brightness(&img, 20);
+        let buf = out.to_rgba8();
+        let px = buf.get_pixel(0, 0);
+        assert_eq!(px[0], 120);
+    }
+
+    #[test]
+    fn contrast_multiplier_expands_range() {
+        let mut img = RgbaImage::from_pixel(4, 1, image::Rgba([128, 128, 128, 255]));
+        img.put_pixel(0, 0, image::Rgba([80, 80, 80, 255]));
+        img.put_pixel(3, 0, image::Rgba([180, 180, 180, 255]));
+        let out = apply_contrast(&DynamicImage::ImageRgba8(img), 1.5);
+        let buf = out.to_rgba8();
+        assert!(buf.get_pixel(0, 0)[0] < 80);
+        assert!(buf.get_pixel(3, 0)[0] > 180);
+    }
+
+    #[test]
+    fn saturation_zero_grays_image() {
+        let img = solid([200, 100, 50, 255]);
+        let out = apply_saturation(&img, 0.0);
+        let buf = out.to_rgba8();
+        let px = buf.get_pixel(0, 0);
+        assert_eq!(px[0], px[1]);
+        assert_eq!(px[1], px[2]);
+    }
+
+    #[test]
+    fn unsharp_preserves_alpha() {
+        let mut img = RgbaImage::new(4, 4);
+        for y in 0..4 {
+            for x in 0..4 {
+                let val = if (x + y) % 2 == 0 { 0 } else { 255 };
+                img.put_pixel(x, y, image::Rgba([val, val, val, 128]));
+            }
+        }
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let out = apply_unsharp_mask(&dyn_img, 1.5, 1.5).to_rgba8();
+        assert_eq!(out.get_pixel(1, 1)[3], 128);
+    }
+
+    #[test]
+    fn pipeline_preserves_dimensions() {
+        let img = solid([128, 128, 128, 255]);
+        let out = apply_enhancements(
+            &img,
+            &EnhancementSettings {
+                auto_color: true,
+                exposure_stops: 0.5,
+                brightness: 10,
+                contrast: 1.2,
+                saturation: 1.1,
+                unsharp_amount: 0.8,
+                unsharp_radius: 1.2,
+                sharpness: 0.1,
+            },
+        );
+        assert_eq!(out.width(), img.width());
+        assert_eq!(out.height(), img.height());
     }
 }

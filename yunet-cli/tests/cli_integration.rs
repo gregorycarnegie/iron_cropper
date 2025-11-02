@@ -50,13 +50,13 @@ fn cli_like_crop_and_enhance_saves_file() {
 
     // Build a small enhancement and apply
     let enh = EnhancementSettings {
+        auto_color: false,
+        exposure_stops: 0.0,
+        brightness: 0,
+        contrast: 1.1,
+        saturation: 1.0,
         unsharp_amount: 0.5,
         unsharp_radius: 1.0,
-        contrast: 6.0,
-        exposure: 0,
-        brightness: 0,
-        saturation: 1.0,
-        auto_color: false,
         sharpness: 0.2,
     };
     let final_crop = apply_enhancements(&cropped, &enh);

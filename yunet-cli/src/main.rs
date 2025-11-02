@@ -138,13 +138,13 @@ struct DetectArgs {
     #[arg(long)]
     unsharp_radius: Option<f32>,
 
-    /// Contrast adjustment (passed through to image::imageops::contrast).
+    /// Contrast multiplier (0.5-2.0, 1.0 = unchanged).
     #[arg(long)]
     enhance_contrast: Option<f32>,
 
-    /// Exposure/brightness offset (integer steps, passed to brighten()).
+    /// Exposure adjustment in stops (-2.0..=2.0).
     #[arg(long)]
-    enhance_exposure: Option<i32>,
+    enhance_exposure: Option<f32>,
     /// Additional brightness offset (integer steps applied after exposure)
     #[arg(long)]
     enhance_brightness: Option<i32>,
@@ -552,37 +552,37 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
         match pname.as_str() {
             "natural" => {
                 base = EnhancementSettings {
+                    auto_color: true,
+                    exposure_stops: 0.1,
+                    brightness: 0,
+                    contrast: 1.1,
+                    saturation: 1.05,
                     unsharp_amount: 0.6,
                     unsharp_radius: 1.0,
-                    contrast: 6.0,
-                    exposure: 0,
-                    brightness: 0,
-                    saturation: 1.0,
-                    auto_color: true,
                     sharpness: 0.2,
                 }
             }
             "vivid" => {
                 base = EnhancementSettings {
+                    auto_color: false,
+                    exposure_stops: 0.3,
+                    brightness: 10,
+                    contrast: 1.25,
+                    saturation: 1.3,
                     unsharp_amount: 0.9,
                     unsharp_radius: 1.2,
-                    contrast: 18.0,
-                    exposure: 0,
-                    brightness: 0,
-                    saturation: 1.3,
-                    auto_color: false,
                     sharpness: 0.5,
                 }
             }
             "professional" => {
                 base = EnhancementSettings {
+                    auto_color: true,
+                    exposure_stops: 0.2,
+                    brightness: 0,
+                    contrast: 1.15,
+                    saturation: 1.05,
                     unsharp_amount: 1.2,
                     unsharp_radius: 1.0,
-                    contrast: 12.0,
-                    exposure: 0,
-                    brightness: 0,
-                    saturation: 1.05,
-                    auto_color: true,
                     sharpness: 0.8,
                 }
             }
@@ -601,7 +601,7 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
         base.contrast = v;
     }
     if let Some(v) = args.enhance_exposure {
-        base.exposure = v;
+        base.exposure_stops = v;
     }
     if let Some(v) = args.enhance_brightness {
         base.brightness = v;
@@ -709,7 +709,9 @@ mod tests {
         let enh = build_enhancement_settings(&args).expect("should build");
         assert_eq!(enh.unsharp_amount, 0.9);
         assert!((enh.saturation - 1.3).abs() < f32::EPSILON);
-        assert_eq!(enh.contrast, 18.0);
+        assert!((enh.contrast - 1.25).abs() < f32::EPSILON);
+        assert!((enh.exposure_stops - 0.3).abs() < f32::EPSILON);
+        assert_eq!(enh.brightness, 10);
     }
 
     #[test]
@@ -755,7 +757,8 @@ mod tests {
         // explicit override should win
         assert_eq!(enh.unsharp_amount, 0.25);
         // other vivid params still present
-        assert_eq!(enh.contrast, 18.0);
+        assert!((enh.contrast - 1.25).abs() < f32::EPSILON);
+        assert_eq!(enh.brightness, 10);
     }
 
     #[test]
