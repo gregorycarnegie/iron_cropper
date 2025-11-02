@@ -20,7 +20,8 @@
       "Read(//c/Users/grego/JavaScriptProjects/opencv-face-crop/**)",
       "Bash(tree:*)",
       "Bash(cargo clippy:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(do powershell -Command \"(Get-Content $file) -replace ''        \\.args\\(&\\['', ''        .args(['' | Set-Content $file\")"
     ],
     "deny": [],
     "ask": []

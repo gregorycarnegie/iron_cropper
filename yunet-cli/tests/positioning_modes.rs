@@ -17,7 +17,10 @@ fn find_model_path() -> Option<PathBuf> {
 
 fn find_fixture_image() -> Option<PathBuf> {
     let candidates = vec!["fixtures/images/006.jpg", "../fixtures/images/006.jpg"];
-    candidates.into_iter().map(PathBuf::from).find(|p| p.exists())
+    candidates
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
 }
 
 #[test]
@@ -41,7 +44,7 @@ fn test_positioning_mode_center() {
 
     // Run CLI with center positioning
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -108,7 +111,7 @@ fn test_positioning_mode_rule_of_thirds() {
     img.save(&input_path).expect("save input image");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -161,7 +164,7 @@ fn test_positioning_mode_custom() {
     img.save(&input_path).expect("save input image");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -222,7 +225,7 @@ fn test_different_positioning_modes_produce_different_crops() {
     fs::create_dir_all(&center_dir).expect("create center dir");
 
     let _ = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -245,7 +248,7 @@ fn test_different_positioning_modes_produce_different_crops() {
     fs::create_dir_all(&rot_dir).expect("create rot dir");
 
     let _ = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",

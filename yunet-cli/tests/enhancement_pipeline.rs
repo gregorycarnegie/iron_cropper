@@ -37,12 +37,13 @@ fn test_enhancement_preset_natural() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -52,7 +53,8 @@ fn test_enhancement_preset_natural() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhancement-preset",
             "natural",
             "--output-dir",
@@ -100,12 +102,13 @@ fn test_enhancement_preset_vivid() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -115,7 +118,8 @@ fn test_enhancement_preset_vivid() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhancement-preset",
             "vivid",
             "--output-dir",
@@ -159,12 +163,13 @@ fn test_enhancement_preset_professional() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -174,7 +179,8 @@ fn test_enhancement_preset_professional() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhancement-preset",
             "professional",
             "--output-dir",
@@ -218,12 +224,13 @@ fn test_individual_enhancement_flags() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -233,7 +240,8 @@ fn test_individual_enhancement_flags() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhance-exposure",
             "5",
             "--enhance-contrast",
@@ -289,12 +297,13 @@ fn test_enhancement_with_auto_color() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -304,7 +313,8 @@ fn test_enhancement_with_auto_color() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhance-auto-color",
             "true",
             "--output-dir",
@@ -348,13 +358,14 @@ fn test_preset_override_with_explicit_flags() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     // Use a preset but override some settings
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -364,7 +375,8 @@ fn test_preset_override_with_explicit_flags() {
             "200",
             "--output-height",
             "200",
-            "--enhance", "true",
+            "--enhance",
+            "true",
             "--enhancement-preset",
             "natural",
             "--enhance-sharpness",

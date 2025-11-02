@@ -57,7 +57,7 @@ fn test_batch_processing_with_multiple_images() {
     copy_fixture_to(&fixture, &input_dir.join("image3.jpg")).expect("copy image3");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_dir.to_str().unwrap(),
             "--model",
@@ -126,7 +126,7 @@ fn test_skip_low_quality_flag() {
     copy_fixture_to(&fixture, &input_dir.join("test.jpg")).expect("copy fixture");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_dir.to_str().unwrap(),
             "--model",
@@ -198,7 +198,7 @@ fn test_min_quality_high() {
     copy_fixture_to(&fixture, &input_path).expect("copy fixture");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -248,7 +248,7 @@ fn test_min_quality_medium() {
     copy_fixture_to(&fixture, &input_path).expect("copy fixture");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -299,7 +299,7 @@ fn test_batch_with_face_index_selection() {
 
     // Test selecting specific face index
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -350,7 +350,7 @@ fn test_batch_with_naming_template() {
     copy_fixture_to(&fixture, &input_dir.join("test.jpg")).expect("copy fixture");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_dir.to_str().unwrap(),
             "--model",
@@ -416,7 +416,7 @@ fn test_batch_processing_summary_output() {
     copy_fixture_to(&fixture, &input_dir.join("img2.jpg")).expect("copy img2");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_dir.to_str().unwrap(),
             "--model",

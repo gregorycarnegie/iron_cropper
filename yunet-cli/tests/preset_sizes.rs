@@ -17,7 +17,10 @@ fn find_model_path() -> Option<PathBuf> {
 
 fn find_fixture_image() -> Option<PathBuf> {
     let candidates = vec!["fixtures/images/006.jpg", "../fixtures/images/006.jpg"];
-    candidates.into_iter().map(PathBuf::from).find(|p| p.exists())
+    candidates
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
 }
 
 #[test]
@@ -35,12 +38,13 @@ fn test_preset_linkedin() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -99,12 +103,13 @@ fn test_preset_passport() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -162,12 +167,13 @@ fn test_preset_instagram() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -225,12 +231,13 @@ fn test_preset_avatar() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -288,12 +295,13 @@ fn test_preset_headshot() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).expect("create output dir");
 
-    image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+    image::open(find_fixture_image().expect("fixture"))
+        .expect("load fixture")
         .save(&input_path)
         .expect("save input");
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-        .args(&[
+        .args([
             "--input",
             input_path.to_str().unwrap(),
             "--model",
@@ -346,7 +354,14 @@ fn test_all_presets_succeed() {
         }
     };
 
-    let presets = vec!["linkedin", "passport", "instagram", "idcard", "avatar", "headshot"];
+    let presets = vec![
+        "linkedin",
+        "passport",
+        "instagram",
+        "idcard",
+        "avatar",
+        "headshot",
+    ];
 
     for preset in presets {
         let temp_dir = TempDir::new().expect("create temp dir");
@@ -354,12 +369,13 @@ fn test_all_presets_succeed() {
         let output_dir = temp_dir.path().join("output");
         fs::create_dir_all(&output_dir).expect("create output dir");
 
-        image::open(find_fixture_image().expect("fixture")).expect("load fixture")
+        image::open(find_fixture_image().expect("fixture"))
+            .expect("load fixture")
             .save(&input_path)
             .expect("save input");
 
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
-            .args(&[
+            .args([
                 "--input",
                 input_path.to_str().unwrap(),
                 "--model",

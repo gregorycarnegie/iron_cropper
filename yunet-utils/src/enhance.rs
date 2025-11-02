@@ -46,8 +46,8 @@ impl Default for EnhancementSettings {
 
 fn identity_lut() -> [u8; 256] {
     let mut lut = [0u8; 256];
-    for i in 0..=255 {
-        lut[i] = i as u8;
+    for (i, item) in lut.iter_mut().enumerate() {
+        *item = i as u8;
     }
     lut
 }
@@ -109,7 +109,7 @@ fn apply_histogram_equalization(img: &DynamicImage) -> DynamicImage {
         hist_g[px[1] as usize] += 1;
         hist_b[px[2] as usize] += 1;
     }
-    let total = (w * h) as u32;
+    let total = w * h;
     let lut_r = build_equalization_lut(&hist_r, total);
     let lut_g = build_equalization_lut(&hist_g, total);
     let lut_b = build_equalization_lut(&hist_b, total);
@@ -137,9 +137,9 @@ fn apply_exposure(img: &DynamicImage, stops: f32) -> DynamicImage {
     for y in 0..h {
         for x in 0..w {
             let mut px = buf.get_pixel(x, y).0;
-            for c in 0..3 {
-                let val = (px[c] as f32 * factor).round().clamp(0.0, 255.0) as u8;
-                px[c] = val;
+            for channel in px.iter_mut().take(3) {
+                let val = (*channel as f32 * factor).round().clamp(0.0, 255.0) as u8;
+                *channel = val;
             }
             buf.put_pixel(x, y, image::Rgba(px));
         }
@@ -164,13 +164,13 @@ fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
     for y in 0..h {
         for x in 0..w {
             let mut px = buf.get_pixel(x, y).0;
-            for c in 0..3 {
-                let normalized = px[c] as f32 / 255.0;
+            for channel in px.iter_mut().take(3) {
+                let normalized = *channel as f32 / 255.0;
                 let contrasted = ((normalized - 0.5) * multiplier + 0.5)
                     .clamp(0.0, 1.0)
                     .mul_add(255.0, 0.0)
                     .round() as u8;
-                px[c] = contrasted;
+                *channel = contrasted;
             }
             buf.put_pixel(x, y, image::Rgba(px));
         }

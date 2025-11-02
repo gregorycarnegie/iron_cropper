@@ -23,9 +23,8 @@ use yunet_core::{
 use yunet_utils::{
     config::AppSettings,
     enhance::{EnhancementSettings, apply_enhancements},
-    init_logging,
-    load_image,
-    quality::{Quality, estimate_sharpness}
+    init_logging, load_image,
+    quality::{Quality, estimate_sharpness},
 };
 
 /// Main entry point for the GUI application.
@@ -45,8 +44,13 @@ fn main() -> eframe::Result<()> {
 enum BatchFileStatus {
     Pending,
     Processing,
-    Completed { faces_detected: usize, faces_exported: usize },
-    Failed { error: String },
+    Completed {
+        faces_detected: usize,
+        faces_exported: usize,
+    },
+    Failed {
+        error: String,
+    },
 }
 
 /// A file in the batch processing queue.
@@ -296,7 +300,8 @@ impl YuNetApp {
                     ui.add_space(8.0);
 
                     ScrollArea::vertical().show(ui, |ui| {
-                        for (index, det_with_quality) in self.preview.detections.iter().enumerate() {
+                        for (index, det_with_quality) in self.preview.detections.iter().enumerate()
+                        {
                             let is_selected = self.selected_faces.contains(&index);
 
                             let quality_color = match det_with_quality.quality {
@@ -314,7 +319,10 @@ impl YuNetApp {
                             let frame_stroke = if is_selected {
                                 Stroke::new(3.0, Color32::from_rgb(100, 150, 255))
                             } else {
-                                Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color)
+                                Stroke::new(
+                                    1.0,
+                                    ui.visuals().widgets.noninteractive.bg_stroke.color,
+                                )
                             };
 
                             let response = ui.group(|ui| {
@@ -326,7 +334,9 @@ impl YuNetApp {
                                         ui.horizontal(|ui| {
                                             // Show thumbnail if available
                                             if let Some(thumbnail) = &det_with_quality.thumbnail {
-                                                let thumb_response = ui.add(egui::Image::new(thumbnail).max_width(80.0));
+                                                let thumb_response = ui.add(
+                                                    egui::Image::new(thumbnail).max_width(80.0),
+                                                );
                                                 if thumb_response.clicked() {
                                                     if is_selected {
                                                         self.selected_faces.remove(&index);
@@ -337,15 +347,34 @@ impl YuNetApp {
                                             }
 
                                             ui.vertical(|ui| {
-                                                ui.label(RichText::new(format!("Face {}", index + 1)).strong());
-                                                ui.label(format!("Conf: {:.2}", det_with_quality.detection.score));
+                                                ui.label(
+                                                    RichText::new(format!("Face {}", index + 1))
+                                                        .strong(),
+                                                );
+                                                ui.label(format!(
+                                                    "Conf: {:.2}",
+                                                    det_with_quality.detection.score
+                                                ));
                                                 ui.horizontal(|ui| {
                                                     ui.label("Quality:");
-                                                    ui.colored_label(quality_color, format!("{:?}", det_with_quality.quality));
+                                                    ui.colored_label(
+                                                        quality_color,
+                                                        format!("{:?}", det_with_quality.quality),
+                                                    );
                                                 });
-                                                ui.label(format!("Score: {:.0}", det_with_quality.quality_score));
+                                                ui.label(format!(
+                                                    "Score: {:.0}",
+                                                    det_with_quality.quality_score
+                                                ));
 
-                                                if ui.small_button(if is_selected { "Deselect" } else { "Select" }).clicked() {
+                                                if ui
+                                                    .small_button(if is_selected {
+                                                        "Deselect"
+                                                    } else {
+                                                        "Select"
+                                                    })
+                                                    .clicked()
+                                                {
                                                     if is_selected {
                                                         self.selected_faces.remove(&index);
                                                     } else {
@@ -382,7 +411,11 @@ impl YuNetApp {
 
                     let num_selected = self.selected_faces.len();
                     if num_selected > 0 {
-                        let button_label = format!("Export {} Selected Face{}", num_selected, if num_selected == 1 { "" } else { "s" });
+                        let button_label = format!(
+                            "Export {} Selected Face{}",
+                            num_selected,
+                            if num_selected == 1 { "" } else { "s" }
+                        );
                         if ui.button(button_label).clicked() {
                             self.export_selected_faces();
                         }
@@ -397,27 +430,44 @@ impl YuNetApp {
                     ui.heading("Batch Processing");
 
                     let total = self.batch_files.len();
-                    let completed = self.batch_files.iter().filter(|f| matches!(f.status, BatchFileStatus::Completed { .. })).count();
-                    let failed = self.batch_files.iter().filter(|f| matches!(f.status, BatchFileStatus::Failed { .. })).count();
+                    let completed = self
+                        .batch_files
+                        .iter()
+                        .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
+                        .count();
+                    let failed = self
+                        .batch_files
+                        .iter()
+                        .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
+                        .count();
 
                     ui.label(format!("Progress: {}/{} files", completed + failed, total));
                     if failed > 0 {
-                        ui.label(RichText::new(format!("({} failed)", failed)).color(Color32::from_rgb(255, 80, 80)));
+                        ui.label(
+                            RichText::new(format!("({} failed)", failed))
+                                .color(Color32::from_rgb(255, 80, 80)),
+                        );
                     }
 
                     ui.add_space(6.0);
                     ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                         for (idx, batch_file) in self.batch_files.iter().enumerate() {
-                            let filename = batch_file.path.file_name()
+                            let filename = batch_file
+                                .path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("unknown");
 
                             let status_text = match &batch_file.status {
                                 BatchFileStatus::Pending => "Pending",
                                 BatchFileStatus::Processing => "Processing...",
-                                BatchFileStatus::Completed { faces_detected, faces_exported } => {
-                                    &format!("{} faces, {} exported", faces_detected, faces_exported)
-                                }
+                                BatchFileStatus::Completed {
+                                    faces_detected,
+                                    faces_exported,
+                                } => &format!(
+                                    "{} faces, {} exported",
+                                    faces_detected, faces_exported
+                                ),
                                 BatchFileStatus::Failed { error: _ } => "Failed",
                             };
 
@@ -554,7 +604,10 @@ impl YuNetApp {
                             ("custom", "Custom size"),
                         ];
                         for (value, label) in presets {
-                            if ui.selectable_label(self.settings.crop.preset == value, label).clicked() {
+                            if ui
+                                .selectable_label(self.settings.crop.preset == value, label)
+                                .clicked()
+                            {
                                 self.settings.crop.preset = value.to_string();
                                 settings_changed = true;
                             }
@@ -566,7 +619,10 @@ impl YuNetApp {
                     ui.horizontal(|ui| {
                         ui.label("Width");
                         let mut width = self.settings.crop.output_width;
-                        if ui.add(DragValue::new(&mut width).range(64..=4096).speed(16.0)).changed() {
+                        if ui
+                            .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
+                            .changed()
+                        {
                             self.settings.crop.output_width = width;
                             settings_changed = true;
                         }
@@ -574,7 +630,10 @@ impl YuNetApp {
                     ui.horizontal(|ui| {
                         ui.label("Height");
                         let mut height = self.settings.crop.output_height;
-                        if ui.add(DragValue::new(&mut height).range(64..=4096).speed(16.0)).changed() {
+                        if ui
+                            .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
+                            .changed()
+                        {
                             self.settings.crop.output_height = height;
                             settings_changed = true;
                         }
@@ -583,7 +642,10 @@ impl YuNetApp {
 
                 ui.add_space(6.0);
                 let mut face_pct = self.settings.crop.face_height_pct;
-                if ui.add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %")).changed() {
+                if ui
+                    .add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"))
+                    .changed()
+                {
                     self.settings.crop.face_height_pct = face_pct;
                     settings_changed = true;
                 }
@@ -599,7 +661,13 @@ impl YuNetApp {
                             ("custom", "Custom offsets"),
                         ];
                         for (value, label) in modes {
-                            if ui.selectable_label(self.settings.crop.positioning_mode == value, label).clicked() {
+                            if ui
+                                .selectable_label(
+                                    self.settings.crop.positioning_mode == value,
+                                    label,
+                                )
+                                .clicked()
+                            {
                                 self.settings.crop.positioning_mode = value.to_string();
                                 settings_changed = true;
                             }
@@ -609,12 +677,18 @@ impl YuNetApp {
                 if self.settings.crop.positioning_mode == "custom" {
                     ui.add_space(4.0);
                     let mut vert = self.settings.crop.vertical_offset;
-                    if ui.add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset")).changed() {
+                    if ui
+                        .add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset"))
+                        .changed()
+                    {
                         self.settings.crop.vertical_offset = vert;
                         settings_changed = true;
                     }
                     let mut horiz = self.settings.crop.horizontal_offset;
-                    if ui.add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset")).changed() {
+                    if ui
+                        .add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset"))
+                        .changed()
+                    {
                         self.settings.crop.horizontal_offset = horiz;
                         settings_changed = true;
                     }
@@ -642,7 +716,10 @@ impl YuNetApp {
                                 ("professional", "Professional"),
                             ];
                             for (value, label) in presets {
-                                if ui.selectable_label(self.settings.enhance.preset == value, label).clicked() {
+                                if ui
+                                    .selectable_label(self.settings.enhance.preset == value, label)
+                                    .clicked()
+                                {
                                     self.settings.enhance.preset = value.to_string();
                                     self.apply_enhancement_preset();
                                     settings_changed = true;
@@ -651,35 +728,53 @@ impl YuNetApp {
                         });
 
                     ui.add_space(6.0);
-                    ui.checkbox(&mut self.settings.enhance.auto_color, "Auto color correction");
+                    ui.checkbox(
+                        &mut self.settings.enhance.auto_color,
+                        "Auto color correction",
+                    );
 
                     ui.add_space(6.0);
                     let mut exp = self.settings.enhance.exposure_stops;
-                    if ui.add(Slider::new(&mut exp, -2.0..=2.0).text("Exposure (stops)")).changed() {
+                    if ui
+                        .add(Slider::new(&mut exp, -2.0..=2.0).text("Exposure (stops)"))
+                        .changed()
+                    {
                         self.settings.enhance.exposure_stops = exp;
                         settings_changed = true;
                     }
 
                     let mut bright = self.settings.enhance.brightness;
-                    if ui.add(Slider::new(&mut bright, -100..=100).text("Brightness")).changed() {
+                    if ui
+                        .add(Slider::new(&mut bright, -100..=100).text("Brightness"))
+                        .changed()
+                    {
                         self.settings.enhance.brightness = bright;
                         settings_changed = true;
                     }
 
                     let mut con = self.settings.enhance.contrast;
-                    if ui.add(Slider::new(&mut con, 0.5..=2.0).text("Contrast")).changed() {
+                    if ui
+                        .add(Slider::new(&mut con, 0.5..=2.0).text("Contrast"))
+                        .changed()
+                    {
                         self.settings.enhance.contrast = con;
                         settings_changed = true;
                     }
 
                     let mut sat = self.settings.enhance.saturation;
-                    if ui.add(Slider::new(&mut sat, 0.0..=2.5).text("Saturation")).changed() {
+                    if ui
+                        .add(Slider::new(&mut sat, 0.0..=2.5).text("Saturation"))
+                        .changed()
+                    {
                         self.settings.enhance.saturation = sat;
                         settings_changed = true;
                     }
 
                     let mut sharp = self.settings.enhance.sharpness;
-                    if ui.add(Slider::new(&mut sharp, 0.0..=2.0).text("Sharpness")).changed() {
+                    if ui
+                        .add(Slider::new(&mut sharp, 0.0..=2.0).text("Sharpness"))
+                        .changed()
+                    {
                         self.settings.enhance.sharpness = sharp;
                         settings_changed = true;
                     }
@@ -794,7 +889,7 @@ impl YuNetApp {
             brightness: self.settings.enhance.brightness,
             contrast: self.settings.enhance.contrast,
             saturation: self.settings.enhance.saturation,
-            unsharp_amount: 0.6,  // Base unsharp amount
+            unsharp_amount: 0.6, // Base unsharp amount
             unsharp_radius: 1.0,
             sharpness: self.settings.enhance.sharpness,
         }
@@ -848,7 +943,7 @@ impl YuNetApp {
                 let crop_region = calculate_crop_region(
                     source_image.width(),
                     source_image.height(),
-                    bbox.clone(),
+                    *bbox,
                     &crop_settings,
                 );
 
@@ -907,7 +1002,11 @@ impl YuNetApp {
 
                 match save_result {
                     Ok(_) => {
-                        info!("Exported face {} to {}", face_idx + 1, output_path.display());
+                        info!(
+                            "Exported face {} to {}",
+                            face_idx + 1,
+                            output_path.display()
+                        );
                         export_count += 1;
                     }
                     Err(e) => {
@@ -985,12 +1084,8 @@ impl YuNetApp {
             // Paint crop region overlay if enabled
             if self.show_crop_overlay {
                 let crop_settings = self.build_crop_settings();
-                let crop_region = calculate_crop_region(
-                    image_size.0,
-                    image_size.1,
-                    bbox.clone(),
-                    &crop_settings,
-                );
+                let crop_region =
+                    calculate_crop_region(image_size.0, image_size.1, *bbox, &crop_settings);
                 let crop_top_left = pos2(
                     image_rect.left() + crop_region.x as f32 * scale_x,
                     image_rect.top() + crop_region.y as f32 * scale_y,
@@ -1145,8 +1240,14 @@ impl YuNetApp {
                 .collect();
 
             self.batch_current_index = None;
-            self.status_line = format!("Loaded {} images for batch processing", self.batch_files.len());
-            info!("Loaded {} images for batch processing", self.batch_files.len());
+            self.status_line = format!(
+                "Loaded {} images for batch processing",
+                self.batch_files.len()
+            );
+            info!(
+                "Loaded {} images for batch processing",
+                self.batch_files.len()
+            );
         }
     }
 
@@ -1217,7 +1318,7 @@ impl YuNetApp {
                 let crop_region = calculate_crop_region(
                     source_image.width(),
                     source_image.height(),
-                    bbox.clone(),
+                    *bbox,
                     &crop_settings,
                 );
 
@@ -1243,7 +1344,8 @@ impl YuNetApp {
                 };
 
                 // Generate output filename
-                let source_stem = batch_file.path
+                let source_stem = batch_file
+                    .path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("face");
@@ -1276,7 +1378,11 @@ impl YuNetApp {
                 if save_result.is_ok() {
                     faces_exported += 1;
                 } else {
-                    warn!("Failed to save face {} from {}", face_idx + 1, batch_file.path.display());
+                    warn!(
+                        "Failed to save face {} from {}",
+                        face_idx + 1,
+                        batch_file.path.display()
+                    );
                 }
             }
 
@@ -1288,10 +1394,14 @@ impl YuNetApp {
 
         // Update status with summary
         let total = self.batch_files.len();
-        let completed = self.batch_files.iter()
+        let completed = self
+            .batch_files
+            .iter()
             .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
             .count();
-        let total_faces: usize = self.batch_files.iter()
+        let total_faces: usize = self
+            .batch_files
+            .iter()
             .filter_map(|f| match &f.status {
                 BatchFileStatus::Completed { faces_exported, .. } => Some(*faces_exported),
                 _ => None,
@@ -1300,9 +1410,15 @@ impl YuNetApp {
 
         self.status_line = format!(
             "Batch export complete: {}/{} files processed, {} faces exported to {}",
-            completed, total, total_faces, output_dir.display()
+            completed,
+            total,
+            total_faces,
+            output_dir.display()
         );
-        info!("Batch export complete: {}/{} files, {} faces exported", completed, total, total_faces);
+        info!(
+            "Batch export complete: {}/{} files, {} faces exported",
+            completed, total, total_faces
+        );
     }
 
     /// Starts a new detection job for the given image path.
@@ -1398,41 +1514,38 @@ impl YuNetApp {
     }
 
     /// Creates thumbnail textures for detected faces.
-    fn create_thumbnails(
-        &mut self,
-        ctx: &EguiContext,
-        detections: &mut [DetectionWithQuality],
-    ) {
+    fn create_thumbnails(&mut self, ctx: &EguiContext, detections: &mut [DetectionWithQuality]) {
         // Load the source image to crop face thumbnails
-        if let Some(path) = &self.preview.image_path {
-            if let Ok(image) = load_image(path) {
-                for (index, det) in detections.iter_mut().enumerate() {
-                    let bbox = &det.detection.bbox;
-                    let x = bbox.x.max(0.0) as u32;
-                    let y = bbox.y.max(0.0) as u32;
-                    let w = bbox.width.max(1.0) as u32;
-                    let h = bbox.height.max(1.0) as u32;
+        if let Some(path) = &self.preview.image_path
+            && let Ok(image) = load_image(path)
+        {
+            for (index, det) in detections.iter_mut().enumerate() {
+                let bbox = &det.detection.bbox;
+                let x = bbox.x.max(0.0) as u32;
+                let y = bbox.y.max(0.0) as u32;
+                let w = bbox.width.max(1.0) as u32;
+                let h = bbox.height.max(1.0) as u32;
 
-                    // Clamp to image bounds
-                    let img_w = image.width();
-                    let img_h = image.height();
-                    let x = x.min(img_w.saturating_sub(1));
-                    let y = y.min(img_h.saturating_sub(1));
-                    let w = w.min(img_w.saturating_sub(x));
-                    let h = h.min(img_h.saturating_sub(y));
+                // Clamp to image bounds
+                let img_w = image.width();
+                let img_h = image.height();
+                let x = x.min(img_w.saturating_sub(1));
+                let y = y.min(img_h.saturating_sub(1));
+                let w = w.min(img_w.saturating_sub(x));
+                let h = h.min(img_h.saturating_sub(y));
 
-                    let face_region = image.crop_imm(x, y, w, h);
-                    // Resize to thumbnail size (96x96)
-                    let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
-                    let thumb_rgba = thumb.to_rgba8();
-                    let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
-                    let thumb_color = egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());
+                let face_region = image.crop_imm(x, y, w, h);
+                // Resize to thumbnail size (96x96)
+                let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
+                let thumb_rgba = thumb.to_rgba8();
+                let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
+                let thumb_color =
+                    egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());
 
-                    let texture_name = format!("yunet-face-thumb-{}-{}", self.texture_seq, index);
-                    self.texture_seq = self.texture_seq.wrapping_add(1);
-                    let texture = ctx.load_texture(texture_name, thumb_color, TextureOptions::LINEAR);
-                    det.thumbnail = Some(texture);
-                }
+                let texture_name = format!("yunet-face-thumb-{}-{}", self.texture_seq, index);
+                self.texture_seq = self.texture_seq.wrapping_add(1);
+                let texture = ctx.load_texture(texture_name, thumb_color, TextureOptions::LINEAR);
+                det.thumbnail = Some(texture);
             }
         }
     }
