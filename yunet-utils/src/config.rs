@@ -91,6 +91,12 @@ pub struct EnhanceSettings {
     pub saturation: f32,
     /// Sharpness (0.0 to 2.0)
     pub sharpness: f32,
+    /// Skin smoothing strength (0.0 to 1.0)
+    pub skin_smooth: f32,
+    /// Enable automated red-eye removal
+    pub red_eye_removal: bool,
+    /// Enable background blur (portrait mode effect)
+    pub background_blur: bool,
 }
 
 impl Default for CropSettings {
@@ -120,6 +126,9 @@ impl Default for EnhanceSettings {
             contrast: 1.0,
             saturation: 1.0,
             sharpness: 0.0,
+            skin_smooth: 0.0,
+            red_eye_removal: false,
+            background_blur: false,
         }
     }
 }

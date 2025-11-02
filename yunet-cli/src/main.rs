@@ -161,6 +161,18 @@ struct DetectArgs {
     #[arg(long)]
     enhance_sharpness: Option<f32>,
 
+    /// Skin smoothing strength (0.0-1.0, uses bilateral filter)
+    #[arg(long)]
+    enhance_skin_smooth: Option<f32>,
+
+    /// Enable automated red-eye removal
+    #[arg(long)]
+    enhance_red_eye_removal: Option<bool>,
+
+    /// Enable background blur (portrait mode effect)
+    #[arg(long)]
+    enhance_background_blur: Option<bool>,
+
     /// Naming template for output crop files. Variables: {original}, {index}, {width}, {height}, {ext}, {timestamp}
     #[arg(long)]
     naming_template: Option<String>,
@@ -560,6 +572,14 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
                     unsharp_amount: 0.6,
                     unsharp_radius: 1.0,
                     sharpness: 0.2,
+                    skin_smooth_amount: 0.0,
+                    skin_smooth_sigma_space: 3.0,
+                    skin_smooth_sigma_color: 25.0,
+                    red_eye_removal: false,
+                    red_eye_threshold: 1.5,
+                    background_blur: false,
+                    background_blur_radius: 15.0,
+                    background_blur_mask_size: 0.6,
                 }
             }
             "vivid" => {
@@ -572,6 +592,14 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
                     unsharp_amount: 0.9,
                     unsharp_radius: 1.2,
                     sharpness: 0.5,
+                    skin_smooth_amount: 0.0,
+                    skin_smooth_sigma_space: 3.0,
+                    skin_smooth_sigma_color: 25.0,
+                    red_eye_removal: false,
+                    red_eye_threshold: 1.5,
+                    background_blur: false,
+                    background_blur_radius: 15.0,
+                    background_blur_mask_size: 0.6,
                 }
             }
             "professional" => {
@@ -584,6 +612,14 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
                     unsharp_amount: 1.2,
                     unsharp_radius: 1.0,
                     sharpness: 0.8,
+                    skin_smooth_amount: 0.0,
+                    skin_smooth_sigma_space: 3.0,
+                    skin_smooth_sigma_color: 25.0,
+                    red_eye_removal: false,
+                    red_eye_threshold: 1.5,
+                    background_blur: false,
+                    background_blur_radius: 15.0,
+                    background_blur_mask_size: 0.6,
                 }
             }
             other => warn!("unknown enhancement preset '{}', using defaults", other),
@@ -614,6 +650,15 @@ fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettings> 
     }
     if let Some(v) = args.enhance_sharpness {
         base.sharpness = v;
+    }
+    if let Some(v) = args.enhance_skin_smooth {
+        base.skin_smooth_amount = v;
+    }
+    if let Some(v) = args.enhance_red_eye_removal {
+        base.red_eye_removal = v;
+    }
+    if let Some(v) = args.enhance_background_blur {
+        base.background_blur = v;
     }
 
     Some(base)
@@ -660,6 +705,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: None,
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: None,
         };
@@ -703,6 +751,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: None,
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("vivid".to_string()),
         };
@@ -750,6 +801,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: None,
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("vivid".to_string()),
         };
@@ -839,6 +893,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: Some(true),
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("natural".to_string()),
         };
@@ -892,6 +949,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: None,
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: None,
         };
@@ -935,6 +995,9 @@ mod tests {
             enhance_saturation: None,
             enhance_auto_color: None,
             enhance_sharpness: None,
+            enhance_skin_smooth: None,
+            enhance_red_eye_removal: None,
+            enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: None,
         };

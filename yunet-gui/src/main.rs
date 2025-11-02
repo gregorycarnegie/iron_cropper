@@ -779,6 +779,29 @@ impl YuNetApp {
                         settings_changed = true;
                     }
 
+                    let mut skin_smooth = self.settings.enhance.skin_smooth;
+                    if ui
+                        .add(Slider::new(&mut skin_smooth, 0.0..=1.0).text("Skin Smoothing"))
+                        .changed()
+                    {
+                        self.settings.enhance.skin_smooth = skin_smooth;
+                        settings_changed = true;
+                    }
+
+                    if ui
+                        .checkbox(&mut self.settings.enhance.red_eye_removal, "Red-Eye Removal")
+                        .changed()
+                    {
+                        settings_changed = true;
+                    }
+
+                    if ui
+                        .checkbox(&mut self.settings.enhance.background_blur, "Background Blur")
+                        .changed()
+                    {
+                        settings_changed = true;
+                    }
+
                     ui.add_space(6.0);
                     if ui.button("Reset to defaults").clicked() {
                         self.settings.enhance = yunet_utils::config::EnhanceSettings::default();
@@ -828,6 +851,9 @@ impl YuNetApp {
                 self.settings.enhance.contrast = 1.05;
                 self.settings.enhance.saturation = 1.05;
                 self.settings.enhance.sharpness = 0.3;
+                self.settings.enhance.skin_smooth = 0.0;
+                self.settings.enhance.red_eye_removal = false;
+                self.settings.enhance.background_blur = false;
             }
             "vivid" => {
                 self.settings.enhance.auto_color = true;
@@ -836,6 +862,9 @@ impl YuNetApp {
                 self.settings.enhance.contrast = 1.2;
                 self.settings.enhance.saturation = 1.3;
                 self.settings.enhance.sharpness = 0.8;
+                self.settings.enhance.skin_smooth = 0.0;
+                self.settings.enhance.red_eye_removal = false;
+                self.settings.enhance.background_blur = false;
             }
             "professional" => {
                 self.settings.enhance.auto_color = false;
@@ -844,6 +873,9 @@ impl YuNetApp {
                 self.settings.enhance.contrast = 1.1;
                 self.settings.enhance.saturation = 1.0;
                 self.settings.enhance.sharpness = 0.6;
+                self.settings.enhance.skin_smooth = 0.0;
+                self.settings.enhance.red_eye_removal = false;
+                self.settings.enhance.background_blur = false;
             }
             _ => {
                 // "none" or unknown - no changes
@@ -892,6 +924,14 @@ impl YuNetApp {
             unsharp_amount: 0.6, // Base unsharp amount
             unsharp_radius: 1.0,
             sharpness: self.settings.enhance.sharpness,
+            skin_smooth_amount: self.settings.enhance.skin_smooth,
+            skin_smooth_sigma_space: 3.0,
+            skin_smooth_sigma_color: 25.0,
+            red_eye_removal: self.settings.enhance.red_eye_removal,
+            red_eye_threshold: 1.5,
+            background_blur: self.settings.enhance.background_blur,
+            background_blur_radius: 15.0,
+            background_blur_mask_size: 0.6,
         }
     }
 

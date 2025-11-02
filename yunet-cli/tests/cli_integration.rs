@@ -58,6 +58,14 @@ fn cli_like_crop_and_enhance_saves_file() {
         unsharp_amount: 0.5,
         unsharp_radius: 1.0,
         sharpness: 0.2,
+        skin_smooth_amount: 0.0,
+        skin_smooth_sigma_space: 3.0,
+        skin_smooth_sigma_color: 25.0,
+        red_eye_removal: false,
+        red_eye_threshold: 1.5,
+        background_blur: false,
+        background_blur_radius: 15.0,
+        background_blur_mask_size: 0.6,
     };
     let final_crop = apply_enhancements(&cropped, &enh);
 

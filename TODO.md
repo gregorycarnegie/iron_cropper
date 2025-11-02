@@ -132,10 +132,10 @@ This document outlines the development plan for the YuNet face detection project
   - [x] Implement enhancement pipeline applying transformations in sequence
   - [x] Unit tests for each enhancement filter
 
-- [ ] **Advanced enhancements** (optional, Phase 7+)
-  - [ ] Skin smoothing using bilateral filter
-  - [ ] Red-eye removal (detect + desaturate red regions near eyes)
-  - [ ] Background blur/segmentation
+- [x] **Advanced enhancements** (completed)
+  - [x] Skin smoothing using bilateral filter
+  - [x] Red-eye removal (automated red dominance detection + replacement)
+  - [x] Background blur/segmentation (portrait mode with elliptical mask)
 
 ### Phase 6: CLI Face Cropping Features
 
