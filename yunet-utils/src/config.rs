@@ -197,10 +197,10 @@ pub struct QualityAutomationSettings {
 impl Default for QualityAutomationSettings {
     fn default() -> Self {
         Self {
-            auto_select_best_face: true,
+            auto_select_best_face: false,
             min_quality: None,
             auto_skip_no_high_quality: false,
-            quality_suffix: true,
+            quality_suffix: false,
         }
     }
 }

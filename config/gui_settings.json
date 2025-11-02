@@ -1,0 +1,51 @@
+{
+  "model_path": "models/face_detection_yunet_2023mar_640.onnx",
+  "input": {
+    "width": 640,
+    "height": 640
+  },
+  "detection": {
+    "score_threshold": 0.9,
+    "nms_threshold": 0.3,
+    "top_k": 5000
+  },
+  "crop": {
+    "preset": "passport",
+    "output_width": 400,
+    "output_height": 400,
+    "face_height_pct": 70.0,
+    "positioning_mode": "center",
+    "vertical_offset": 0.0,
+    "horizontal_offset": 0.0,
+    "output_format": "png",
+    "jpeg_quality": 90,
+    "png_compression": "default",
+    "webp_quality": 90,
+    "auto_detect_format": true,
+    "metadata": {
+      "mode": "preserve",
+      "include_crop_settings": true,
+      "include_quality_metrics": true,
+      "custom_tags": {}
+    },
+    "quality_rules": {
+      "auto_select_best_face": true,
+      "min_quality": null,
+      "auto_skip_no_high_quality": false,
+      "quality_suffix": true
+    }
+  },
+  "enhance": {
+    "enabled": false,
+    "preset": "none",
+    "auto_color": false,
+    "exposure_stops": 0.0,
+    "brightness": 0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "sharpness": 0.0,
+    "skin_smooth": 0.0,
+    "red_eye_removal": false,
+    "background_blur": false
+  }
+}

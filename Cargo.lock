@@ -5765,7 +5765,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-cli"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -5785,7 +5785,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-core"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "criterion",
@@ -5801,7 +5801,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-gui"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "eframe",
@@ -5821,7 +5821,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-utils"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64",
