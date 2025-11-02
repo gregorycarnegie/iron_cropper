@@ -65,9 +65,100 @@ impl Default for CropSettings {
 
 /// Calculate a crop region in source image coordinates.
 ///
-/// - `img_w`, `img_h` are the source image dimensions in pixels.
-/// - `face_bbox` is the detected face bounding box in source coordinates.
-/// - `settings` controls output size and the target face fraction.
+/// The algorithm proceeds as follows:
+/// 1. Clamp `face_height_pct` into the `[1, 100]` range to keep the math stable.
+/// 2. Derive the source crop height so that, after resizing, the detected face
+///    occupies the requested percentage of the output height.
+/// 3. Derive the source crop width that preserves the requested output aspect ratio.
+/// 4. Shift the crop center according to [`PositioningMode`], applying clamped custom offsets.
+/// 5. Clamp the crop rectangle to the image bounds and return integer coordinates.
+///
+/// # Arguments
+/// - `img_w`, `img_h`: source image dimensions in pixels.
+/// - `face_bbox`: detected face bounding box in source coordinates.
+/// - `settings`: configuration that controls output size and target face coverage.
+///
+/// # Examples
+///
+/// ```rust
+/// # use yunet_core::cropper::{calculate_crop_region, CropSettings, PositioningMode};
+/// # use yunet_core::postprocess::BoundingBox;
+/// let settings = CropSettings {
+///     output_width: 400,
+///     output_height: 400,
+///     face_height_pct: 50.0,
+///     positioning_mode: PositioningMode::Center,
+///     ..Default::default()
+/// };
+/// let crop = calculate_crop_region(
+///     1000,
+///     1000,
+///     BoundingBox {
+///         x: 400.0,
+///         y: 400.0,
+///         width: 200.0,
+///         height: 200.0,
+///     },
+///     &settings,
+/// );
+/// assert_eq!(crop.x, 300);
+/// assert_eq!(crop.y, 300);
+/// assert_eq!(crop.width, 400);
+/// assert_eq!(crop.height, 400);
+/// ```
+///
+/// Positioning modes allow the caller to shift the face within the crop:
+///
+/// ```rust
+/// # use yunet_core::cropper::{calculate_crop_region, CropSettings, PositioningMode};
+/// # use yunet_core::postprocess::BoundingBox;
+/// let bbox = BoundingBox {
+///     x: 400.0,
+///     y: 300.0,
+///     width: 200.0,
+///     height: 200.0,
+/// };
+/// let center = calculate_crop_region(
+///     1200,
+///     800,
+///     bbox,
+///     &CropSettings {
+///         output_width: 600,
+///         output_height: 400,
+///         face_height_pct: 50.0,
+///         positioning_mode: PositioningMode::Center,
+///         ..Default::default()
+///     },
+/// );
+/// let thirds = calculate_crop_region(
+///     1200,
+///     800,
+///     bbox,
+///     &CropSettings {
+///         output_width: 600,
+///         output_height: 400,
+///         face_height_pct: 50.0,
+///         positioning_mode: PositioningMode::RuleOfThirds,
+///         ..Default::default()
+///     },
+/// );
+/// let custom = calculate_crop_region(
+///     1200,
+///     800,
+///     bbox,
+///     &CropSettings {
+///         output_width: 600,
+///         output_height: 400,
+///         face_height_pct: 50.0,
+///         positioning_mode: PositioningMode::Custom,
+///         horizontal_offset: 0.5,
+///         vertical_offset: -0.5,
+///         ..Default::default()
+///     },
+/// );
+/// assert!(thirds.y < center.y, "rule of thirds nudges the face upward");
+/// assert!(custom.x > center.x, "positive horizontal offset moves right");
+/// ```
 pub fn calculate_crop_region(
     img_w: u32,
     img_h: u32,
@@ -287,5 +378,118 @@ mod tests {
             crop.y < center_crop.y,
             "custom vertical offset should move crop up"
         );
+    }
+
+    #[test]
+    fn clamps_when_face_near_left_and_top_edges() {
+        let img_w = 600;
+        let img_h = 400;
+        let face = BoundingBox {
+            x: 5.0,
+            y: 8.0,
+            width: 90.0,
+            height: 110.0,
+        };
+
+        let settings = CropSettings {
+            output_width: 400,
+            output_height: 400,
+            face_height_pct: 80.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+        };
+
+        let crop = calculate_crop_region(img_w, img_h, face, &settings);
+        assert_eq!(crop.x, 0, "crop should clamp to left edge");
+        assert_eq!(crop.y, 0, "crop should clamp to top edge");
+        assert!(crop.width <= img_w);
+        assert!(crop.height <= img_h);
+    }
+
+    #[test]
+    fn clamps_when_face_near_bottom_right_edges() {
+        let img_w = 640;
+        let img_h = 480;
+        let face = BoundingBox {
+            x: 520.0,
+            y: 360.0,
+            width: 100.0,
+            height: 100.0,
+        };
+
+        let settings = CropSettings {
+            output_width: 320,
+            output_height: 480,
+            face_height_pct: 60.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+        };
+
+        let crop = calculate_crop_region(img_w, img_h, face, &settings);
+        assert!(
+            crop.x + crop.width <= img_w,
+            "crop should not extend past right edge"
+        );
+        assert!(
+            crop.y + crop.height <= img_h,
+            "crop should not extend past bottom edge"
+        );
+    }
+
+    #[test]
+    fn respects_non_square_output_aspect_ratio() {
+        let img_w = 1200;
+        let img_h = 800;
+        let face = BoundingBox {
+            x: 500.0,
+            y: 300.0,
+            width: 120.0,
+            height: 120.0,
+        };
+
+        let settings = CropSettings {
+            output_width: 600,
+            output_height: 300,
+            face_height_pct: 50.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+        };
+
+        let crop = calculate_crop_region(img_w, img_h, face, &settings);
+        assert_eq!(crop.height, 240);
+        assert_eq!(crop.width, 480);
+        assert!(
+            (crop.width as f32 / crop.height as f32 - 2.0).abs() < f32::EPSILON,
+            "crop width/height should match requested aspect ratio"
+        );
+    }
+
+    #[test]
+    fn face_height_percent_is_clamped() {
+        let img_w = 800;
+        let img_h = 800;
+        let face = BoundingBox {
+            x: 300.0,
+            y: 300.0,
+            width: 200.0,
+            height: 200.0,
+        };
+
+        let settings = CropSettings {
+            output_width: 400,
+            output_height: 400,
+            face_height_pct: 150.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+        };
+
+        let crop = calculate_crop_region(img_w, img_h, face, &settings);
+        // With clamp to 100%, the source region equals bounding box size.
+        assert_eq!(crop.width, 200);
+        assert_eq!(crop.height, 200);
     }
 }

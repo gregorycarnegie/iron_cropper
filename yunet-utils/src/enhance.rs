@@ -744,4 +744,121 @@ mod tests {
         assert_eq!(out.width(), img.width());
         assert_eq!(out.height(), img.height());
     }
+
+    #[test]
+    fn pipeline_auto_color_matches_direct_equalization() {
+        let mut img = RgbaImage::new(8, 1);
+        for x in 0..4 {
+            img.put_pixel(x, 0, image::Rgba([32, 64, 128, 255]));
+        }
+        for x in 4..8 {
+            img.put_pixel(x, 0, image::Rgba([220, 180, 140, 255]));
+        }
+        let source = DynamicImage::ImageRgba8(img);
+
+        let mut settings = EnhancementSettings::default();
+        settings.auto_color = true;
+        settings.unsharp_amount = 0.0;
+        settings.unsharp_radius = 0.0;
+        settings.sharpness = 0.0;
+
+        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let expected = apply_histogram_equalization(&source).to_rgba8();
+
+        assert_eq!(pipeline, expected, "auto_color should reuse equalization");
+        assert_ne!(
+            pipeline,
+            source.to_rgba8(),
+            "auto_color should adjust levels"
+        );
+    }
+
+    #[test]
+    fn pipeline_sharpness_combines_with_unsharp_amount() {
+        let mut img = RgbaImage::new(5, 1);
+        for x in 0..5 {
+            let val = (x * 40 + 40) as u8;
+            img.put_pixel(x, 0, image::Rgba([val, val, val, 255]));
+        }
+        let source = DynamicImage::ImageRgba8(img);
+
+        let mut settings = EnhancementSettings::default();
+        settings.unsharp_amount = 0.0;
+        settings.sharpness = 0.6;
+        settings.unsharp_radius = 1.0;
+
+        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let expected = apply_unsharp_mask(&source, 0.6, 1.0).to_rgba8();
+
+        assert_eq!(
+            pipeline, expected,
+            "sharpness setting should fold into unsharp mask amount"
+        );
+        assert_ne!(
+            pipeline,
+            source.to_rgba8(),
+            "sharpening should modify pixels"
+        );
+    }
+
+    #[test]
+    fn pipeline_red_eye_removal_matches_direct_call() {
+        let mut img = RgbaImage::new(4, 2);
+        for y in 0..2 {
+            for x in 0..4 {
+                img.put_pixel(x, y, image::Rgba([90, 90, 90, 255]));
+            }
+        }
+        img.put_pixel(1, 0, image::Rgba([220, 40, 40, 255]));
+        img.put_pixel(2, 0, image::Rgba([210, 45, 60, 255]));
+        let source = DynamicImage::ImageRgba8(img);
+
+        let mut settings = EnhancementSettings::default();
+        settings.red_eye_removal = true;
+        settings.red_eye_threshold = 1.2;
+        settings.unsharp_amount = 0.0;
+        settings.unsharp_radius = 0.0;
+        settings.sharpness = 0.0;
+
+        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let expected = apply_red_eye_removal(&source, 1.2).to_rgba8();
+
+        assert_eq!(pipeline, expected);
+        assert!(pipeline.get_pixel(1, 0)[0] < 200);
+        assert!(pipeline.get_pixel(2, 0)[0] < 210);
+    }
+
+    #[test]
+    fn pipeline_background_blur_matches_direct_call() {
+        let mut img = RgbaImage::new(32, 32);
+        for y in 0..32 {
+            for x in 0..32 {
+                let val = ((x + y) * 4).clamp(0, 255) as u8;
+                img.put_pixel(x, y, image::Rgba([val, 255 - val, val / 2, 255]));
+            }
+        }
+        let source = DynamicImage::ImageRgba8(img);
+
+        let mut settings = EnhancementSettings::default();
+        settings.background_blur = true;
+        settings.background_blur_radius = 6.0;
+        settings.background_blur_mask_size = 0.5;
+        settings.unsharp_amount = 0.0;
+        settings.unsharp_radius = 0.0;
+        settings.sharpness = 0.0;
+
+        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let expected = apply_background_blur(&source, 6.0, 0.5).to_rgba8();
+
+        assert_eq!(pipeline, expected);
+        // ensure the blur keeps center mostly intact while affecting a corner
+        let center_diff = (pipeline.get_pixel(16, 16)[0] as i16
+            - source.to_rgba8().get_pixel(16, 16)[0] as i16)
+            .abs();
+        assert!(center_diff < 5, "central region should remain sharp");
+        let corner_diff = (pipeline.get_pixel(0, 0)[0] as i16
+            - source.to_rgba8().get_pixel(0, 0)[0] as i16)
+            .abs();
+        assert!(corner_diff > 0, "corner should show blur impact");
+    }
 }

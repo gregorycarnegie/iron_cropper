@@ -10,3 +10,16 @@
 *.onnx
 *.log
 /cache
+# AGENTS.md
+# CLAUDE.md
+# GEMINI.md
+# PERFORMANCE.md
+# PR_NOTES_PHASE4.md
+# TODO.md
+# /scripts
+# /screenshots
+# /config
+# /.claude
+# /.cargo
+# out.json
+# test_640.json

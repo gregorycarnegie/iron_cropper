@@ -313,22 +313,22 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 ### Phase 9: Testing & Documentation
 
-- [ ] **Comprehensive testing**
-  - [ ] Unit tests for all crop calculation edge cases
-  - [ ] Unit tests for quality analysis (blur detection)
-  - [ ] Unit tests for each enhancement filter
-  - [ ] Integration tests for full crop workflow
-  - [ ] GUI smoke tests for crop panel interactions
-  - [ ] Performance benchmarks for crop + enhancement pipeline
+- [x] **Comprehensive testing**
+  - [x] Unit tests for all crop calculation edge cases
+  - [x] Unit tests for quality analysis (blur detection)
+  - [x] Unit tests for each enhancement filter
+  - [x] Integration tests for full crop workflow
+  - [x] GUI smoke tests for crop panel interactions
+  - [x] Performance benchmarks for crop + enhancement pipeline
 
-- [ ] **Documentation**
-  - [ ] Document crop calculation algorithm in `yunet-core/src/cropper.rs`
-  - [ ] Add examples showing each positioning mode
-  - [ ] Document quality scoring methodology
-  - [ ] Create user guide for GUI crop features
-  - [ ] Create CLI examples for common use cases
-  - [ ] Update README with crop features overview
-  - [ ] Add ARCHITECTURE.md explaining crop calculation flow
+- [x] **Documentation**
+  - [x] Document crop calculation algorithm in `yunet-core/src/cropper.rs`
+  - [x] Add examples showing each positioning mode
+  - [x] Document quality scoring methodology
+  - [x] Create user guide for GUI crop features
+  - [x] Create CLI examples for common use cases
+  - [x] Update README with crop features overview
+  - [x] Add ARCHITECTURE.md explaining crop calculation flow
 
 ### Phase 10: Integration & Refinement
 

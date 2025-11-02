@@ -270,808 +270,871 @@ impl YuNetApp {
             .resizable(true)
             .default_width(320.0)
             .show(ctx, |ui| {
-                let mut settings_changed = false;
-                let mut metadata_tags_changed = false;
-                let mut requires_detector_reset = false;
-                let mut requires_cache_refresh = false;
-                ui.heading("Image");
-                ui.horizontal(|ui| {
-                    if ui.button("Open image…").clicked() {
-                        self.open_image_dialog();
-                    }
-                    if ui.button("Load multiple…").clicked() {
-                        self.open_batch_dialog();
-                    }
-                });
-
-                if !self.batch_files.is_empty() {
-                    ui.label(format!("Batch: {} images loaded", self.batch_files.len()));
-                } else if let Some(path) = &self.preview.image_path {
-                    ui.label("Selected");
-                    ui.monospace(path.to_string_lossy());
-                } else {
-                    ui.label("No image selected yet.");
-                }
-
-                if self.is_busy {
-                    ui.horizontal(|ui| {
-                        ui.add(Spinner::new());
-                        ui.label("Running detection…");
-                    });
-                }
-
-                ui.separator();
-                ui.heading("Detected Faces");
-                if self.preview.detections.is_empty() {
-                    if self.is_busy {
-                        ui.label("Waiting for results…");
-                    } else {
-                        ui.label("No faces detected yet.");
-                    }
-                } else {
-                    ui.label(format!(
-                        "{} face(s) detected. Click to select for cropping.",
-                        self.preview.detections.len()
-                    ));
-                    ui.add_space(8.0);
-
-                    ScrollArea::vertical().show(ui, |ui| {
-                        for (index, det_with_quality) in self.preview.detections.iter().enumerate()
-                        {
-                            let is_selected = self.selected_faces.contains(&index);
-
-                            let quality_color = match det_with_quality.quality {
-                                Quality::High => Color32::from_rgb(0, 200, 100),
-                                Quality::Medium => Color32::from_rgb(255, 180, 0),
-                                Quality::Low => Color32::from_rgb(255, 80, 80),
-                            };
-
-                            let frame_color = if is_selected {
-                                Color32::from_rgb(100, 150, 255)
-                            } else {
-                                ui.visuals().widgets.noninteractive.bg_fill
-                            };
-
-                            let frame_stroke = if is_selected {
-                                Stroke::new(3.0, Color32::from_rgb(100, 150, 255))
-                            } else {
-                                Stroke::new(
-                                    1.0,
-                                    ui.visuals().widgets.noninteractive.bg_stroke.color,
-                                )
-                            };
-
-                            let response = ui.group(|ui| {
-                                egui::Frame::new()
-                                    .fill(frame_color)
-                                    .stroke(frame_stroke)
-                                    .inner_margin(4.0)
-                                    .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            // Show thumbnail if available
-                                            if let Some(thumbnail) = &det_with_quality.thumbnail {
-                                                let thumb_response = ui.add(
-                                                    egui::Image::new(thumbnail).max_width(80.0),
-                                                );
-                                                if thumb_response.clicked() {
-                                                    if is_selected {
-                                                        self.selected_faces.remove(&index);
-                                                    } else {
-                                                        self.selected_faces.insert(index);
-                                                    }
-                                                }
-                                            }
-
-                                            ui.vertical(|ui| {
-                                                ui.label(
-                                                    RichText::new(format!("Face {}", index + 1))
-                                                        .strong(),
-                                                );
-                                                ui.label(format!(
-                                                    "Conf: {:.2}",
-                                                    det_with_quality.detection.score
-                                                ));
-                                                ui.horizontal(|ui| {
-                                                    ui.label("Quality:");
-                                                    ui.colored_label(
-                                                        quality_color,
-                                                        format!("{:?}", det_with_quality.quality),
-                                                    );
-                                                });
-                                                ui.label(format!(
-                                                    "Score: {:.0}",
-                                                    det_with_quality.quality_score
-                                                ));
-
-                                                if ui
-                                                    .small_button(if is_selected {
-                                                        "Deselect"
-                                                    } else {
-                                                        "Select"
-                                                    })
-                                                    .clicked()
-                                                {
-                                                    if is_selected {
-                                                        self.selected_faces.remove(&index);
-                                                    } else {
-                                                        self.selected_faces.insert(index);
-                                                    }
-                                                }
-                                            });
-                                        });
-                                    });
-                            });
-
-                            if response.response.clicked() {
-                                if is_selected {
-                                    self.selected_faces.remove(&index);
-                                } else {
-                                    self.selected_faces.insert(index);
-                                }
+                ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let mut settings_changed = false;
+                        let mut metadata_tags_changed = false;
+                        let mut requires_detector_reset = false;
+                        let mut requires_cache_refresh = false;
+                        ui.heading("Image");
+                        ui.horizontal(|ui| {
+                            if ui.button("Open image…").clicked() {
+                                self.open_image_dialog();
                             }
-                        }
-                    });
-
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Select All").clicked() {
-                            self.selected_faces = (0..self.preview.detections.len()).collect();
-                        }
-                        if ui.button("Deselect All").clicked() {
-                            self.selected_faces.clear();
-                        }
-                    });
-
-                    ui.add_space(8.0);
-                    ui.separator();
-
-                    let num_selected = self.selected_faces.len();
-                    if num_selected > 0 {
-                        let button_label = format!(
-                            "Export {} Selected Face{}",
-                            num_selected,
-                            if num_selected == 1 { "" } else { "s" }
-                        );
-                        if ui.button(button_label).clicked() {
-                            self.export_selected_faces();
-                        }
-                    } else {
-                        ui.label(RichText::new("Select faces to enable export").weak());
-                    }
-                }
-
-                // Batch processing panel
-                if !self.batch_files.is_empty() {
-                    ui.separator();
-                    ui.heading("Batch Processing");
-
-                    let total = self.batch_files.len();
-                    let completed = self
-                        .batch_files
-                        .iter()
-                        .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
-                        .count();
-                    let failed = self
-                        .batch_files
-                        .iter()
-                        .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
-                        .count();
-
-                    ui.label(format!("Progress: {}/{} files", completed + failed, total));
-                    if failed > 0 {
-                        ui.label(
-                            RichText::new(format!("({} failed)", failed))
-                                .color(Color32::from_rgb(255, 80, 80)),
-                        );
-                    }
-
-                    ui.add_space(6.0);
-                    ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                        for (idx, batch_file) in self.batch_files.iter().enumerate() {
-                            let filename = batch_file
-                                .path
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("unknown");
-
-                            let status_text = match &batch_file.status {
-                                BatchFileStatus::Pending => "Pending",
-                                BatchFileStatus::Processing => "Processing...",
-                                BatchFileStatus::Completed {
-                                    faces_detected,
-                                    faces_exported,
-                                } => &format!(
-                                    "{} faces, {} exported",
-                                    faces_detected, faces_exported
-                                ),
-                                BatchFileStatus::Failed { error: _ } => "Failed",
-                            };
-
-                            let status_color = match &batch_file.status {
-                                BatchFileStatus::Pending => Color32::GRAY,
-                                BatchFileStatus::Processing => Color32::from_rgb(100, 150, 255),
-                                BatchFileStatus::Completed { .. } => Color32::from_rgb(0, 200, 100),
-                                BatchFileStatus::Failed { .. } => Color32::from_rgb(255, 80, 80),
-                            };
-
-                            ui.horizontal(|ui| {
-                                ui.label(format!("{}.", idx + 1));
-                                ui.label(filename);
-                                ui.colored_label(status_color, status_text);
-                            });
-                        }
-                    });
-
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Export All Batch Files").clicked() {
-                            self.start_batch_export();
-                        }
-                        if ui.button("Clear Batch").clicked() {
-                            self.batch_files.clear();
-                            self.batch_current_index = None;
-                        }
-                    });
-                }
-
-                ui.separator();
-                ui.heading("Model Settings");
-                ui.label("Model path");
-                ui.horizontal(|ui| {
-                    let response = ui.text_edit_singleline(&mut self.model_path_input);
-                    if response.changed() {
-                        self.model_path_dirty = true;
-                    }
-                    let enter_pressed = ui.input(|i| i.key_pressed(Key::Enter));
-                    if self.model_path_dirty && (response.lost_focus() || enter_pressed) {
-                        self.apply_model_path_input();
-                    }
-                    if ui.button("Browse…").clicked() {
-                        self.open_model_dialog();
-                    }
-                });
-                if self.model_path_dirty {
-                    ui.label(RichText::new("Press Enter to apply model path changes.").weak());
-                }
-
-                ui.add_space(6.0);
-                ui.label("Input size (W×H)");
-                ui.horizontal(|ui| {
-                    ui.label("Width");
-                    let mut width = self.settings.input.width;
-                    if ui
-                        .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
-                        .changed()
-                    {
-                        self.settings.input.width = width;
-                        settings_changed = true;
-                        requires_detector_reset = true;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Height");
-                    let mut height = self.settings.input.height;
-                    if ui
-                        .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
-                        .changed()
-                    {
-                        self.settings.input.height = height;
-                        settings_changed = true;
-                        requires_detector_reset = true;
-                    }
-                });
-
-                ui.add_space(6.0);
-                ui.label("Detection thresholds");
-                let mut score = self.settings.detection.score_threshold;
-                if ui
-                    .add(Slider::new(&mut score, 0.0..=1.0).text("Score threshold"))
-                    .changed()
-                {
-                    self.settings.detection.score_threshold = score;
-                    settings_changed = true;
-                    requires_cache_refresh = true;
-                }
-                let mut nms = self.settings.detection.nms_threshold;
-                if ui
-                    .add(Slider::new(&mut nms, 0.0..=1.0).text("NMS threshold"))
-                    .changed()
-                {
-                    self.settings.detection.nms_threshold = nms;
-                    settings_changed = true;
-                    requires_cache_refresh = true;
-                }
-                let mut top_k = self.settings.detection.top_k as i64;
-                if ui
-                    .add(
-                        DragValue::new(&mut top_k)
-                            .range(1..=20_000)
-                            .speed(100.0)
-                            .suffix(" detections"),
-                    )
-                    .changed()
-                {
-                    self.settings.detection.top_k = top_k.max(1) as usize;
-                    settings_changed = true;
-                    requires_cache_refresh = true;
-                }
-
-                if settings_changed {
-                    self.apply_settings_changes(requires_detector_reset, requires_cache_refresh);
-                }
-
-                ui.separator();
-                ui.heading("Crop Settings");
-
-                ui.checkbox(&mut self.show_crop_overlay, "Show crop preview overlay");
-                ui.add_space(6.0);
-
-                ui.label("Preset");
-                egui::ComboBox::from_label("")
-                    .selected_text(&self.settings.crop.preset)
-                    .show_ui(ui, |ui| {
-                        let presets = [
-                            ("linkedin", "LinkedIn (400×400)"),
-                            ("passport", "Passport (413×531)"),
-                            ("instagram", "Instagram (1080×1080)"),
-                            ("idcard", "ID Card (332×498)"),
-                            ("avatar", "Avatar (512×512)"),
-                            ("headshot", "Headshot (600×800)"),
-                            ("custom", "Custom size"),
-                        ];
-                        for (value, label) in presets {
-                            if ui
-                                .selectable_label(self.settings.crop.preset == value, label)
-                                .clicked()
-                            {
-                                self.settings.crop.preset = value.to_string();
-                                settings_changed = true;
-                            }
-                        }
-                    });
-
-                if self.settings.crop.preset == "custom" {
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        ui.label("Width");
-                        let mut width = self.settings.crop.output_width;
-                        if ui
-                            .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
-                            .changed()
-                        {
-                            self.settings.crop.output_width = width;
-                            settings_changed = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Height");
-                        let mut height = self.settings.crop.output_height;
-                        if ui
-                            .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
-                            .changed()
-                        {
-                            self.settings.crop.output_height = height;
-                            settings_changed = true;
-                        }
-                    });
-                }
-
-                ui.add_space(6.0);
-                let mut face_pct = self.settings.crop.face_height_pct;
-                if ui
-                    .add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"))
-                    .changed()
-                {
-                    self.settings.crop.face_height_pct = face_pct;
-                    settings_changed = true;
-                }
-
-                ui.add_space(6.0);
-                ui.label("Positioning mode");
-                egui::ComboBox::from_label(" ")
-                    .selected_text(&self.settings.crop.positioning_mode)
-                    .show_ui(ui, |ui| {
-                        let modes = [
-                            ("center", "Center"),
-                            ("rule-of-thirds", "Rule of Thirds"),
-                            ("custom", "Custom offsets"),
-                        ];
-                        for (value, label) in modes {
-                            if ui
-                                .selectable_label(
-                                    self.settings.crop.positioning_mode == value,
-                                    label,
-                                )
-                                .clicked()
-                            {
-                                self.settings.crop.positioning_mode = value.to_string();
-                                settings_changed = true;
-                            }
-                        }
-                    });
-
-                if self.settings.crop.positioning_mode == "custom" {
-                    ui.add_space(4.0);
-                    let mut vert = self.settings.crop.vertical_offset;
-                    if ui
-                        .add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset"))
-                        .changed()
-                    {
-                        self.settings.crop.vertical_offset = vert;
-                        settings_changed = true;
-                    }
-                    let mut horiz = self.settings.crop.horizontal_offset;
-                    if ui
-                        .add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset"))
-                        .changed()
-                    {
-                        self.settings.crop.horizontal_offset = horiz;
-                        settings_changed = true;
-                    }
-                }
-
-                ui.separator();
-                ui.label("Quality automation");
-                let mut auto_select = self.settings.crop.quality_rules.auto_select_best_face;
-                if ui
-                    .checkbox(&mut auto_select, "Auto-select highest quality face")
-                    .changed()
-                {
-                    self.settings.crop.quality_rules.auto_select_best_face = auto_select;
-                    settings_changed = true;
-                }
-
-                let mut skip_no_high = self.settings.crop.quality_rules.auto_skip_no_high_quality;
-                if ui
-                    .checkbox(&mut skip_no_high, "Skip export when no high-quality faces")
-                    .changed()
-                {
-                    self.settings.crop.quality_rules.auto_skip_no_high_quality = skip_no_high;
-                    settings_changed = true;
-                }
-
-                let mut suffix_enabled = self.settings.crop.quality_rules.quality_suffix;
-                if ui
-                    .checkbox(&mut suffix_enabled, "Append quality suffix to filenames")
-                    .changed()
-                {
-                    self.settings.crop.quality_rules.quality_suffix = suffix_enabled;
-                    settings_changed = true;
-                }
-
-                ui.horizontal(|ui| {
-                    ui.label("Minimum quality to export");
-                    let current = self.settings.crop.quality_rules.min_quality;
-                    let label = match current {
-                        Some(Quality::Low) => "Low",
-                        Some(Quality::Medium) => "Medium",
-                        Some(Quality::High) => "High",
-                        None => "Off",
-                    };
-                    egui::ComboBox::from_id_salt("min_quality_combo")
-                        .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            if ui.selectable_label(current.is_none(), "Off").clicked() {
-                                self.settings.crop.quality_rules.min_quality = None;
-                                settings_changed = true;
-                            }
-                            if ui
-                                .selectable_label(current == Some(Quality::Low), "Low")
-                                .clicked()
-                            {
-                                self.settings.crop.quality_rules.min_quality = Some(Quality::Low);
-                                settings_changed = true;
-                            }
-                            if ui
-                                .selectable_label(current == Some(Quality::Medium), "Medium")
-                                .clicked()
-                            {
-                                self.settings.crop.quality_rules.min_quality =
-                                    Some(Quality::Medium);
-                                settings_changed = true;
-                            }
-                            if ui
-                                .selectable_label(current == Some(Quality::High), "High")
-                                .clicked()
-                            {
-                                self.settings.crop.quality_rules.min_quality = Some(Quality::High);
-                                settings_changed = true;
+                            if ui.button("Load multiple…").clicked() {
+                                self.open_batch_dialog();
                             }
                         });
-                });
 
-                ui.separator();
-                ui.label("Output format");
-                egui::ComboBox::from_id_salt("output_format_combo")
-                    .selected_text(self.settings.crop.output_format.to_ascii_uppercase())
-                    .show_ui(ui, |ui| {
-                        for option in ["png", "jpeg", "webp"] {
+                        if !self.batch_files.is_empty() {
+                            ui.label(format!("Batch: {} images loaded", self.batch_files.len()));
+                        } else if let Some(path) = &self.preview.image_path {
+                            ui.label("Selected");
+                            ui.monospace(path.to_string_lossy());
+                        } else {
+                            ui.label("No image selected yet.");
+                        }
+
+                        if self.is_busy {
+                            ui.horizontal(|ui| {
+                                ui.add(Spinner::new());
+                                ui.label("Running detection…");
+                            });
+                        }
+
+                        ui.separator();
+                        ui.heading("Detected Faces");
+                        if self.preview.detections.is_empty() {
+                            if self.is_busy {
+                                ui.label("Waiting for results…");
+                            } else {
+                                ui.label("No faces detected yet.");
+                            }
+                        } else {
+                            ui.label(format!(
+                                "{} face(s) detected. Click to select for cropping.",
+                                self.preview.detections.len()
+                            ));
+                            ui.add_space(8.0);
+
+                            ScrollArea::vertical()
+                                .id_salt("detected_faces_scroll")
+                                .max_height(220.0)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    for (index, det_with_quality) in
+                                        self.preview.detections.iter().enumerate()
+                                    {
+                                        let is_selected = self.selected_faces.contains(&index);
+
+                                        let quality_color = match det_with_quality.quality {
+                                            Quality::High => Color32::from_rgb(0, 200, 100),
+                                            Quality::Medium => Color32::from_rgb(255, 180, 0),
+                                            Quality::Low => Color32::from_rgb(255, 80, 80),
+                                        };
+
+                                        let frame_color = if is_selected {
+                                            Color32::from_rgb(100, 150, 255)
+                                        } else {
+                                            ui.visuals().widgets.noninteractive.bg_fill
+                                        };
+
+                                        let frame_stroke = if is_selected {
+                                            Stroke::new(3.0, Color32::from_rgb(100, 150, 255))
+                                        } else {
+                                            Stroke::new(
+                                                1.0,
+                                                ui.visuals().widgets.noninteractive.bg_stroke.color,
+                                            )
+                                        };
+
+                                        let response = ui.group(|ui| {
+                                            egui::Frame::new()
+                                                .fill(frame_color)
+                                                .stroke(frame_stroke)
+                                                .inner_margin(4.0)
+                                                .show(ui, |ui| {
+                                                    ui.horizontal(|ui| {
+                                                        // Show thumbnail if available
+                                                        if let Some(thumbnail) =
+                                                            &det_with_quality.thumbnail
+                                                        {
+                                                            let thumb_response = ui.add(
+                                                                egui::Image::new(thumbnail)
+                                                                    .max_width(80.0),
+                                                            );
+                                                            if thumb_response.clicked() {
+                                                                if is_selected {
+                                                                    self.selected_faces
+                                                                        .remove(&index);
+                                                                } else {
+                                                                    self.selected_faces
+                                                                        .insert(index);
+                                                                }
+                                                            }
+                                                        }
+
+                                                        ui.vertical(|ui| {
+                                                            ui.label(
+                                                                RichText::new(format!(
+                                                                    "Face {}",
+                                                                    index + 1
+                                                                ))
+                                                                .strong(),
+                                                            );
+                                                            ui.label(format!(
+                                                                "Conf: {:.2}",
+                                                                det_with_quality.detection.score
+                                                            ));
+                                                            ui.horizontal(|ui| {
+                                                                ui.label("Quality:");
+                                                                ui.colored_label(
+                                                                    quality_color,
+                                                                    format!(
+                                                                        "{:?}",
+                                                                        det_with_quality.quality
+                                                                    ),
+                                                                );
+                                                            });
+                                                            ui.label(format!(
+                                                                "Score: {:.0}",
+                                                                det_with_quality.quality_score
+                                                            ));
+
+                                                            if ui
+                                                                .small_button(if is_selected {
+                                                                    "Deselect"
+                                                                } else {
+                                                                    "Select"
+                                                                })
+                                                                .clicked()
+                                                            {
+                                                                if is_selected {
+                                                                    self.selected_faces
+                                                                        .remove(&index);
+                                                                } else {
+                                                                    self.selected_faces
+                                                                        .insert(index);
+                                                                }
+                                                            }
+                                                        });
+                                                    });
+                                                });
+                                        });
+
+                                        if response.response.clicked() {
+                                            if is_selected {
+                                                self.selected_faces.remove(&index);
+                                            } else {
+                                                self.selected_faces.insert(index);
+                                            }
+                                        }
+                                    }
+                                });
+
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                if ui.button("Select All").clicked() {
+                                    self.selected_faces =
+                                        (0..self.preview.detections.len()).collect();
+                                }
+                                if ui.button("Deselect All").clicked() {
+                                    self.selected_faces.clear();
+                                }
+                            });
+
+                            ui.add_space(8.0);
+                            ui.separator();
+
+                            let num_selected = self.selected_faces.len();
+                            if num_selected > 0 {
+                                let button_label = format!(
+                                    "Export {} Selected Face{}",
+                                    num_selected,
+                                    if num_selected == 1 { "" } else { "s" }
+                                );
+                                if ui.button(button_label).clicked() {
+                                    self.export_selected_faces();
+                                }
+                            } else {
+                                ui.label(RichText::new("Select faces to enable export").weak());
+                            }
+                        }
+
+                        // Batch processing panel
+                        if !self.batch_files.is_empty() {
+                            ui.separator();
+                            ui.heading("Batch Processing");
+
+                            let total = self.batch_files.len();
+                            let completed = self
+                                .batch_files
+                                .iter()
+                                .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
+                                .count();
+                            let failed = self
+                                .batch_files
+                                .iter()
+                                .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
+                                .count();
+
+                            ui.label(format!("Progress: {}/{} files", completed + failed, total));
+                            if failed > 0 {
+                                ui.label(
+                                    RichText::new(format!("({} failed)", failed))
+                                        .color(Color32::from_rgb(255, 80, 80)),
+                                );
+                            }
+
+                            ui.add_space(6.0);
+                            ScrollArea::vertical()
+                                .id_salt("batch_files_scroll")
+                                .max_height(200.0)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    for (idx, batch_file) in self.batch_files.iter().enumerate() {
+                                        let filename = batch_file
+                                            .path
+                                            .file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("unknown");
+
+                                        let status_text = match &batch_file.status {
+                                            BatchFileStatus::Pending => "Pending",
+                                            BatchFileStatus::Processing => "Processing...",
+                                            BatchFileStatus::Completed {
+                                                faces_detected,
+                                                faces_exported,
+                                            } => &format!(
+                                                "{} faces, {} exported",
+                                                faces_detected, faces_exported
+                                            ),
+                                            BatchFileStatus::Failed { error: _ } => "Failed",
+                                        };
+
+                                        let status_color = match &batch_file.status {
+                                            BatchFileStatus::Pending => Color32::GRAY,
+                                            BatchFileStatus::Processing => {
+                                                Color32::from_rgb(100, 150, 255)
+                                            }
+                                            BatchFileStatus::Completed { .. } => {
+                                                Color32::from_rgb(0, 200, 100)
+                                            }
+                                            BatchFileStatus::Failed { .. } => {
+                                                Color32::from_rgb(255, 80, 80)
+                                            }
+                                        };
+
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!("{}.", idx + 1));
+                                            ui.label(filename);
+                                            ui.colored_label(status_color, status_text);
+                                        });
+                                    }
+                                });
+
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                if ui.button("Export All Batch Files").clicked() {
+                                    self.start_batch_export();
+                                }
+                                if ui.button("Clear Batch").clicked() {
+                                    self.batch_files.clear();
+                                    self.batch_current_index = None;
+                                }
+                            });
+                        } else {
+                            ui.separator();
+                            ui.heading("Batch Processing");
+                            ui.label("No batch files loaded.");
+                        }
+
+                        ui.separator();
+                        ui.heading("Model Settings");
+                        ui.label("Model path");
+                        ui.horizontal(|ui| {
+                            let response = ui.text_edit_singleline(&mut self.model_path_input);
+                            if response.changed() {
+                                self.model_path_dirty = true;
+                            }
+                            let enter_pressed = ui.input(|i| i.key_pressed(Key::Enter));
+                            if self.model_path_dirty && (response.lost_focus() || enter_pressed) {
+                                self.apply_model_path_input();
+                            }
+                            if ui.button("Browse…").clicked() {
+                                self.open_model_dialog();
+                            }
+                        });
+                        if self.model_path_dirty {
+                            ui.label(
+                                RichText::new("Press Enter to apply model path changes.").weak(),
+                            );
+                        }
+
+                        ui.add_space(6.0);
+                        ui.label("Input size (W×H)");
+                        ui.horizontal(|ui| {
+                            ui.label("Width");
+                            let mut width = self.settings.input.width;
                             if ui
-                                .selectable_label(
-                                    self.settings.crop.output_format == option,
-                                    option.to_ascii_uppercase(),
-                                )
-                                .clicked()
+                                .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
+                                .changed()
                             {
-                                self.settings.crop.output_format = option.to_string();
+                                self.settings.input.width = width;
+                                settings_changed = true;
+                                requires_detector_reset = true;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Height");
+                            let mut height = self.settings.input.height;
+                            if ui
+                                .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
+                                .changed()
+                            {
+                                self.settings.input.height = height;
+                                settings_changed = true;
+                                requires_detector_reset = true;
+                            }
+                        });
+
+                        ui.add_space(6.0);
+                        ui.label("Detection thresholds");
+                        let mut score = self.settings.detection.score_threshold;
+                        if ui
+                            .add(Slider::new(&mut score, 0.0..=1.0).text("Score threshold"))
+                            .changed()
+                        {
+                            self.settings.detection.score_threshold = score;
+                            settings_changed = true;
+                            requires_cache_refresh = true;
+                        }
+                        let mut nms = self.settings.detection.nms_threshold;
+                        if ui
+                            .add(Slider::new(&mut nms, 0.0..=1.0).text("NMS threshold"))
+                            .changed()
+                        {
+                            self.settings.detection.nms_threshold = nms;
+                            settings_changed = true;
+                            requires_cache_refresh = true;
+                        }
+                        let mut top_k = self.settings.detection.top_k as i64;
+                        if ui
+                            .add(
+                                DragValue::new(&mut top_k)
+                                    .range(1..=20_000)
+                                    .speed(100.0)
+                                    .suffix(" detections"),
+                            )
+                            .changed()
+                        {
+                            self.settings.detection.top_k = top_k.max(1) as usize;
+                            settings_changed = true;
+                            requires_cache_refresh = true;
+                        }
+
+                        if settings_changed {
+                            self.apply_settings_changes(
+                                requires_detector_reset,
+                                requires_cache_refresh,
+                            );
+                        }
+
+                        ui.separator();
+                        ui.heading("Crop Settings");
+
+                        ui.checkbox(&mut self.show_crop_overlay, "Show crop preview overlay");
+                        ui.add_space(6.0);
+
+                        ui.label("Preset");
+                        egui::ComboBox::from_label("")
+                            .selected_text(&self.settings.crop.preset)
+                            .show_ui(ui, |ui| {
+                                let presets = [
+                                    ("linkedin", "LinkedIn (400×400)"),
+                                    ("passport", "Passport (413×531)"),
+                                    ("instagram", "Instagram (1080×1080)"),
+                                    ("idcard", "ID Card (332×498)"),
+                                    ("avatar", "Avatar (512×512)"),
+                                    ("headshot", "Headshot (600×800)"),
+                                    ("custom", "Custom size"),
+                                ];
+                                for (value, label) in presets {
+                                    if ui
+                                        .selectable_label(self.settings.crop.preset == value, label)
+                                        .clicked()
+                                    {
+                                        self.settings.crop.preset = value.to_string();
+                                        settings_changed = true;
+                                    }
+                                }
+                            });
+
+                        if self.settings.crop.preset == "custom" {
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Width");
+                                let mut width = self.settings.crop.output_width;
+                                if ui
+                                    .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
+                                    .changed()
+                                {
+                                    self.settings.crop.output_width = width;
+                                    settings_changed = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Height");
+                                let mut height = self.settings.crop.output_height;
+                                if ui
+                                    .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
+                                    .changed()
+                                {
+                                    self.settings.crop.output_height = height;
+                                    settings_changed = true;
+                                }
+                            });
+                        }
+
+                        ui.add_space(6.0);
+                        let mut face_pct = self.settings.crop.face_height_pct;
+                        if ui
+                            .add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"))
+                            .changed()
+                        {
+                            self.settings.crop.face_height_pct = face_pct;
+                            settings_changed = true;
+                        }
+
+                        ui.add_space(6.0);
+                        ui.label("Positioning mode");
+                        egui::ComboBox::from_label(" ")
+                            .selected_text(&self.settings.crop.positioning_mode)
+                            .show_ui(ui, |ui| {
+                                let modes = [
+                                    ("center", "Center"),
+                                    ("rule-of-thirds", "Rule of Thirds"),
+                                    ("custom", "Custom offsets"),
+                                ];
+                                for (value, label) in modes {
+                                    if ui
+                                        .selectable_label(
+                                            self.settings.crop.positioning_mode == value,
+                                            label,
+                                        )
+                                        .clicked()
+                                    {
+                                        self.settings.crop.positioning_mode = value.to_string();
+                                        settings_changed = true;
+                                    }
+                                }
+                            });
+
+                        if self.settings.crop.positioning_mode == "custom" {
+                            ui.add_space(4.0);
+                            let mut vert = self.settings.crop.vertical_offset;
+                            if ui
+                                .add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset"))
+                                .changed()
+                            {
+                                self.settings.crop.vertical_offset = vert;
+                                settings_changed = true;
+                            }
+                            let mut horiz = self.settings.crop.horizontal_offset;
+                            if ui
+                                .add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset"))
+                                .changed()
+                            {
+                                self.settings.crop.horizontal_offset = horiz;
                                 settings_changed = true;
                             }
                         }
-                    });
 
-                let mut auto_detect = self.settings.crop.auto_detect_format;
-                if ui
-                    .checkbox(&mut auto_detect, "Auto-detect format from file extension")
-                    .changed()
-                {
-                    self.settings.crop.auto_detect_format = auto_detect;
-                    settings_changed = true;
-                }
+                        ui.separator();
+                        ui.label("Quality automation");
+                        let mut auto_select =
+                            self.settings.crop.quality_rules.auto_select_best_face;
+                        if ui
+                            .checkbox(&mut auto_select, "Auto-select highest quality face")
+                            .changed()
+                        {
+                            self.settings.crop.quality_rules.auto_select_best_face = auto_select;
+                            settings_changed = true;
+                        }
 
-                ui.horizontal(|ui| {
-                    ui.label("PNG compression");
-                    let current = self.settings.crop.png_compression.to_ascii_lowercase();
-                    let label = match current.as_str() {
-                        "fast" => "Fast".to_string(),
-                        "default" => "Default".to_string(),
-                        "best" => "Best".to_string(),
-                        other => format!("Custom ({other})"),
-                    };
-                    egui::ComboBox::from_id_salt("png_compression_combo")
-                        .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            for (value, text) in
-                                [("fast", "Fast"), ("default", "Default"), ("best", "Best")]
+                        let mut skip_no_high =
+                            self.settings.crop.quality_rules.auto_skip_no_high_quality;
+                        if ui
+                            .checkbox(&mut skip_no_high, "Skip export when no high-quality faces")
+                            .changed()
+                        {
+                            self.settings.crop.quality_rules.auto_skip_no_high_quality =
+                                skip_no_high;
+                            settings_changed = true;
+                        }
+
+                        let mut suffix_enabled = self.settings.crop.quality_rules.quality_suffix;
+                        if ui
+                            .checkbox(&mut suffix_enabled, "Append quality suffix to filenames")
+                            .changed()
+                        {
+                            self.settings.crop.quality_rules.quality_suffix = suffix_enabled;
+                            settings_changed = true;
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.label("Minimum quality to export");
+                            let current = self.settings.crop.quality_rules.min_quality;
+                            let label = match current {
+                                Some(Quality::Low) => "Low",
+                                Some(Quality::Medium) => "Medium",
+                                Some(Quality::High) => "High",
+                                None => "Off",
+                            };
+                            egui::ComboBox::from_id_salt("min_quality_combo")
+                                .selected_text(label)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(current.is_none(), "Off").clicked() {
+                                        self.settings.crop.quality_rules.min_quality = None;
+                                        settings_changed = true;
+                                    }
+                                    if ui
+                                        .selectable_label(current == Some(Quality::Low), "Low")
+                                        .clicked()
+                                    {
+                                        self.settings.crop.quality_rules.min_quality =
+                                            Some(Quality::Low);
+                                        settings_changed = true;
+                                    }
+                                    if ui
+                                        .selectable_label(
+                                            current == Some(Quality::Medium),
+                                            "Medium",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.settings.crop.quality_rules.min_quality =
+                                            Some(Quality::Medium);
+                                        settings_changed = true;
+                                    }
+                                    if ui
+                                        .selectable_label(current == Some(Quality::High), "High")
+                                        .clicked()
+                                    {
+                                        self.settings.crop.quality_rules.min_quality =
+                                            Some(Quality::High);
+                                        settings_changed = true;
+                                    }
+                                });
+                        });
+
+                        ui.separator();
+                        ui.label("Output format");
+                        egui::ComboBox::from_id_salt("output_format_combo")
+                            .selected_text(self.settings.crop.output_format.to_ascii_uppercase())
+                            .show_ui(ui, |ui| {
+                                for option in ["png", "jpeg", "webp"] {
+                                    if ui
+                                        .selectable_label(
+                                            self.settings.crop.output_format == option,
+                                            option.to_ascii_uppercase(),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.settings.crop.output_format = option.to_string();
+                                        settings_changed = true;
+                                    }
+                                }
+                            });
+
+                        let mut auto_detect = self.settings.crop.auto_detect_format;
+                        if ui
+                            .checkbox(&mut auto_detect, "Auto-detect format from file extension")
+                            .changed()
+                        {
+                            self.settings.crop.auto_detect_format = auto_detect;
+                            settings_changed = true;
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.label("PNG compression");
+                            let current = self.settings.crop.png_compression.to_ascii_lowercase();
+                            let label = match current.as_str() {
+                                "fast" => "Fast".to_string(),
+                                "default" => "Default".to_string(),
+                                "best" => "Best".to_string(),
+                                other => format!("Custom ({other})"),
+                            };
+                            egui::ComboBox::from_id_salt("png_compression_combo")
+                                .selected_text(label)
+                                .show_ui(ui, |ui| {
+                                    for (value, text) in
+                                        [("fast", "Fast"), ("default", "Default"), ("best", "Best")]
+                                    {
+                                        if ui
+                                            .selectable_label(
+                                                self.settings
+                                                    .crop
+                                                    .png_compression
+                                                    .eq_ignore_ascii_case(value),
+                                                text,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.settings.crop.png_compression = value.to_string();
+                                            settings_changed = true;
+                                        }
+                                    }
+                                });
+
+                            let mut level = self
+                                .settings
+                                .crop
+                                .png_compression
+                                .parse::<i32>()
+                                .unwrap_or(6);
+                            let prev = level;
+                            if ui
+                                .add(
+                                    egui::DragValue::new(&mut level)
+                                        .range(0..=9)
+                                        .prefix("Level "),
+                                )
+                                .changed()
                             {
-                                if ui
-                                    .selectable_label(
-                                        self.settings
-                                            .crop
-                                            .png_compression
-                                            .eq_ignore_ascii_case(value),
-                                        text,
-                                    )
-                                    .clicked()
-                                {
-                                    self.settings.crop.png_compression = value.to_string();
+                                level = level.clamp(0, 9);
+                                if level != prev {
+                                    self.settings.crop.png_compression = level.to_string();
                                     settings_changed = true;
                                 }
                             }
                         });
 
-                    let mut level = self
-                        .settings
-                        .crop
-                        .png_compression
-                        .parse::<i32>()
-                        .unwrap_or(6);
-                    let prev = level;
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut level)
-                                .range(0..=9)
-                                .prefix("Level "),
-                        )
-                        .changed()
-                    {
-                        level = level.clamp(0, 9);
-                        if level != prev {
-                            self.settings.crop.png_compression = level.to_string();
+                        let mut jpeg_quality = i32::from(self.settings.crop.jpeg_quality);
+                        if ui
+                            .add(Slider::new(&mut jpeg_quality, 1..=100).text("JPEG quality"))
+                            .changed()
+                        {
+                            self.settings.crop.jpeg_quality = jpeg_quality as u8;
                             settings_changed = true;
                         }
-                    }
-                });
 
-                let mut jpeg_quality = i32::from(self.settings.crop.jpeg_quality);
-                if ui
-                    .add(Slider::new(&mut jpeg_quality, 1..=100).text("JPEG quality"))
-                    .changed()
-                {
-                    self.settings.crop.jpeg_quality = jpeg_quality as u8;
-                    settings_changed = true;
-                }
-
-                let mut webp_quality = i32::from(self.settings.crop.webp_quality);
-                if ui
-                    .add(Slider::new(&mut webp_quality, 0..=100).text("WebP quality"))
-                    .changed()
-                {
-                    self.settings.crop.webp_quality = webp_quality as u8;
-                    settings_changed = true;
-                }
-
-                ui.separator();
-                ui.label("Metadata");
-                let mode_label = match self.settings.crop.metadata.mode {
-                    MetadataMode::Preserve => "Preserve",
-                    MetadataMode::Strip => "Strip",
-                    MetadataMode::Custom => "Custom",
-                };
-                egui::ComboBox::from_id_salt("metadata_mode_combo")
-                    .selected_text(mode_label)
-                    .show_ui(ui, |ui| {
-                        for (value, text) in [
-                            (MetadataMode::Preserve, "Preserve"),
-                            (MetadataMode::Strip, "Strip"),
-                            (MetadataMode::Custom, "Custom"),
-                        ] {
-                            if ui
-                                .selectable_label(self.settings.crop.metadata.mode == value, text)
-                                .clicked()
-                            {
-                                self.settings.crop.metadata.mode = value;
-                                settings_changed = true;
-                            }
+                        let mut webp_quality = i32::from(self.settings.crop.webp_quality);
+                        if ui
+                            .add(Slider::new(&mut webp_quality, 0..=100).text("WebP quality"))
+                            .changed()
+                        {
+                            self.settings.crop.webp_quality = webp_quality as u8;
+                            settings_changed = true;
                         }
-                    });
 
-                let mut include_crop = self.settings.crop.metadata.include_crop_settings;
-                if ui
-                    .checkbox(&mut include_crop, "Include crop settings metadata")
-                    .changed()
-                {
-                    self.settings.crop.metadata.include_crop_settings = include_crop;
-                    settings_changed = true;
-                }
+                        ui.separator();
+                        ui.label("Metadata");
+                        let mode_label = match self.settings.crop.metadata.mode {
+                            MetadataMode::Preserve => "Preserve",
+                            MetadataMode::Strip => "Strip",
+                            MetadataMode::Custom => "Custom",
+                        };
+                        egui::ComboBox::from_id_salt("metadata_mode_combo")
+                            .selected_text(mode_label)
+                            .show_ui(ui, |ui| {
+                                for (value, text) in [
+                                    (MetadataMode::Preserve, "Preserve"),
+                                    (MetadataMode::Strip, "Strip"),
+                                    (MetadataMode::Custom, "Custom"),
+                                ] {
+                                    if ui
+                                        .selectable_label(
+                                            self.settings.crop.metadata.mode == value,
+                                            text,
+                                        )
+                                        .clicked()
+                                    {
+                                        self.settings.crop.metadata.mode = value;
+                                        settings_changed = true;
+                                    }
+                                }
+                            });
 
-                let mut include_quality = self.settings.crop.metadata.include_quality_metrics;
-                if ui
-                    .checkbox(&mut include_quality, "Include quality metrics metadata")
-                    .changed()
-                {
-                    self.settings.crop.metadata.include_quality_metrics = include_quality;
-                    settings_changed = true;
-                }
+                        let mut include_crop = self.settings.crop.metadata.include_crop_settings;
+                        if ui
+                            .checkbox(&mut include_crop, "Include crop settings metadata")
+                            .changed()
+                        {
+                            self.settings.crop.metadata.include_crop_settings = include_crop;
+                            settings_changed = true;
+                        }
 
-                if ui
-                    .text_edit_multiline(&mut self.metadata_tags_input)
-                    .changed()
-                {
-                    self.settings.crop.metadata.custom_tags =
-                        Self::parse_metadata_tags(&self.metadata_tags_input);
-                    settings_changed = true;
-                    metadata_tags_changed = true;
-                }
-                ui.label("Enter custom tags as key=value, one per line.")
+                        let mut include_quality =
+                            self.settings.crop.metadata.include_quality_metrics;
+                        if ui
+                            .checkbox(&mut include_quality, "Include quality metrics metadata")
+                            .changed()
+                        {
+                            self.settings.crop.metadata.include_quality_metrics = include_quality;
+                            settings_changed = true;
+                        }
+
+                        if ui
+                            .text_edit_multiline(&mut self.metadata_tags_input)
+                            .changed()
+                        {
+                            self.settings.crop.metadata.custom_tags =
+                                Self::parse_metadata_tags(&self.metadata_tags_input);
+                            settings_changed = true;
+                            metadata_tags_changed = true;
+                        }
+                        ui.label("Enter custom tags as key=value, one per line.")
                     .on_hover_text(
                         "Tags are embedded into output metadata when mode is preserve or custom.",
                     );
 
-                if settings_changed {
-                    self.push_crop_history();
-                    self.persist_settings_with_feedback();
-                    self.apply_quality_rules_to_preview();
-                    if !metadata_tags_changed {
-                        self.refresh_metadata_tags_input();
-                    }
-                }
-
-                ui.separator();
-                ui.heading("Enhancement Settings");
-
-                ui.checkbox(&mut self.settings.enhance.enabled, "Enable enhancements");
-                ui.add_space(6.0);
-
-                if self.settings.enhance.enabled {
-                    ui.label("Preset");
-                    egui::ComboBox::from_label("  ")
-                        .selected_text(&self.settings.enhance.preset)
-                        .show_ui(ui, |ui| {
-                            let presets = [
-                                ("none", "None (Manual)"),
-                                ("natural", "Natural"),
-                                ("vivid", "Vivid"),
-                                ("professional", "Professional"),
-                            ];
-                            for (value, label) in presets {
-                                if ui
-                                    .selectable_label(self.settings.enhance.preset == value, label)
-                                    .clicked()
-                                {
-                                    self.settings.enhance.preset = value.to_string();
-                                    self.apply_enhancement_preset();
-                                    settings_changed = true;
-                                }
+                        if settings_changed {
+                            self.push_crop_history();
+                            self.persist_settings_with_feedback();
+                            self.apply_quality_rules_to_preview();
+                            if !metadata_tags_changed {
+                                self.refresh_metadata_tags_input();
                             }
-                        });
+                        }
 
-                    ui.add_space(6.0);
-                    ui.checkbox(
-                        &mut self.settings.enhance.auto_color,
-                        "Auto color correction",
-                    );
+                        ui.separator();
+                        ui.heading("Enhancement Settings");
 
-                    ui.add_space(6.0);
-                    let mut exp = self.settings.enhance.exposure_stops;
-                    if ui
-                        .add(Slider::new(&mut exp, -2.0..=2.0).text("Exposure (stops)"))
-                        .changed()
-                    {
-                        self.settings.enhance.exposure_stops = exp;
-                        settings_changed = true;
-                    }
+                        ui.checkbox(&mut self.settings.enhance.enabled, "Enable enhancements");
+                        ui.add_space(6.0);
 
-                    let mut bright = self.settings.enhance.brightness;
-                    if ui
-                        .add(Slider::new(&mut bright, -100..=100).text("Brightness"))
-                        .changed()
-                    {
-                        self.settings.enhance.brightness = bright;
-                        settings_changed = true;
-                    }
+                        if self.settings.enhance.enabled {
+                            ui.label("Preset");
+                            egui::ComboBox::from_label("  ")
+                                .selected_text(&self.settings.enhance.preset)
+                                .show_ui(ui, |ui| {
+                                    let presets = [
+                                        ("none", "None (Manual)"),
+                                        ("natural", "Natural"),
+                                        ("vivid", "Vivid"),
+                                        ("professional", "Professional"),
+                                    ];
+                                    for (value, label) in presets {
+                                        if ui
+                                            .selectable_label(
+                                                self.settings.enhance.preset == value,
+                                                label,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.settings.enhance.preset = value.to_string();
+                                            self.apply_enhancement_preset();
+                                            settings_changed = true;
+                                        }
+                                    }
+                                });
 
-                    let mut con = self.settings.enhance.contrast;
-                    if ui
-                        .add(Slider::new(&mut con, 0.5..=2.0).text("Contrast"))
-                        .changed()
-                    {
-                        self.settings.enhance.contrast = con;
-                        settings_changed = true;
-                    }
+                            ui.add_space(6.0);
+                            ui.checkbox(
+                                &mut self.settings.enhance.auto_color,
+                                "Auto color correction",
+                            );
 
-                    let mut sat = self.settings.enhance.saturation;
-                    if ui
-                        .add(Slider::new(&mut sat, 0.0..=2.5).text("Saturation"))
-                        .changed()
-                    {
-                        self.settings.enhance.saturation = sat;
-                        settings_changed = true;
-                    }
+                            ui.add_space(6.0);
+                            let mut exp = self.settings.enhance.exposure_stops;
+                            if ui
+                                .add(Slider::new(&mut exp, -2.0..=2.0).text("Exposure (stops)"))
+                                .changed()
+                            {
+                                self.settings.enhance.exposure_stops = exp;
+                                settings_changed = true;
+                            }
 
-                    let mut sharp = self.settings.enhance.sharpness;
-                    if ui
-                        .add(Slider::new(&mut sharp, 0.0..=2.0).text("Sharpness"))
-                        .changed()
-                    {
-                        self.settings.enhance.sharpness = sharp;
-                        settings_changed = true;
-                    }
+                            let mut bright = self.settings.enhance.brightness;
+                            if ui
+                                .add(Slider::new(&mut bright, -100..=100).text("Brightness"))
+                                .changed()
+                            {
+                                self.settings.enhance.brightness = bright;
+                                settings_changed = true;
+                            }
 
-                    let mut skin_smooth = self.settings.enhance.skin_smooth;
-                    if ui
-                        .add(Slider::new(&mut skin_smooth, 0.0..=1.0).text("Skin Smoothing"))
-                        .changed()
-                    {
-                        self.settings.enhance.skin_smooth = skin_smooth;
-                        settings_changed = true;
-                    }
+                            let mut con = self.settings.enhance.contrast;
+                            if ui
+                                .add(Slider::new(&mut con, 0.5..=2.0).text("Contrast"))
+                                .changed()
+                            {
+                                self.settings.enhance.contrast = con;
+                                settings_changed = true;
+                            }
 
-                    if ui
-                        .checkbox(
-                            &mut self.settings.enhance.red_eye_removal,
-                            "Red-Eye Removal",
-                        )
-                        .changed()
-                    {
-                        settings_changed = true;
-                    }
+                            let mut sat = self.settings.enhance.saturation;
+                            if ui
+                                .add(Slider::new(&mut sat, 0.0..=2.5).text("Saturation"))
+                                .changed()
+                            {
+                                self.settings.enhance.saturation = sat;
+                                settings_changed = true;
+                            }
 
-                    if ui
-                        .checkbox(
-                            &mut self.settings.enhance.background_blur,
-                            "Background Blur",
-                        )
-                        .changed()
-                    {
-                        settings_changed = true;
-                    }
+                            let mut sharp = self.settings.enhance.sharpness;
+                            if ui
+                                .add(Slider::new(&mut sharp, 0.0..=2.0).text("Sharpness"))
+                                .changed()
+                            {
+                                self.settings.enhance.sharpness = sharp;
+                                settings_changed = true;
+                            }
 
-                    ui.add_space(6.0);
-                    if ui.button("Reset to defaults").clicked() {
-                        self.settings.enhance = yunet_utils::config::EnhanceSettings::default();
-                        settings_changed = true;
-                    }
-                }
+                            let mut skin_smooth = self.settings.enhance.skin_smooth;
+                            if ui
+                                .add(
+                                    Slider::new(&mut skin_smooth, 0.0..=1.0).text("Skin Smoothing"),
+                                )
+                                .changed()
+                            {
+                                self.settings.enhance.skin_smooth = skin_smooth;
+                                settings_changed = true;
+                            }
 
-                if settings_changed {
-                    self.persist_settings_with_feedback();
-                }
+                            if ui
+                                .checkbox(
+                                    &mut self.settings.enhance.red_eye_removal,
+                                    "Red-Eye Removal",
+                                )
+                                .changed()
+                            {
+                                settings_changed = true;
+                            }
 
-                ui.add_space(8.0);
-                ui.small(
-                    RichText::new(format!("Settings file: {}", self.settings_path.display()))
-                        .weak(),
-                );
+                            if ui
+                                .checkbox(
+                                    &mut self.settings.enhance.background_blur,
+                                    "Background Blur",
+                                )
+                                .changed()
+                            {
+                                settings_changed = true;
+                            }
+
+                            ui.add_space(6.0);
+                            if ui.button("Reset to defaults").clicked() {
+                                self.settings.enhance =
+                                    yunet_utils::config::EnhanceSettings::default();
+                                settings_changed = true;
+                            }
+                        }
+
+                        if settings_changed {
+                            self.persist_settings_with_feedback();
+                        }
+
+                        ui.add_space(8.0);
+                        ui.small(
+                            RichText::new(format!(
+                                "Settings file: {}",
+                                self.settings_path.display()
+                            ))
+                            .weak(),
+                        );
+                    });
             });
     }
 
@@ -1079,12 +1142,28 @@ impl YuNetApp {
     fn show_preview(&mut self, ctx: &EguiContext) {
         CentralPanel::default().show(ctx, |ui| {
             if let Some(texture) = &self.preview.texture {
-                ScrollArea::both().show(ui, |ui| {
-                    let response = ui.add(egui::Image::new(texture));
-                    if let Some(dimensions) = self.preview.image_size {
-                        self.paint_detections(ui, response.rect, dimensions);
+                let available = ui.available_size();
+                if available.x > 0.0 && available.y > 0.0 {
+                    let tex_size = texture.size_vec2();
+                    if tex_size.x > 0.0 && tex_size.y > 0.0 {
+                        let scale = (available.x / tex_size.x)
+                            .min(available.y / tex_size.y)
+                            .max(0.0);
+                        let scale = if scale.is_finite() && scale > 0.0 {
+                            scale
+                        } else {
+                            1.0
+                        };
+                        let scaled = tex_size * scale;
+                        ui.centered_and_justified(|ui| {
+                            let response =
+                                ui.add(egui::Image::new(texture).fit_to_exact_size(scaled));
+                            if let Some(dimensions) = self.preview.image_size {
+                                self.paint_detections(ui, response.rect, dimensions);
+                            }
+                        });
                     }
-                });
+                }
             } else {
                 ui.vertical_centered(|ui| {
                     ui.add_space(48.0);
@@ -2429,11 +2508,19 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    fn app_with_temp_settings() -> (YuNetApp, tempfile::TempDir, egui::Context) {
+        let ctx = egui::Context::default();
+        let temp = tempdir().expect("tempdir");
+        let settings_path = temp.path().join("gui_settings_test.json");
+        let app = YuNetApp::create(&ctx, settings_path);
+        (app, temp, ctx)
+    }
+
     #[test]
     fn smoke_initializes_and_persists_settings() {
+        let ctx = egui::Context::default();
         let temp = tempdir().expect("tempdir");
         let settings_path = temp.path().join("config").join("gui_settings_smoke.json");
-        let ctx = egui::Context::default();
 
         let mut app = YuNetApp::create(&ctx, settings_path.clone());
         assert!(app.detector.is_none());
@@ -2451,5 +2538,86 @@ mod tests {
         let saved = std::fs::read_to_string(&app.settings_path).expect("read settings");
         let json: serde_json::Value = serde_json::from_str(&saved).expect("parse settings");
         assert_eq!(json["detection"]["score_threshold"], json!(0.42));
+    }
+
+    #[test]
+    fn crop_adjustments_are_clamped_and_record_history() {
+        let (mut app, temp_dir, _ctx) = app_with_temp_settings();
+
+        let base_history = app.crop_history.len();
+
+        app.adjust_horizontal_offset(0.8);
+        assert!((app.settings.crop.horizontal_offset - 0.8).abs() < 1e-6);
+        assert_eq!(app.crop_history.len(), base_history + 1);
+
+        app.adjust_vertical_offset(-2.0);
+        assert_eq!(app.settings.crop.vertical_offset, -1.0);
+        assert_eq!(app.crop_history.len(), base_history + 2);
+
+        app.adjust_face_height(50.0);
+        assert!((app.settings.crop.face_height_pct - 100.0).abs() < 1e-6);
+        assert_eq!(app.crop_history.len(), base_history + 3);
+
+        app.set_crop_preset("passport");
+        assert_eq!(app.settings.crop.preset, "passport");
+        assert_eq!(app.crop_history.len(), base_history + 4);
+
+        let settings_file = temp_dir.path().join("gui_settings_test.json");
+        assert!(
+            settings_file.exists(),
+            "persisted settings file should be created"
+        );
+    }
+
+    #[test]
+    fn undo_and_redo_restore_crop_state_sequence() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        let initial_height = app.settings.crop.face_height_pct;
+
+        app.adjust_face_height(5.0);
+        let raised_height = app.settings.crop.face_height_pct;
+        assert!(raised_height > initial_height);
+
+        app.adjust_horizontal_offset(0.4);
+        assert_eq!(app.settings.crop.horizontal_offset, 0.4);
+
+        app.undo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+        assert!((app.settings.crop.face_height_pct - raised_height).abs() < 1e-6);
+
+        app.undo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+        assert!((app.settings.crop.face_height_pct - initial_height).abs() < 1e-6);
+
+        app.redo_crop_settings();
+        assert!((app.settings.crop.face_height_pct - raised_height).abs() < 1e-6);
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+
+        app.redo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.4);
+    }
+
+    #[test]
+    fn enhancement_presets_apply_expected_parameters() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        app.settings.enhance.preset = "vivid".to_string();
+        app.settings.enhance.auto_color = false;
+        app.settings.enhance.exposure_stops = 0.0;
+        app.settings.enhance.brightness = 0;
+        app.settings.enhance.contrast = 1.0;
+        app.settings.enhance.saturation = 1.0;
+        app.settings.enhance.sharpness = 0.0;
+        app.settings.enhance.skin_smooth = 0.0;
+
+        app.apply_enhancement_preset();
+
+        assert!(app.settings.enhance.auto_color);
+        assert!((app.settings.enhance.exposure_stops - 0.2).abs() < 1e-6);
+        assert_eq!(app.settings.enhance.brightness, 10);
+        assert!((app.settings.enhance.contrast - 1.2).abs() < 1e-6);
+        assert!((app.settings.enhance.saturation - 1.3).abs() < 1e-6);
+        assert!((app.settings.enhance.sharpness - 0.8).abs() < 1e-6);
     }
 }

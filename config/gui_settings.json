@@ -10,7 +10,7 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "passport",
+    "preset": "avatar",
     "output_width": 400,
     "output_height": 400,
     "face_height_pct": 70.0,
@@ -36,7 +36,7 @@
     }
   },
   "enhance": {
-    "enabled": false,
+    "enabled": true,
     "preset": "none",
     "auto_color": false,
     "exposure_stops": 0.0,

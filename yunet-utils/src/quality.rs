@@ -1,7 +1,16 @@
 //! Image quality analysis utilities.
 //!
-//! Implements a Laplacian-variance based blur detector and exposes a simple
-//! `Quality` enum and `estimate_sharpness` helper.
+//! The quality subsystem uses Laplacian variance to approximate how much
+//! high-frequency detail exists inside a face crop. A high variance indicates
+//! crisp edges and well-focused features, while a low variance points to blur
+//! or motion smearing. We bucket raw variance values into three coarse bands:
+//! `Low` (≤300), `Medium` (300‒1000), and `High` (>1000). Those thresholds
+//! were calibrated against the YuNet fixtures so that High roughly aligns with
+//! the faces we would confidently ship to customers, Medium covers “usable but
+//! soft” captures, and Low highlights frames that should be skipped or
+//! re-shot. The helpers in this module expose both the raw variance score and
+//! the derived `Quality` so higher layers (CLI/GUI) can implement automation
+//! such as auto-selecting the sharpest face or applying filename suffixes.
 
 use image::{DynamicImage, GrayImage};
 use ndarray::Array2;
@@ -174,6 +183,15 @@ mod tests {
     use image::RgbaImage;
 
     #[test]
+    fn quality_from_variance_thresholds() {
+        assert_eq!(Quality::from_variance(50.0), Quality::Low);
+        assert_eq!(Quality::from_variance(300.0), Quality::Low);
+        assert_eq!(Quality::from_variance(300.1), Quality::Medium);
+        assert_eq!(Quality::from_variance(1000.0), Quality::Medium);
+        assert_eq!(Quality::from_variance(1500.0), Quality::High);
+    }
+
+    #[test]
     fn variance_of_blank_image_is_low() {
         let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
             64,
@@ -199,5 +217,54 @@ mod tests {
         let (v, q) = estimate_sharpness(&dynimg);
         assert!(v > 0.0);
         assert!(q == Quality::Medium || q == Quality::High);
+    }
+
+    #[test]
+    fn variance_on_empty_image_is_zero() {
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(0, 0));
+        assert_eq!(laplacian_variance(&img), 0.0);
+    }
+
+    #[test]
+    fn quality_filter_respects_min_quality() {
+        let filter = QualityFilter::new(Some(Quality::Medium));
+        assert!(filter.should_skip(Quality::Low));
+        assert!(!filter.should_skip(Quality::Medium));
+        assert!(!filter.should_skip(Quality::High));
+    }
+
+    #[test]
+    fn quality_filter_auto_skip_requires_high() {
+        let mut filter = QualityFilter::new(None);
+        filter.auto_skip_no_high = true;
+        assert!(filter.should_skip_image(None));
+        assert!(filter.should_skip_image(Some(Quality::Medium)));
+        assert!(!filter.should_skip_image(Some(Quality::High)));
+    }
+
+    #[test]
+    fn select_best_index_prefers_higher_quality_then_score() {
+        let filter = QualityFilter::new(None);
+        let samples = [
+            (Quality::Medium, 0.4),
+            (Quality::High, 0.3),
+            (Quality::High, 0.8),
+            (Quality::Low, 0.9),
+        ];
+        assert_eq!(filter.select_best_index(&samples), Some(2));
+
+        let tie_samples = [(Quality::Medium, 0.2), (Quality::Medium, 0.7)];
+        assert_eq!(filter.select_best_index(&tie_samples), Some(1));
+    }
+
+    #[test]
+    fn suffix_for_respects_flag() {
+        let mut filter = QualityFilter::new(None);
+        assert_eq!(filter.suffix_for(Quality::High), None);
+
+        filter.suffix_enabled = true;
+        assert_eq!(filter.suffix_for(Quality::High), Some("_highq"));
+        assert_eq!(filter.suffix_for(Quality::Medium), Some("_medq"));
+        assert_eq!(filter.suffix_for(Quality::Low), Some("_lowq"));
     }
 }
