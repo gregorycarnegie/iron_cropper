@@ -1,6 +1,7 @@
 //! Command-line interface for running YuNet face detection.
 
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -17,8 +18,12 @@ use walkdir::WalkDir;
 use yunet_core::{BoundingBox, Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
 use yunet_utils::{
-    EnhancementSettings, Quality, QualityFilter, apply_enhancements, config::AppSettings,
-    estimate_sharpness, init_logging, normalize_path,
+    EnhancementSettings, MetadataContext, OutputOptions, Quality, QualityFilter,
+    append_suffix_to_filename, apply_enhancements,
+    config::{
+        AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
+    },
+    estimate_sharpness, init_logging, normalize_path, save_dynamic_image,
 };
 
 /// Run YuNet face detection over images or directories.
@@ -113,6 +118,18 @@ struct DetectArgs {
     #[arg(long, default_value_t = 90u8)]
     jpeg_quality: u8,
 
+    /// PNG compression strategy: fast, default, best, or numeric level 0-9.
+    #[arg(long)]
+    png_compression: Option<String>,
+
+    /// WebP quality when saving as WebP (0-100).
+    #[arg(long)]
+    webp_quality: Option<u8>,
+
+    /// Automatically detect output format from the file extension.
+    #[arg(long)]
+    auto_detect_format: Option<bool>,
+
     /// Select face index (1-based) to save only a specific face. Default: all faces.
     #[arg(long)]
     face_index: Option<usize>,
@@ -124,6 +141,34 @@ struct DetectArgs {
     /// Shortcut to skip low-quality crops (equivalent to `--min-quality medium`).
     #[arg(long)]
     skip_low_quality: Option<bool>,
+
+    /// Automatically select the highest-quality face per image. Use `--auto-select-best=false` to disable.
+    #[arg(long)]
+    auto_select_best: Option<bool>,
+
+    /// Skip exporting when no high-quality faces are detected. Use `--skip-no-high-quality=false` to require manual review.
+    #[arg(long)]
+    skip_no_high_quality: Option<bool>,
+
+    /// Append a quality suffix (e.g., `_highq`) to exported filenames. Use `--quality-suffix=false` to disable.
+    #[arg(long)]
+    quality_suffix: Option<bool>,
+
+    /// Metadata handling mode: preserve, strip, or custom.
+    #[arg(long)]
+    metadata_mode: Option<String>,
+
+    /// Include crop settings metadata in output files.
+    #[arg(long)]
+    metadata_include_crop: Option<bool>,
+
+    /// Include quality scores in output metadata.
+    #[arg(long)]
+    metadata_include_quality: Option<bool>,
+
+    /// Custom metadata tags in KEY=VALUE form (may be repeated).
+    #[arg(long = "metadata-tag")]
+    metadata_tags: Vec<String>,
 
     /// Apply image enhancement pipeline (unsharp mask, contrast, exposure)
     /// to each crop before quality estimation and saving.
@@ -219,9 +264,9 @@ fn main() -> Result<()> {
     let mut settings = load_settings(args.config.as_ref())?;
     apply_cli_overrides(&mut settings, &args);
 
-    // Build a centralized quality filter from CLI args so the same policy
-    // is used for skipping crops and for future GUI/CLI wiring.
-    let quality_filter = build_quality_filter(&args);
+    // Build a centralized quality filter using resolved automation settings so the same
+    // policy is used for cropping, batch export, and future GUI wiring.
+    let quality_filter = build_quality_filter(&settings.crop.quality_rules);
 
     let preprocess_config: PreprocessConfig = settings.input.into();
     let postprocess_config: PostprocessConfig = (&settings.detection).into();
@@ -263,6 +308,9 @@ fn main() -> Result<()> {
         None
     };
     let crop_output_dir = Arc::new(crop_output_dir);
+    let shared_settings = Arc::new(settings.clone());
+    let quality_filter = Arc::new(quality_filter);
+    let enhancement_settings = Arc::new(build_enhancement_settings(&args));
 
     // Process images in parallel
     // Progress counters (shared across parallel tasks)
@@ -278,6 +326,9 @@ fn main() -> Result<()> {
             images_processed.fetch_add(1, Ordering::Relaxed);
             let detector = Arc::clone(&detector);
             let annotate_dir = Arc::clone(&annotate_dir);
+            let settings = Arc::clone(&shared_settings);
+            let quality_filter = Arc::clone(&quality_filter);
+            let enhancement_settings = Arc::clone(&enhancement_settings);
 
             // Lock the detector for this thread
             let output = match detector.lock().unwrap().detect_path(image_path) {
@@ -320,141 +371,184 @@ fn main() -> Result<()> {
                 None
             };
 
-            // Optionally produce cropped face images for each detection
-            #[allow(clippy::collapsible_if)]
-            if crop_enabled {
-                if let Some(out_dir) = crop_output_dir.as_ref() {
-                    // Open source image once per-task
-                    match image::open(image_path) {
-                        Ok(img) => {
-                                for (idx, det) in output.detections.iter().enumerate() {
-                                    // If user requested a specific face index, skip others.
-                                    if let Some(fidx) = args.face_index {
-                                        // CLI exposes 1-based indexes; convert to 0-based
-                                        if fidx == 0 || fidx - 1 != idx {
-                                            continue;
-                                        }
-                                    }
-                                // Build CropSettings from CLI args / preset
-                                let mut settings = CropSettings::default();
-                                // preset overrides explicit dims
-                                #[allow(clippy::collapsible_if)]
-                                if let Some(pname) = args.preset.as_ref() {
-                                    if let Some(p) = preset_by_name(pname) {
-                                        if p.width > 0 && p.height > 0 {
-                                            settings.output_width = p.width;
-                                            settings.output_height = p.height;
-                                        }
-                                    }
-                                }
-                                if let Some(w) = args.output_width {
-                                    settings.output_width = w;
-                                }
-                                if let Some(h) = args.output_height {
-                                    settings.output_height = h;
-                                }
-                                settings.face_height_pct = args.face_height_pct;
-                                settings.horizontal_offset = args.horizontal_offset;
-                                settings.vertical_offset = args.vertical_offset;
-                                settings.positioning_mode = match args.positioning_mode.as_str() {
-                                    "rule_of_thirds" | "rule-of-thirds" | "ruleofthirds" => PositioningMode::RuleOfThirds,
-                                    "custom" => PositioningMode::Custom,
-                                    _ => PositioningMode::Center,
-                                };
+            match (crop_enabled, crop_output_dir.as_ref(), img_opt.as_ref()) {
+                (true, Some(out_dir), Some(img)) => {
+                    let output_options = OutputOptions::from_crop_settings(&settings.crop);
+                    let core_settings = build_core_crop_settings(&settings.crop);
 
-                                let cropped = crop_face_from_image(&img, det, &settings);
-                                // Optionally apply enhancement pipeline before quality checks and saving
-                                let mut final_crop = cropped;
-                                // Build enhancement settings from args (presets + explicit overrides)
-                                if let Some(enh) = build_enhancement_settings(&args) {
-                                    final_crop = apply_enhancements(&final_crop, &enh);
-                                }
-                                let stem = image_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-                                let ext = args.output_format.to_lowercase();
+                    struct ProcessedCrop {
+                        index: usize,
+                        image: image::DynamicImage,
+                        quality: Quality,
+                        quality_score: f64,
+                        score: f32,
+                    }
 
-                                // Build output filename using optional naming template
-                                let out_name = if let Some(tmpl) = args.naming_template.as_ref() {
+                    let mut processed: Vec<ProcessedCrop> =
+                        Vec::with_capacity(output.detections.len());
+                    for (idx, det) in output.detections.iter().enumerate() {
+                        let mut crop_img = crop_face_from_image(img, det, &core_settings);
+                        if let Some(enh) = enhancement_settings.as_ref() {
+                            crop_img = apply_enhancements(&crop_img, enh);
+                        }
+                        let (quality_score, quality) = estimate_sharpness(&crop_img);
+                        processed.push(ProcessedCrop {
+                            index: idx,
+                            image: crop_img,
+                            quality,
+                            quality_score,
+                            score: det.score,
+                        });
+                    }
+
+                    if processed.is_empty() {
+                        debug!(
+                            "No crops generated for {} (no detections)",
+                            image_path.display()
+                        );
+                    } else {
+                        let best_quality = processed.iter().map(|c| c.quality).max();
+
+                        if quality_filter.should_skip_image(best_quality) {
+                            info!(
+                                "Skipping exports for {} because no face reached high quality",
+                                image_path.display()
+                            );
+                            crops_skipped_quality
+                                .fetch_add(processed.len().max(1), Ordering::Relaxed);
+                        } else {
+                            let mut exports = processed;
+
+                            if let Some(fidx) = args.face_index {
+                                if fidx == 0 {
+                                    warn!(
+                                        "--face-index is 1-based; ignoring 0 for {}",
+                                        image_path.display()
+                                    );
+                                    exports.clear();
+                                } else {
+                                    let target = fidx - 1;
+                                    let available = exports.len();
+                                    exports.retain(|c| c.index == target);
+                                    if exports.is_empty() {
+                                        warn!(
+                                            "Requested face index {} not found for {} ({} detections)",
+                                            fidx,
+                                            image_path.display(),
+                                            available
+                                        );
+                                    }
+                                }
+                            } else if quality_filter.auto_select && exports.len() > 1 {
+                                let qualities: Vec<(Quality, f64)> = exports
+                                    .iter()
+                                    .map(|c| (c.quality, c.quality_score))
+                                    .collect();
+                                if let Some(best_rel) =
+                                    quality_filter.select_best_index(&qualities)
+                                {
+                                    let best_idx = exports[best_rel].index;
+                                    exports.retain(|c| c.index == best_idx);
+                                    debug!(
+                                        "Auto-selected face {} for {} based on quality {:?}",
+                                        best_idx + 1,
+                                        image_path.display(),
+                                        exports.first().map(|c| c.quality)
+                                    );
+                                }
+                            }
+
+                            for crop in exports.into_iter() {
+                                if quality_filter.should_skip(crop.quality) {
+                                    info!(
+                                        "Skipping crop for {} face {} due to {:?} quality (score {:.1})",
+                                        image_path.display(),
+                                        crop.index + 1,
+                                        crop.quality,
+                                        crop.quality_score
+                                    );
+                                    crops_skipped_quality.fetch_add(1, Ordering::Relaxed);
+                                    continue;
+                                }
+
+                                let stem = image_path
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("image");
+                                let mut ext = settings.crop.output_format.clone();
+                                if ext.is_empty() {
+                                    ext = "png".to_string();
+                                }
+                                let ext = ext.to_ascii_lowercase();
+
+                                let mut out_name = if let Some(tmpl) = args.naming_template.as_ref()
+                                {
                                     use std::time::{SystemTime, UNIX_EPOCH};
-                                    let ts = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                                    let ts = SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .map(|d| d.as_secs())
+                                        .unwrap_or(0);
                                     let mut name = tmpl.clone();
                                     name = name.replace("{original}", stem);
-                                    name = name.replace("{index}", &(idx + 1).to_string());
-                                    // settings here refers to the local CropSettings built above
-                                    name = name.replace("{width}", &settings.output_width.to_string());
-                                    name = name.replace("{height}", &settings.output_height.to_string());
+                                    name = name.replace("{index}", &(crop.index + 1).to_string());
+                                    name = name.replace(
+                                        "{width}",
+                                        &settings.crop.output_width.to_string(),
+                                    );
+                                    name = name.replace(
+                                        "{height}",
+                                        &settings.crop.output_height.to_string(),
+                                    );
                                     name = name.replace("{ext}", &ext);
                                     name = name.replace("{timestamp}", &ts.to_string());
-                                    // If user did not include {ext}, append it
                                     if !tmpl.contains("{ext}") {
                                         format!("{}.{}", name, ext)
                                     } else {
                                         name
                                     }
                                 } else {
-                                    format!("{}_face{}.{}", stem, idx + 1, ext)
+                                    format!("{}_face{}.{}", stem, crop.index + 1, ext)
                                 };
+
+                                if let Some(suffix) = quality_filter.suffix_for(crop.quality) {
+                                    out_name = append_suffix_to_filename(&out_name, suffix);
+                                }
+
                                 let out_path = out_dir.join(&out_name);
-                                // Optionally skip based on centralized QualityFilter
-                                let mut should_skip = false;
-                                if quality_filter.min_quality.is_some() {
-                                    let (score, q) = estimate_sharpness(&final_crop);
-                                    debug!("crop sharpness {} -> {:?}", score, q);
-                                    if quality_filter.should_skip(q) {
-                                        should_skip = true;
-                                    }
-                                }
 
-                                if should_skip {
-                                    info!("Skipping crop for {} face {} due to low quality", image_path.display(), idx + 1);
-                                    crops_skipped_quality.fetch_add(1, Ordering::Relaxed);
-                                    continue;
-                                }
+                                let metadata_ctx = MetadataContext {
+                                    source_path: Some(image_path.as_path()),
+                                    crop_settings: Some(&settings.crop),
+                                    detection_score: Some(crop.score),
+                                    quality: Some(crop.quality),
+                                    quality_score: Some(crop.quality_score),
+                                };
 
-                                // Save with requested format/quality
-                                match ext.as_str() {
-                                    "jpeg" | "jpg" => {
-                                        // Use a JPEG encoder to honor the requested quality.
-                                        match File::create(&out_path) {
-                                            Ok(mut f) => {
-                                                let buf = final_crop.to_rgba8();
-                                                let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut f, args.jpeg_quality);
-                                                if let Err(e) = encoder.encode(buf.as_raw(), buf.width(), buf.height(), image::ColorType::Rgba8.into()) {
-                                                    warn!("Failed to encode JPEG {}: {}", out_path.display(), e);
-                                                } else {
-                                                    info!("Saved crop to {}", out_path.display());
-                                                    crops_saved.fetch_add(1, Ordering::Relaxed);
-                                                }
-                                            }
-                                            Err(e) => {
-                                                warn!("Failed to create file {}: {}", out_path.display(), e);
-                                            }
-                                        }
+                                match save_dynamic_image(
+                                    &crop.image,
+                                    &out_path,
+                                    &output_options,
+                                    &metadata_ctx,
+                                ) {
+                                    Ok(_) => {
+                                        info!("Saved crop to {}", out_path.display());
+                                        crops_saved.fetch_add(1, Ordering::Relaxed);
                                     }
-                                    "webp" => {
-                                        if let Err(e) = final_crop.save_with_format(&out_path, image::ImageFormat::WebP) {
-                                            warn!("Failed to save WebP {}: {}", out_path.display(), e);
-                                        } else {
-                                            info!("Saved crop to {}", out_path.display());
-                                            crops_saved.fetch_add(1, Ordering::Relaxed);
-                                        }
-                                    }
-                                    _ => {
-                                        // default to PNG
-                                        if let Err(e) = final_crop.save(&out_path) {
-                                            warn!("Failed to save crop {}: {}", out_path.display(), e);
-                                        } else {
-                                            info!("Saved crop to {}", out_path.display());
-                                            crops_saved.fetch_add(1, Ordering::Relaxed);
-                                        }
+                                    Err(e) => {
+                                        warn!("Failed to export crop {}: {e:?}", out_path.display());
                                     }
                                 }
                             }
                         }
-                        Err(e) => {
-                            warn!("Failed to open image for cropping {}: {}", image_path.display(), e);
-                        }
                     }
                 }
+                (true, Some(_), None) => {
+                    warn!(
+                        "Cannot crop {} because the source image failed to load",
+                        image_path.display()
+                    );
+                }
+                _ => {}
             }
 
             // Build detection records, including optional quality estimates per-detection
@@ -534,21 +628,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Construct a `QualityFilter` from CLI arguments.
-fn build_quality_filter(args: &DetectArgs) -> QualityFilter {
-    if args.skip_low_quality.unwrap_or(false) {
-        QualityFilter::new(Some(Quality::Medium))
-    } else if let Some(ref s) = args.min_quality {
-        match s.parse::<Quality>() {
-            Ok(q) => QualityFilter::new(Some(q)),
-            Err(_) => {
-                warn!("unknown --min-quality value '{}', ignoring", s);
-                QualityFilter::new(None)
-            }
-        }
-    } else {
-        QualityFilter::new(None)
-    }
+/// Construct a `QualityFilter` from persistent automation settings.
+fn build_quality_filter(settings: &QualityAutomationSettings) -> QualityFilter {
+    let mut filter = QualityFilter::new(settings.min_quality);
+    filter.auto_select = settings.auto_select_best_face;
+    filter.auto_skip_no_high = settings.auto_skip_no_high_quality;
+    filter.suffix_enabled = settings.quality_suffix;
+    filter
 }
 
 /// Build EnhancementSettings from CLI args. Returns None when enhancements aren't enabled.
@@ -670,49 +756,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_quality_filter_skip_low_maps_to_medium() {
-        let args = DetectArgs {
-            input: PathBuf::from("image.png"),
-            model: PathBuf::from("model.onnx"),
-            config: None,
-            width: None,
-            height: None,
-            score_threshold: None,
-            nms_threshold: None,
-            top_k: None,
-            json: None,
-            annotate: None,
-            crop: false,
-            output_dir: None,
-            preset: None,
-            output_width: None,
-            output_height: None,
-            face_height_pct: 70.0,
-            positioning_mode: "center".to_string(),
-            horizontal_offset: 0.0,
-            vertical_offset: 0.0,
-            output_format: "png".to_string(),
-            jpeg_quality: 90u8,
-            face_index: None,
-            min_quality: None,
-            skip_low_quality: Some(true),
-            enhance: None,
-            unsharp_amount: None,
-            unsharp_radius: None,
-            enhance_contrast: None,
-            enhance_exposure: None,
-            enhance_brightness: None,
-            enhance_saturation: None,
-            enhance_auto_color: None,
-            enhance_sharpness: None,
-            enhance_skin_smooth: None,
-            enhance_red_eye_removal: None,
-            enhance_background_blur: None,
-            naming_template: None,
-            enhancement_preset: None,
-        };
-        let qf = build_quality_filter(&args);
-        assert_eq!(qf.min_quality, Some(Quality::Medium));
+    fn build_quality_filter_reflects_settings() {
+        let mut settings = QualityAutomationSettings::default();
+        settings.min_quality = Some(Quality::High);
+        settings.auto_select_best_face = true;
+        settings.auto_skip_no_high_quality = true;
+        settings.quality_suffix = true;
+
+        let filter = build_quality_filter(&settings);
+        assert_eq!(filter.min_quality, Some(Quality::High));
+        assert!(filter.auto_select);
+        assert!(filter.auto_skip_no_high);
+        assert!(filter.suffix_enabled);
     }
 
     #[test]
@@ -739,9 +794,19 @@ mod tests {
             vertical_offset: 0.0,
             output_format: "png".to_string(),
             jpeg_quality: 90u8,
+            png_compression: None,
+            webp_quality: None,
+            auto_detect_format: None,
             face_index: None,
             min_quality: None,
             skip_low_quality: None,
+            auto_select_best: None,
+            skip_no_high_quality: None,
+            quality_suffix: None,
+            metadata_mode: None,
+            metadata_include_crop: None,
+            metadata_include_quality: None,
+            metadata_tags: Vec::new(),
             enhance: Some(true),
             unsharp_amount: None,
             unsharp_radius: None,
@@ -789,9 +854,19 @@ mod tests {
             vertical_offset: 0.0,
             output_format: "png".to_string(),
             jpeg_quality: 90u8,
+            png_compression: None,
+            webp_quality: None,
+            auto_detect_format: None,
             face_index: None,
             min_quality: None,
             skip_low_quality: None,
+            auto_select_best: None,
+            skip_no_high_quality: None,
+            quality_suffix: None,
+            metadata_mode: None,
+            metadata_include_crop: None,
+            metadata_include_quality: None,
+            metadata_tags: Vec::new(),
             enhance: Some(true),
             unsharp_amount: Some(0.25),
             unsharp_radius: None,
@@ -881,9 +956,19 @@ mod tests {
             vertical_offset: 0.0,
             output_format: "png".to_string(),
             jpeg_quality: 90u8,
+            png_compression: None,
+            webp_quality: None,
+            auto_detect_format: None,
             face_index: None,
             min_quality: None,
             skip_low_quality: None,
+            auto_select_best: None,
+            skip_no_high_quality: None,
+            quality_suffix: None,
+            metadata_mode: None,
+            metadata_include_crop: None,
+            metadata_include_quality: None,
+            metadata_tags: Vec::new(),
             enhance: Some(true),
             unsharp_amount: None,
             unsharp_radius: None,
@@ -914,95 +999,13 @@ mod tests {
     }
 
     #[test]
-    fn build_quality_filter_parses_min_quality() {
-        let args = DetectArgs {
-            input: PathBuf::from("image.png"),
-            model: PathBuf::from("model.onnx"),
-            config: None,
-            width: None,
-            height: None,
-            score_threshold: None,
-            nms_threshold: None,
-            top_k: None,
-            json: None,
-            annotate: None,
-            crop: false,
-            output_dir: None,
-            preset: None,
-            output_width: None,
-            output_height: None,
-            face_height_pct: 70.0,
-            positioning_mode: "center".to_string(),
-            horizontal_offset: 0.0,
-            vertical_offset: 0.0,
-            output_format: "png".to_string(),
-            jpeg_quality: 90u8,
-            face_index: None,
-            min_quality: Some("high".to_string()),
-            skip_low_quality: None,
-            enhance: None,
-            unsharp_amount: None,
-            unsharp_radius: None,
-            enhance_contrast: None,
-            enhance_exposure: None,
-            enhance_brightness: None,
-            enhance_saturation: None,
-            enhance_auto_color: None,
-            enhance_sharpness: None,
-            enhance_skin_smooth: None,
-            enhance_red_eye_removal: None,
-            enhance_background_blur: None,
-            naming_template: None,
-            enhancement_preset: None,
-        };
-        let qf = build_quality_filter(&args);
-        assert_eq!(qf.min_quality, Some(Quality::High));
-    }
-
-    #[test]
-    fn build_quality_filter_none_when_not_set() {
-        let args = DetectArgs {
-            input: PathBuf::from("image.png"),
-            model: PathBuf::from("model.onnx"),
-            config: None,
-            width: None,
-            height: None,
-            score_threshold: None,
-            nms_threshold: None,
-            top_k: None,
-            json: None,
-            annotate: None,
-            crop: false,
-            output_dir: None,
-            preset: None,
-            output_width: None,
-            output_height: None,
-            face_height_pct: 70.0,
-            positioning_mode: "center".to_string(),
-            horizontal_offset: 0.0,
-            vertical_offset: 0.0,
-            output_format: "png".to_string(),
-            jpeg_quality: 90u8,
-            face_index: None,
-            min_quality: None,
-            skip_low_quality: None,
-            enhance: None,
-            unsharp_amount: None,
-            unsharp_radius: None,
-            enhance_contrast: None,
-            enhance_exposure: None,
-            enhance_brightness: None,
-            enhance_saturation: None,
-            enhance_auto_color: None,
-            enhance_sharpness: None,
-            enhance_skin_smooth: None,
-            enhance_red_eye_removal: None,
-            enhance_background_blur: None,
-            naming_template: None,
-            enhancement_preset: None,
-        };
-        let qf = build_quality_filter(&args);
-        assert_eq!(qf.min_quality, None);
+    fn build_quality_filter_defaults_to_none() {
+        let settings = QualityAutomationSettings::default();
+        let filter = build_quality_filter(&settings);
+        assert_eq!(filter.min_quality, None);
+        assert!(!filter.auto_select);
+        assert!(!filter.auto_skip_no_high);
+        assert!(!filter.suffix_enabled);
     }
 }
 
@@ -1033,6 +1036,118 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     if let Some(top_k) = args.top_k {
         settings.detection.top_k = top_k;
     }
+
+    if let Some(preset_name) = args.preset.as_ref() {
+        settings.crop.preset = preset_name.to_ascii_lowercase();
+        if settings.crop.preset != "custom"
+            && let Some(preset) = preset_by_name(preset_name)
+            && preset.width > 0
+            && preset.height > 0
+        {
+            settings.crop.output_width = preset.width;
+            settings.crop.output_height = preset.height;
+        }
+    }
+    if let Some(width) = args.output_width {
+        settings.crop.output_width = width;
+        settings.crop.preset = "custom".to_string();
+    }
+    if let Some(height) = args.output_height {
+        settings.crop.output_height = height;
+        settings.crop.preset = "custom".to_string();
+    }
+
+    settings.crop.face_height_pct = args.face_height_pct;
+    settings.crop.horizontal_offset = args.horizontal_offset;
+    settings.crop.vertical_offset = args.vertical_offset;
+    settings.crop.positioning_mode = args.positioning_mode.replace('_', "-");
+    settings.crop.output_format = args.output_format.to_ascii_lowercase();
+    settings.crop.jpeg_quality = args.jpeg_quality;
+    if let Some(ref compression) = args.png_compression {
+        settings.crop.png_compression = compression.clone();
+    }
+    if let Some(webp) = args.webp_quality {
+        settings.crop.webp_quality = webp;
+    }
+    if let Some(auto) = args.auto_detect_format {
+        settings.crop.auto_detect_format = auto;
+    }
+
+    if let Some(auto) = args.auto_select_best {
+        settings.crop.quality_rules.auto_select_best_face = auto;
+    }
+    if let Some(skip) = args.skip_no_high_quality {
+        settings.crop.quality_rules.auto_skip_no_high_quality = skip;
+    }
+    if let Some(flag) = args.quality_suffix {
+        settings.crop.quality_rules.quality_suffix = flag;
+    }
+    if let Some(skip) = args.skip_low_quality {
+        if skip {
+            settings.crop.quality_rules.min_quality = Some(Quality::Medium);
+        } else {
+            settings.crop.quality_rules.min_quality = None;
+        }
+    } else if let Some(ref s) = args.min_quality {
+        match s.parse::<Quality>() {
+            Ok(q) => {
+                settings.crop.quality_rules.min_quality = Some(q);
+            }
+            Err(_) => warn!("unknown --min-quality value '{}', ignoring", s),
+        }
+    }
+
+    if let Some(ref mode) = args.metadata_mode {
+        match mode.parse::<MetadataMode>() {
+            Ok(mode) => settings.crop.metadata.mode = mode,
+            Err(err) => warn!("{err}"),
+        }
+    }
+    if let Some(include) = args.metadata_include_crop {
+        settings.crop.metadata.include_crop_settings = include;
+    }
+    if let Some(include) = args.metadata_include_quality {
+        settings.crop.metadata.include_quality_metrics = include;
+    }
+    if !args.metadata_tags.is_empty() {
+        settings.crop.metadata.custom_tags = parse_metadata_tags_args(&args.metadata_tags);
+    }
+}
+
+fn build_core_crop_settings(cfg: &ConfigCropSettings) -> CropSettings {
+    CropSettings {
+        output_width: cfg.output_width,
+        output_height: cfg.output_height,
+        face_height_pct: cfg.face_height_pct,
+        positioning_mode: parse_positioning_mode(&cfg.positioning_mode),
+        horizontal_offset: cfg.horizontal_offset,
+        vertical_offset: cfg.vertical_offset,
+    }
+}
+
+fn parse_positioning_mode(value: &str) -> PositioningMode {
+    match value.to_ascii_lowercase().as_str() {
+        "rule_of_thirds" | "rule-of-thirds" | "ruleofthirds" => PositioningMode::RuleOfThirds,
+        "custom" => PositioningMode::Custom,
+        _ => PositioningMode::Center,
+    }
+}
+
+fn parse_metadata_tags_args(entries: &[String]) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for entry in entries {
+        if let Some((key, value)) = entry.split_once('=') {
+            let key = key.trim();
+            if key.is_empty() {
+                warn!("Ignoring metadata tag with empty key: '{entry}'");
+                continue;
+            }
+            map.insert(key.to_string(), value.trim().to_string());
+        } else {
+            warn!("Invalid metadata tag '{entry}', expected key=value");
+        }
+    }
+    map
 }
 
 /// Collect all image paths from a file or directory.

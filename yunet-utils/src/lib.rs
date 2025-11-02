@@ -8,6 +8,8 @@ pub mod enhance;
 pub mod fixtures;
 /// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
+/// Image output helpers (encoding, metadata preservation).
+pub mod output;
 /// Image quality analysis (Laplacian variance blur detection).
 pub mod quality;
 
@@ -22,6 +24,9 @@ pub use fixtures::{
 };
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
+};
+pub use output::{
+    ImageFormatHint, MetadataContext, OutputOptions, append_suffix_to_filename, save_dynamic_image,
 };
 pub use quality::QualityFilter;
 pub use quality::{Quality, estimate_sharpness, laplacian_variance};

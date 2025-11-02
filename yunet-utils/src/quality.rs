@@ -5,9 +5,11 @@
 
 use image::{DynamicImage, GrayImage};
 use ndarray::Array2;
+use serde::{Deserialize, Serialize};
 
 /// Quality levels derived from Laplacian variance thresholds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Quality {
     Low,
     Medium,
@@ -52,6 +54,10 @@ pub struct QualityFilter {
     pub auto_select: bool,
     /// Optional fallback quality if no crop meets `min_quality`.
     pub fallback: Option<Quality>,
+    /// Skip exporting when no detection meets `Quality::High`.
+    pub auto_skip_no_high: bool,
+    /// Append quality suffixes to exported filenames.
+    pub suffix_enabled: bool,
 }
 
 impl QualityFilter {
@@ -61,6 +67,8 @@ impl QualityFilter {
             min_quality,
             auto_select: false,
             fallback: None,
+            auto_skip_no_high: false,
+            suffix_enabled: false,
         }
     }
 
@@ -70,6 +78,43 @@ impl QualityFilter {
             return q < min;
         }
         false
+    }
+
+    /// When `auto_skip_no_high` is enabled, return true if the best available quality
+    /// does not reach `Quality::High`.
+    pub fn should_skip_image(&self, best_quality: Option<Quality>) -> bool {
+        if self.auto_skip_no_high {
+            !matches!(best_quality, Some(Quality::High))
+        } else {
+            false
+        }
+    }
+
+    /// Pick the index of the best quality entry from `(Quality, score)` tuples.
+    /// `Quality::High` beats `Medium`, which beats `Low`. Ties fall back to the raw score.
+    pub fn select_best_index(&self, qualities: &[(Quality, f64)]) -> Option<usize> {
+        qualities
+            .iter()
+            .enumerate()
+            .max_by(|(_, (qa, sa)), (_, (qb, sb))| match qa.cmp(qb) {
+                std::cmp::Ordering::Equal => {
+                    sa.partial_cmp(sb).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                other => other,
+            })
+            .map(|(idx, _)| idx)
+    }
+
+    /// Return a filename suffix (e.g., `_highq`) when suffixing is enabled.
+    pub fn suffix_for(&self, q: Quality) -> Option<&'static str> {
+        if !self.suffix_enabled {
+            return None;
+        }
+        match q {
+            Quality::High => Some("_highq"),
+            Quality::Medium => Some("_medq"),
+            Quality::Low => Some("_lowq"),
+        }
     }
 }
 

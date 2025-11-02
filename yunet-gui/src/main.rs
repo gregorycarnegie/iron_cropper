@@ -3,7 +3,8 @@
 mod theme;
 
 use std::{
-    collections::{HashMap, HashSet},
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
 };
@@ -21,10 +22,12 @@ use yunet_core::{
     PreprocessConfig, YuNetDetector, calculate_crop_region, preset_by_name,
 };
 use yunet_utils::{
-    config::AppSettings,
+    MetadataContext, OutputOptions, append_suffix_to_filename,
+    config::{AppSettings, CropSettings as ConfigCropSettings, MetadataMode},
     enhance::{EnhancementSettings, apply_enhancements},
     init_logging, load_image,
     quality::{Quality, estimate_sharpness},
+    save_dynamic_image,
 };
 
 /// Main entry point for the GUI application.
@@ -96,6 +99,11 @@ struct YuNetApp {
     show_crop_overlay: bool,
     /// Set of selected face indices (for cropping).
     selected_faces: HashSet<usize>,
+    /// Undo/redo stack for crop configuration.
+    crop_history: Vec<ConfigCropSettings>,
+    crop_history_index: usize,
+    /// Editable metadata tags input cached for the UI.
+    metadata_tags_input: String,
     /// Batch mode state.
     batch_files: Vec<BatchFile>,
     /// Current index in batch processing.
@@ -211,6 +219,10 @@ impl YuNetApp {
 
         let model_path_input = settings.model_path.clone().unwrap_or_default();
 
+        let crop_history = vec![settings.crop.clone()];
+        let crop_history_index = crop_history.len() - 1;
+        let metadata_tags_input = Self::format_metadata_tags(&settings.crop.metadata.custom_tags);
+
         Self {
             settings,
             settings_path,
@@ -229,6 +241,9 @@ impl YuNetApp {
             current_job: None,
             show_crop_overlay: true,
             selected_faces: HashSet::new(),
+            crop_history,
+            crop_history_index,
+            metadata_tags_input,
             batch_files: Vec::new(),
             batch_current_index: None,
         }
@@ -256,6 +271,7 @@ impl YuNetApp {
             .default_width(320.0)
             .show(ctx, |ui| {
                 let mut settings_changed = false;
+                let mut metadata_tags_changed = false;
                 let mut requires_detector_reset = false;
                 let mut requires_cache_refresh = false;
                 ui.heading("Image");
@@ -694,8 +710,240 @@ impl YuNetApp {
                     }
                 }
 
+                ui.separator();
+                ui.label("Quality automation");
+                let mut auto_select = self.settings.crop.quality_rules.auto_select_best_face;
+                if ui
+                    .checkbox(&mut auto_select, "Auto-select highest quality face")
+                    .changed()
+                {
+                    self.settings.crop.quality_rules.auto_select_best_face = auto_select;
+                    settings_changed = true;
+                }
+
+                let mut skip_no_high = self.settings.crop.quality_rules.auto_skip_no_high_quality;
+                if ui
+                    .checkbox(&mut skip_no_high, "Skip export when no high-quality faces")
+                    .changed()
+                {
+                    self.settings.crop.quality_rules.auto_skip_no_high_quality = skip_no_high;
+                    settings_changed = true;
+                }
+
+                let mut suffix_enabled = self.settings.crop.quality_rules.quality_suffix;
+                if ui
+                    .checkbox(&mut suffix_enabled, "Append quality suffix to filenames")
+                    .changed()
+                {
+                    self.settings.crop.quality_rules.quality_suffix = suffix_enabled;
+                    settings_changed = true;
+                }
+
+                ui.horizontal(|ui| {
+                    ui.label("Minimum quality to export");
+                    let current = self.settings.crop.quality_rules.min_quality;
+                    let label = match current {
+                        Some(Quality::Low) => "Low",
+                        Some(Quality::Medium) => "Medium",
+                        Some(Quality::High) => "High",
+                        None => "Off",
+                    };
+                    egui::ComboBox::from_id_salt("min_quality_combo")
+                        .selected_text(label)
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(current.is_none(), "Off").clicked() {
+                                self.settings.crop.quality_rules.min_quality = None;
+                                settings_changed = true;
+                            }
+                            if ui
+                                .selectable_label(current == Some(Quality::Low), "Low")
+                                .clicked()
+                            {
+                                self.settings.crop.quality_rules.min_quality = Some(Quality::Low);
+                                settings_changed = true;
+                            }
+                            if ui
+                                .selectable_label(current == Some(Quality::Medium), "Medium")
+                                .clicked()
+                            {
+                                self.settings.crop.quality_rules.min_quality =
+                                    Some(Quality::Medium);
+                                settings_changed = true;
+                            }
+                            if ui
+                                .selectable_label(current == Some(Quality::High), "High")
+                                .clicked()
+                            {
+                                self.settings.crop.quality_rules.min_quality = Some(Quality::High);
+                                settings_changed = true;
+                            }
+                        });
+                });
+
+                ui.separator();
+                ui.label("Output format");
+                egui::ComboBox::from_id_salt("output_format_combo")
+                    .selected_text(self.settings.crop.output_format.to_ascii_uppercase())
+                    .show_ui(ui, |ui| {
+                        for option in ["png", "jpeg", "webp"] {
+                            if ui
+                                .selectable_label(
+                                    self.settings.crop.output_format == option,
+                                    option.to_ascii_uppercase(),
+                                )
+                                .clicked()
+                            {
+                                self.settings.crop.output_format = option.to_string();
+                                settings_changed = true;
+                            }
+                        }
+                    });
+
+                let mut auto_detect = self.settings.crop.auto_detect_format;
+                if ui
+                    .checkbox(&mut auto_detect, "Auto-detect format from file extension")
+                    .changed()
+                {
+                    self.settings.crop.auto_detect_format = auto_detect;
+                    settings_changed = true;
+                }
+
+                ui.horizontal(|ui| {
+                    ui.label("PNG compression");
+                    let current = self.settings.crop.png_compression.to_ascii_lowercase();
+                    let label = match current.as_str() {
+                        "fast" => "Fast".to_string(),
+                        "default" => "Default".to_string(),
+                        "best" => "Best".to_string(),
+                        other => format!("Custom ({other})"),
+                    };
+                    egui::ComboBox::from_id_salt("png_compression_combo")
+                        .selected_text(label)
+                        .show_ui(ui, |ui| {
+                            for (value, text) in
+                                [("fast", "Fast"), ("default", "Default"), ("best", "Best")]
+                            {
+                                if ui
+                                    .selectable_label(
+                                        self.settings
+                                            .crop
+                                            .png_compression
+                                            .eq_ignore_ascii_case(value),
+                                        text,
+                                    )
+                                    .clicked()
+                                {
+                                    self.settings.crop.png_compression = value.to_string();
+                                    settings_changed = true;
+                                }
+                            }
+                        });
+
+                    let mut level = self
+                        .settings
+                        .crop
+                        .png_compression
+                        .parse::<i32>()
+                        .unwrap_or(6);
+                    let prev = level;
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut level)
+                                .range(0..=9)
+                                .prefix("Level "),
+                        )
+                        .changed()
+                    {
+                        level = level.clamp(0, 9);
+                        if level != prev {
+                            self.settings.crop.png_compression = level.to_string();
+                            settings_changed = true;
+                        }
+                    }
+                });
+
+                let mut jpeg_quality = i32::from(self.settings.crop.jpeg_quality);
+                if ui
+                    .add(Slider::new(&mut jpeg_quality, 1..=100).text("JPEG quality"))
+                    .changed()
+                {
+                    self.settings.crop.jpeg_quality = jpeg_quality as u8;
+                    settings_changed = true;
+                }
+
+                let mut webp_quality = i32::from(self.settings.crop.webp_quality);
+                if ui
+                    .add(Slider::new(&mut webp_quality, 0..=100).text("WebP quality"))
+                    .changed()
+                {
+                    self.settings.crop.webp_quality = webp_quality as u8;
+                    settings_changed = true;
+                }
+
+                ui.separator();
+                ui.label("Metadata");
+                let mode_label = match self.settings.crop.metadata.mode {
+                    MetadataMode::Preserve => "Preserve",
+                    MetadataMode::Strip => "Strip",
+                    MetadataMode::Custom => "Custom",
+                };
+                egui::ComboBox::from_id_salt("metadata_mode_combo")
+                    .selected_text(mode_label)
+                    .show_ui(ui, |ui| {
+                        for (value, text) in [
+                            (MetadataMode::Preserve, "Preserve"),
+                            (MetadataMode::Strip, "Strip"),
+                            (MetadataMode::Custom, "Custom"),
+                        ] {
+                            if ui
+                                .selectable_label(self.settings.crop.metadata.mode == value, text)
+                                .clicked()
+                            {
+                                self.settings.crop.metadata.mode = value;
+                                settings_changed = true;
+                            }
+                        }
+                    });
+
+                let mut include_crop = self.settings.crop.metadata.include_crop_settings;
+                if ui
+                    .checkbox(&mut include_crop, "Include crop settings metadata")
+                    .changed()
+                {
+                    self.settings.crop.metadata.include_crop_settings = include_crop;
+                    settings_changed = true;
+                }
+
+                let mut include_quality = self.settings.crop.metadata.include_quality_metrics;
+                if ui
+                    .checkbox(&mut include_quality, "Include quality metrics metadata")
+                    .changed()
+                {
+                    self.settings.crop.metadata.include_quality_metrics = include_quality;
+                    settings_changed = true;
+                }
+
+                if ui
+                    .text_edit_multiline(&mut self.metadata_tags_input)
+                    .changed()
+                {
+                    self.settings.crop.metadata.custom_tags =
+                        Self::parse_metadata_tags(&self.metadata_tags_input);
+                    settings_changed = true;
+                    metadata_tags_changed = true;
+                }
+                ui.label("Enter custom tags as key=value, one per line.")
+                    .on_hover_text(
+                        "Tags are embedded into output metadata when mode is preserve or custom.",
+                    );
+
                 if settings_changed {
+                    self.push_crop_history();
                     self.persist_settings_with_feedback();
+                    self.apply_quality_rules_to_preview();
+                    if !metadata_tags_changed {
+                        self.refresh_metadata_tags_input();
+                    }
                 }
 
                 ui.separator();
@@ -789,14 +1037,20 @@ impl YuNetApp {
                     }
 
                     if ui
-                        .checkbox(&mut self.settings.enhance.red_eye_removal, "Red-Eye Removal")
+                        .checkbox(
+                            &mut self.settings.enhance.red_eye_removal,
+                            "Red-Eye Removal",
+                        )
                         .changed()
                     {
                         settings_changed = true;
                     }
 
                     if ui
-                        .checkbox(&mut self.settings.enhance.background_blur, "Background Blur")
+                        .checkbox(
+                            &mut self.settings.enhance.background_blur,
+                            "Background Blur",
+                        )
                         .changed()
                     {
                         settings_changed = true;
@@ -935,6 +1189,297 @@ impl YuNetApp {
         }
     }
 
+    fn quality_suffix(&self, quality: Quality) -> Option<&'static str> {
+        if !self.settings.crop.quality_rules.quality_suffix {
+            return None;
+        }
+        match quality {
+            Quality::High => Some("_highq"),
+            Quality::Medium => Some("_medq"),
+            Quality::Low => Some("_lowq"),
+        }
+    }
+
+    fn should_skip_quality(&self, quality: Quality) -> bool {
+        if let Some(min) = self.settings.crop.quality_rules.min_quality {
+            quality < min
+        } else {
+            false
+        }
+    }
+
+    fn apply_quality_rules_to_preview(&mut self) {
+        self.selected_faces.clear();
+        if self.preview.detections.is_empty() {
+            return;
+        }
+
+        let rules = &self.settings.crop.quality_rules;
+        let best_quality = self.preview.detections.iter().map(|d| d.quality).max();
+
+        if rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
+            if let Some(path) = &self.preview.image_path {
+                self.status_line = format!("No high-quality faces detected in {}", path.display());
+            } else {
+                self.status_line = "No high-quality faces detected".to_string();
+            }
+            return;
+        }
+
+        if rules.auto_select_best_face
+            && self.preview.detections.len() > 1
+            && let Some((best_idx, _)) =
+                self.preview.detections.iter().enumerate().max_by(|a, b| {
+                    a.1.quality.cmp(&b.1.quality).then_with(|| {
+                        a.1.quality_score
+                            .partial_cmp(&b.1.quality_score)
+                            .unwrap_or(Ordering::Equal)
+                    })
+                })
+        {
+            self.selected_faces.insert(best_idx);
+            return;
+        }
+
+        for idx in 0..self.preview.detections.len() {
+            self.selected_faces.insert(idx);
+        }
+    }
+
+    fn format_metadata_tags(map: &BTreeMap<String, String>) -> String {
+        map.iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn parse_metadata_tags(text: &str) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Some((key, value)) = trimmed.split_once('=') {
+                let key = key.trim();
+                if key.is_empty() {
+                    continue;
+                }
+                map.insert(key.to_string(), value.trim().to_string());
+            }
+        }
+        map
+    }
+
+    fn refresh_metadata_tags_input(&mut self) {
+        self.metadata_tags_input =
+            Self::format_metadata_tags(&self.settings.crop.metadata.custom_tags);
+    }
+
+    fn push_crop_history(&mut self) {
+        if self
+            .crop_history
+            .last()
+            .is_some_and(|last| last == &self.settings.crop)
+        {
+            return;
+        }
+        if self.crop_history_index + 1 < self.crop_history.len() {
+            self.crop_history.truncate(self.crop_history_index + 1);
+        }
+        self.crop_history.push(self.settings.crop.clone());
+        const MAX_HISTORY: usize = 100;
+        if self.crop_history.len() > MAX_HISTORY {
+            let remove = self.crop_history.len() - MAX_HISTORY;
+            self.crop_history.drain(0..remove);
+        }
+        self.crop_history_index = self.crop_history.len() - 1;
+    }
+
+    fn undo_crop_settings(&mut self) {
+        if self.crop_history_index == 0 {
+            return;
+        }
+        self.crop_history_index -= 1;
+        self.settings.crop = self.crop_history[self.crop_history_index].clone();
+        self.persist_settings_with_feedback();
+        self.apply_quality_rules_to_preview();
+        self.refresh_metadata_tags_input();
+    }
+
+    fn redo_crop_settings(&mut self) {
+        if self.crop_history_index + 1 >= self.crop_history.len() {
+            return;
+        }
+        self.crop_history_index += 1;
+        self.settings.crop = self.crop_history[self.crop_history_index].clone();
+        self.persist_settings_with_feedback();
+        self.apply_quality_rules_to_preview();
+        self.refresh_metadata_tags_input();
+    }
+
+    fn adjust_horizontal_offset(&mut self, delta: f32) {
+        if delta.abs() < f32::EPSILON {
+            return;
+        }
+        let new_value = (self.settings.crop.horizontal_offset + delta).clamp(-1.0, 1.0);
+        if (new_value - self.settings.crop.horizontal_offset).abs() < f32::EPSILON {
+            return;
+        }
+        self.settings.crop.horizontal_offset = new_value;
+        self.push_crop_history();
+        self.persist_settings_with_feedback();
+    }
+
+    fn adjust_vertical_offset(&mut self, delta: f32) {
+        if delta.abs() < f32::EPSILON {
+            return;
+        }
+        let new_value = (self.settings.crop.vertical_offset + delta).clamp(-1.0, 1.0);
+        if (new_value - self.settings.crop.vertical_offset).abs() < f32::EPSILON {
+            return;
+        }
+        self.settings.crop.vertical_offset = new_value;
+        self.push_crop_history();
+        self.persist_settings_with_feedback();
+    }
+
+    fn adjust_face_height(&mut self, delta: f32) {
+        if delta.abs() < f32::EPSILON {
+            return;
+        }
+        let new_value = (self.settings.crop.face_height_pct + delta).clamp(10.0, 100.0);
+        if (new_value - self.settings.crop.face_height_pct).abs() < f32::EPSILON {
+            return;
+        }
+        self.settings.crop.face_height_pct = new_value;
+        self.push_crop_history();
+        self.persist_settings_with_feedback();
+    }
+
+    fn set_crop_preset(&mut self, preset: &str) {
+        if self.settings.crop.preset == preset {
+            return;
+        }
+        self.settings.crop.preset = preset.to_string();
+        self.push_crop_history();
+        self.persist_settings_with_feedback();
+    }
+
+    fn handle_shortcuts(&mut self, ctx: &EguiContext) {
+        let wants_text = ctx.wants_keyboard_input();
+
+        struct ShortcutActions {
+            undo: bool,
+            redo: bool,
+            horiz_delta: f32,
+            vert_delta: f32,
+            face_height_delta: f32,
+            preset: Option<&'static str>,
+            toggle_enhance: bool,
+            export: bool,
+        }
+
+        let mut actions = ShortcutActions {
+            undo: false,
+            redo: false,
+            horiz_delta: 0.0,
+            vert_delta: 0.0,
+            face_height_delta: 0.0,
+            preset: None,
+            toggle_enhance: false,
+            export: false,
+        };
+
+        ctx.input(|input| {
+            let base_step = if input.modifiers.shift { 0.1 } else { 0.05 };
+            let face_step = if input.modifiers.shift { 5.0 } else { 1.0 };
+            let command = input.modifiers.command;
+
+            if input.key_pressed(Key::Z) && command {
+                if input.modifiers.shift {
+                    actions.redo = true;
+                } else {
+                    actions.undo = true;
+                }
+            }
+            if input.key_pressed(Key::Y) && command {
+                actions.redo = true;
+            }
+
+            if !command && !wants_text {
+                if input.key_pressed(Key::ArrowLeft) {
+                    actions.horiz_delta -= base_step;
+                }
+                if input.key_pressed(Key::ArrowRight) {
+                    actions.horiz_delta += base_step;
+                }
+                if input.key_pressed(Key::ArrowUp) {
+                    actions.vert_delta -= base_step;
+                }
+                if input.key_pressed(Key::ArrowDown) {
+                    actions.vert_delta += base_step;
+                }
+                if input.key_pressed(Key::Minus) {
+                    actions.face_height_delta -= face_step;
+                }
+                if input.key_pressed(Key::Equals) {
+                    actions.face_height_delta += face_step;
+                }
+
+                const PRESETS: [(&str, Key); 6] = [
+                    ("linkedin", Key::Num1),
+                    ("passport", Key::Num2),
+                    ("instagram", Key::Num3),
+                    ("idcard", Key::Num4),
+                    ("avatar", Key::Num5),
+                    ("headshot", Key::Num6),
+                ];
+                for (preset, key) in PRESETS {
+                    if input.key_pressed(key) {
+                        actions.preset = Some(preset);
+                    }
+                }
+
+                if input.key_pressed(Key::Space) {
+                    actions.toggle_enhance = true;
+                }
+                if input.key_pressed(Key::Enter) {
+                    actions.export = true;
+                }
+            }
+        });
+
+        if actions.undo {
+            self.undo_crop_settings();
+            return;
+        }
+        if actions.redo {
+            self.redo_crop_settings();
+            return;
+        }
+
+        if actions.horiz_delta.abs() > f32::EPSILON {
+            self.adjust_horizontal_offset(actions.horiz_delta);
+        }
+        if actions.vert_delta.abs() > f32::EPSILON {
+            self.adjust_vertical_offset(actions.vert_delta);
+        }
+        if actions.face_height_delta.abs() > f32::EPSILON {
+            self.adjust_face_height(actions.face_height_delta);
+        }
+        if let Some(preset) = actions.preset {
+            self.set_crop_preset(preset);
+        }
+        if actions.toggle_enhance {
+            self.settings.enhance.enabled = !self.settings.enhance.enabled;
+            self.persist_settings_with_feedback();
+        }
+        if actions.export {
+            self.export_selected_faces();
+        }
+    }
+
     /// Exports selected faces to disk.
     fn export_selected_faces(&mut self) {
         // Get output directory from user
@@ -970,13 +1515,26 @@ impl YuNetApp {
         let crop_settings = self.build_crop_settings();
         let enhancement_settings = self.build_enhancement_settings();
         let enhance_enabled = self.settings.enhance.enabled;
+        let crop_config = self.settings.crop.clone();
+        let output_options = OutputOptions::from_crop_settings(&crop_config);
 
         let mut export_count = 0;
         let mut error_count = 0;
+        let mut skipped_quality = 0;
 
         // Export each selected face
         for &face_idx in &self.selected_faces {
             if let Some(det_with_quality) = self.preview.detections.get(face_idx) {
+                if self.should_skip_quality(det_with_quality.quality) {
+                    info!(
+                        "Skipping face {} due to {:?} quality",
+                        face_idx + 1,
+                        det_with_quality.quality
+                    );
+                    skipped_quality += 1;
+                    continue;
+                }
+
                 let bbox = &det_with_quality.detection.bbox;
 
                 // Calculate crop region
@@ -1014,33 +1572,28 @@ impl YuNetApp {
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("face");
-                let ext = match self.settings.crop.output_format.as_str() {
+                let ext = match crop_config.output_format.as_str() {
                     "jpeg" | "jpg" => "jpg",
                     "webp" => "webp",
                     _ => "png",
                 };
-                let output_filename = format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
+                let mut output_filename =
+                    format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
+                if let Some(suffix) = self.quality_suffix(det_with_quality.quality) {
+                    output_filename = append_suffix_to_filename(&output_filename, suffix);
+                }
                 let output_path = output_dir.join(output_filename);
 
-                // Save image
-                let save_result = match self.settings.crop.output_format.as_str() {
-                    "jpeg" | "jpg" => {
-                        let rgb = final_image.to_rgb8();
-                        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                            std::fs::File::create(&output_path).unwrap(),
-                            self.settings.crop.jpeg_quality,
-                        );
-                        encoder.encode(
-                            rgb.as_raw(),
-                            rgb.width(),
-                            rgb.height(),
-                            image::ExtendedColorType::Rgb8,
-                        )
-                    }
-                    _ => final_image.save(&output_path),
+                let metadata_ctx = MetadataContext {
+                    source_path: Some(source_path.as_path()),
+                    crop_settings: Some(&crop_config),
+                    detection_score: Some(det_with_quality.detection.score),
+                    quality: Some(det_with_quality.quality),
+                    quality_score: Some(det_with_quality.quality_score),
                 };
 
-                match save_result {
+                match save_dynamic_image(&final_image, &output_path, &output_options, &metadata_ctx)
+                {
                     Ok(_) => {
                         info!(
                             "Exported face {} to {}",
@@ -1059,12 +1612,22 @@ impl YuNetApp {
 
         // Update status
         if error_count == 0 {
-            self.status_line = format!(
-                "Successfully exported {} face{} to {}",
-                export_count,
-                if export_count == 1 { "" } else { "s" },
-                output_dir.display()
-            );
+            if skipped_quality > 0 {
+                self.status_line = format!(
+                    "Exported {} face{} ({} skipped for quality) to {}",
+                    export_count,
+                    if export_count == 1 { "" } else { "s" },
+                    skipped_quality,
+                    output_dir.display()
+                );
+            } else {
+                self.status_line = format!(
+                    "Successfully exported {} face{} to {}",
+                    export_count,
+                    if export_count == 1 { "" } else { "s" },
+                    output_dir.display()
+                );
+            }
             self.last_error = None;
         } else {
             self.status_line = format!(
@@ -1074,12 +1637,16 @@ impl YuNetApp {
                 error_count,
                 if error_count == 1 { "" } else { "s" }
             );
+            if skipped_quality > 0 {
+                self.status_line
+                    .push_str(&format!(", {} skipped for quality", skipped_quality));
+            }
             self.last_error = Some(format!("{} export error(s) occurred", error_count));
         }
 
         info!(
-            "Export complete: {} succeeded, {} failed",
-            export_count, error_count
+            "Export complete: {} succeeded, {} failed, {} skipped for quality",
+            export_count, error_count, skipped_quality
         );
     }
 
@@ -1308,8 +1875,9 @@ impl YuNetApp {
         let crop_settings = self.build_crop_settings();
         let enhancement_settings = self.build_enhancement_settings();
         let enhance_enabled = self.settings.enhance.enabled;
-        let output_format = self.settings.crop.output_format.clone();
-        let jpeg_quality = self.settings.crop.jpeg_quality;
+        let crop_config = self.settings.crop.clone();
+        let quality_rules = crop_config.quality_rules.clone();
+        let output_options = OutputOptions::from_crop_settings(&crop_config);
 
         // Ensure detector is loaded before processing
         let detector = match self.ensure_detector() {
@@ -1350,11 +1918,19 @@ impl YuNetApp {
             let faces_detected = detection_output.detections.len();
             let mut faces_exported = 0;
 
-            // Export all detected faces
+            struct ProcessedCrop {
+                index: usize,
+                image: image::DynamicImage,
+                quality: Quality,
+                quality_score: f64,
+                score: f32,
+            }
+
+            let mut processed: Vec<ProcessedCrop> =
+                Vec::with_capacity(detection_output.detections.len());
             for (face_idx, detection) in detection_output.detections.iter().enumerate() {
                 let bbox = &detection.bbox;
 
-                // Calculate crop region
                 let crop_region = calculate_crop_region(
                     source_image.width(),
                     source_image.height(),
@@ -1362,7 +1938,6 @@ impl YuNetApp {
                     &crop_settings,
                 );
 
-                // Extract and resize crop
                 let cropped = source_image.crop_imm(
                     crop_region.x,
                     crop_region.y,
@@ -1376,51 +1951,116 @@ impl YuNetApp {
                     image::imageops::FilterType::Lanczos3,
                 );
 
-                // Apply enhancements if enabled
                 let final_image = if enhance_enabled {
                     apply_enhancements(&resized, &enhancement_settings)
                 } else {
                     resized
                 };
 
-                // Generate output filename
+                let (quality_score, quality) = estimate_sharpness(&final_image);
+                processed.push(ProcessedCrop {
+                    index: face_idx,
+                    image: final_image,
+                    quality,
+                    quality_score,
+                    score: detection.score,
+                });
+            }
+
+            if processed.is_empty() {
+                batch_file.status = BatchFileStatus::Completed {
+                    faces_detected,
+                    faces_exported: 0,
+                };
+                continue;
+            }
+
+            let best_quality = processed.iter().map(|c| c.quality).max();
+
+            if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
+                warn!(
+                    "Skipping {} - no high-quality faces detected",
+                    batch_file.path.display()
+                );
+                batch_file.status = BatchFileStatus::Completed {
+                    faces_detected,
+                    faces_exported: 0,
+                };
+                continue;
+            }
+
+            let mut exports = processed;
+            if quality_rules.auto_select_best_face
+                && exports.len() > 1
+                && let Some((best_idx, _)) = exports.iter().enumerate().max_by(|a, b| {
+                    a.1.quality.cmp(&b.1.quality).then_with(|| {
+                        a.1.quality_score
+                            .partial_cmp(&b.1.quality_score)
+                            .unwrap_or(Ordering::Equal)
+                    })
+                })
+            {
+                let best_index = exports[best_idx].index;
+                exports.retain(|c| c.index == best_index);
+            }
+
+            for crop in exports.into_iter() {
+                let should_skip = if let Some(min) = quality_rules.min_quality {
+                    crop.quality < min
+                } else {
+                    false
+                };
+                if should_skip {
+                    info!(
+                        "Skipping face {} from {} due to {:?} quality",
+                        crop.index + 1,
+                        batch_file.path.display(),
+                        crop.quality
+                    );
+                    continue;
+                }
+
                 let source_stem = batch_file
                     .path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("face");
-                let ext = match output_format.as_str() {
-                    "jpeg" | "jpg" => "jpg",
-                    "webp" => "webp",
-                    _ => "png",
-                };
-                let output_filename = format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
+                let mut ext = crop_config.output_format.clone();
+                if ext.is_empty() {
+                    ext = "png".to_string();
+                }
+                let ext = ext.to_ascii_lowercase();
+
+                let mut output_filename =
+                    format!("{}_face_{:02}.{}", source_stem, crop.index + 1, ext);
+                if quality_rules.quality_suffix {
+                    let suffix = match crop.quality {
+                        Quality::High => Some("_highq"),
+                        Quality::Medium => Some("_medq"),
+                        Quality::Low => Some("_lowq"),
+                    };
+                    if let Some(suffix) = suffix {
+                        output_filename = append_suffix_to_filename(&output_filename, suffix);
+                    }
+                }
                 let output_path = output_dir.join(output_filename);
 
-                // Save image
-                let save_result = match output_format.as_str() {
-                    "jpeg" | "jpg" => {
-                        let rgb = final_image.to_rgb8();
-                        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                            std::fs::File::create(&output_path).unwrap(),
-                            jpeg_quality,
-                        );
-                        encoder.encode(
-                            rgb.as_raw(),
-                            rgb.width(),
-                            rgb.height(),
-                            image::ExtendedColorType::Rgb8,
-                        )
-                    }
-                    _ => final_image.save(&output_path),
+                let metadata_ctx = MetadataContext {
+                    source_path: Some(batch_file.path.as_path()),
+                    crop_settings: Some(&crop_config),
+                    detection_score: Some(crop.score),
+                    quality: Some(crop.quality),
+                    quality_score: Some(crop.quality_score),
                 };
 
-                if save_result.is_ok() {
+                if save_dynamic_image(&crop.image, &output_path, &output_options, &metadata_ctx)
+                    .is_ok()
+                {
                     faces_exported += 1;
                 } else {
                     warn!(
                         "Failed to save face {} from {}",
-                        face_idx + 1,
+                        crop.index + 1,
                         batch_file.path.display()
                     );
                 }
@@ -1638,6 +2278,7 @@ impl YuNetApp {
                     path.display()
                 );
                 self.last_error = None;
+                self.apply_quality_rules_to_preview();
 
                 self.cache.insert(
                     cache_key,
@@ -1681,6 +2322,8 @@ impl App for YuNetApp {
         self.show_status_bar(ctx);
         self.show_configuration_panel(ctx);
         self.show_preview(ctx);
+
+        self.handle_shortcuts(ctx);
 
         if self.is_busy {
             ctx.request_repaint();

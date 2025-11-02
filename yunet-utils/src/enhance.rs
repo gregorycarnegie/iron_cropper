@@ -259,7 +259,8 @@ fn apply_skin_smoothing(
     let radius = (sigma_space * 2.0).ceil() as i32;
 
     // Precompute spatial weights (Gaussian based on distance)
-    let mut spatial_weights = vec![vec![0.0f32; (2 * radius + 1) as usize]; (2 * radius + 1) as usize];
+    let mut spatial_weights =
+        vec![vec![0.0f32; (2 * radius + 1) as usize]; (2 * radius + 1) as usize];
     let spatial_coeff = -0.5 / (sigma_space * sigma_space);
     for dy in -radius..=radius {
         for dx in -radius..=radius {
@@ -491,7 +492,11 @@ pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) ->
     }
 
     if settings.background_blur {
-        out = apply_background_blur(&out, settings.background_blur_radius, settings.background_blur_mask_size);
+        out = apply_background_blur(
+            &out,
+            settings.background_blur_radius,
+            settings.background_blur_mask_size,
+        );
     }
 
     out
@@ -635,7 +640,10 @@ mod tests {
     fn skin_smoothing_zero_amount_unchanged() {
         let img = solid([150, 120, 100, 255]);
         let out = apply_skin_smoothing(&img, 0.0, 3.0, 25.0);
-        assert_eq!(out.to_rgba8().get_pixel(0, 0), img.to_rgba8().get_pixel(0, 0));
+        assert_eq!(
+            out.to_rgba8().get_pixel(0, 0),
+            img.to_rgba8().get_pixel(0, 0)
+        );
     }
 
     #[test]

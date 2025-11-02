@@ -1,7 +1,9 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+use crate::quality::Quality;
 
 /// Shared detection parameters that should mirror YuNet defaults.
 ///
@@ -48,7 +50,7 @@ impl Default for InputDimensions {
 }
 
 /// Settings for face cropping operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct CropSettings {
     /// Crop preset name (e.g., "linkedin", "passport", "custom")
@@ -69,6 +71,16 @@ pub struct CropSettings {
     pub output_format: String,
     /// JPEG quality (1-100, only used when format is jpeg)
     pub jpeg_quality: u8,
+    /// PNG compression strategy ("fast", "default", "best") or numeric level (0-9)
+    pub png_compression: String,
+    /// WebP quality (0-100, lossy encoding)
+    pub webp_quality: u8,
+    /// Automatically detect output format from the file extension.
+    pub auto_detect_format: bool,
+    /// Metadata behavior for exported crops.
+    pub metadata: MetadataSettings,
+    /// Quality-based automation options.
+    pub quality_rules: QualityAutomationSettings,
 }
 
 /// Settings for image enhancement operations.
@@ -111,6 +123,84 @@ impl Default for CropSettings {
             horizontal_offset: 0.0,
             output_format: "png".to_string(),
             jpeg_quality: 90,
+            png_compression: "default".to_string(),
+            webp_quality: 90,
+            auto_detect_format: true,
+            metadata: MetadataSettings::default(),
+            quality_rules: QualityAutomationSettings::default(),
+        }
+    }
+}
+
+/// How metadata should be handled for exported crops.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MetadataMode {
+    #[default]
+    Preserve,
+    Strip,
+    Custom,
+}
+
+impl std::str::FromStr for MetadataMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "preserve" => Ok(MetadataMode::Preserve),
+            "strip" => Ok(MetadataMode::Strip),
+            "custom" => Ok(MetadataMode::Custom),
+            other => Err(format!("unknown metadata mode '{}'", other)),
+        }
+    }
+}
+
+/// Metadata configuration for exported crops.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct MetadataSettings {
+    /// Desired metadata strategy.
+    pub mode: MetadataMode,
+    /// Include crop settings (size, offsets, preset) as custom metadata.
+    pub include_crop_settings: bool,
+    /// Include detection quality metrics as custom metadata.
+    pub include_quality_metrics: bool,
+    /// Arbitrary user-defined metadata key/value pairs.
+    pub custom_tags: BTreeMap<String, String>,
+}
+
+impl Default for MetadataSettings {
+    fn default() -> Self {
+        Self {
+            mode: MetadataMode::Preserve,
+            include_crop_settings: true,
+            include_quality_metrics: true,
+            custom_tags: BTreeMap::new(),
+        }
+    }
+}
+
+/// Automation options driven by quality analysis.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct QualityAutomationSettings {
+    /// Automatically select the highest quality face when multiple are detected.
+    pub auto_select_best_face: bool,
+    /// Minimum quality required to keep a crop.
+    pub min_quality: Option<Quality>,
+    /// Skip exporting entirely when no face meets `Quality::High`.
+    pub auto_skip_no_high_quality: bool,
+    /// Append a quality suffix (e.g., `_highq`) to exported filenames.
+    pub quality_suffix: bool,
+}
+
+impl Default for QualityAutomationSettings {
+    fn default() -> Self {
+        Self {
+            auto_select_best_face: true,
+            min_quality: None,
+            auto_skip_no_high_quality: false,
+            quality_suffix: true,
         }
     }
 }

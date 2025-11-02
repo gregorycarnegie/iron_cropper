@@ -284,32 +284,32 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 ### Phase 8: Advanced Features
 
-- [ ] **Output format support** (`yunet-utils/src/output.rs`)
-  - [ ] PNG encoder with compression level control
-  - [ ] JPEG encoder with quality control (1-100)
-  - [ ] WebP encoder (if available via `image` crate)
-  - [ ] Format auto-detection from file extension
+- [x] **Output format support** (`yunet-utils/src/output.rs`)
+  - [x] PNG encoder with compression level control
+  - [x] JPEG encoder with quality control (1-100)
+  - [x] WebP encoder (if available via `image` crate)
+  - [x] Format auto-detection from file extension
 
-- [ ] **Metadata preservation**
-  - [ ] Copy EXIF data from original to cropped image (when possible)
-  - [ ] Add custom metadata tags (crop settings, face confidence, quality score)
-  - [ ] Option to strip all metadata for privacy
+- [x] **Metadata preservation**
+  - [x] Copy EXIF data from original to cropped image (PNG/JPEG supported; WebP logs fallback)
+  - [x] Add custom metadata tags (crop settings, face confidence, quality score)
+  - [x] Option to strip all metadata for privacy
 
-- [ ] **Quality-based auto-cropping**
-  - [ ] Auto-select highest quality face when multiple detected
-  - [ ] Auto-skip images with no high-quality faces
-  - [ ] Quality-based output filename suffixes (e.g., `_highq`, `_mediumq`)
+- [x] **Quality-based auto-cropping**
+  - [x] Auto-select highest quality face when multiple detected
+  - [x] Auto-skip images with no high-quality faces
+  - [x] Quality-based output filename suffixes (e.g., `_highq`, `_mediumq`)
 
-- [ ] **Undo/Redo system** (GUI)
-  - [ ] History stack for crop settings changes
-  - [ ] Undo/redo shortcuts (Ctrl+Z / Ctrl+Y)
+- [x] **Undo/Redo system** (GUI)
+  - [x] History stack for crop settings changes
+  - [x] Undo/redo shortcuts (Ctrl+Z / Ctrl+Y)
 
-- [ ] **Keyboard shortcuts** (GUI)
-  - [ ] Arrow keys for offset adjustments
-  - [ ] +/- for face height percentage
-  - [ ] Number keys for preset selection
-  - [ ] Space to toggle enhancement preview
-  - [ ] Enter to export
+- [x] **Keyboard shortcuts** (GUI)
+  - [x] Arrow keys for offset adjustments
+  - [x] +/- for face height percentage
+  - [x] Number keys for preset selection
+  - [x] Space to toggle enhancement preview
+  - [x] Enter to export
 
 ### Phase 9: Testing & Documentation
 
