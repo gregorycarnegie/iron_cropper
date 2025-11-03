@@ -47,5 +47,9 @@
     "skin_smooth": 0.0,
     "red_eye_removal": false,
     "background_blur": false
+  },
+  "telemetry": {
+    "enabled": true,
+    "level": "trace"
   }
 }

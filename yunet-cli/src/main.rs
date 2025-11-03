@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use image::GenericImageView;
 use log::{debug, info, warn};
 use rayon::prelude::*;
@@ -23,7 +23,7 @@ use yunet_utils::{
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
     },
-    estimate_sharpness, init_logging, normalize_path, save_dynamic_image,
+    configure_telemetry, estimate_sharpness, init_logging, normalize_path, save_dynamic_image,
 };
 
 /// Run YuNet face detection over images or directories.
@@ -45,6 +45,14 @@ struct DetectArgs {
     /// Optional settings JSON (defaults to built-in YuNet parameters).
     #[arg(long)]
     config: Option<PathBuf>,
+
+    /// Enable telemetry timing logs (defaults to settings file).
+    #[arg(long, action = ArgAction::SetTrue)]
+    telemetry: bool,
+
+    /// Override telemetry logging level (error, warn, info, debug, trace).
+    #[arg(long, value_name = "LEVEL")]
+    telemetry_level: Option<String>,
 
     /// Override input width (pixels).
     #[arg(long)]
@@ -248,8 +256,23 @@ struct ImageDetections {
 }
 
 fn main() -> Result<()> {
-    init_logging(log::LevelFilter::Info)?;
     let args = DetectArgs::parse();
+
+    let mut settings = load_settings(args.config.as_ref())?;
+    apply_cli_overrides(&mut settings, &args);
+
+    configure_telemetry(
+        settings.telemetry.enabled,
+        settings.telemetry.level_filter(),
+    );
+    init_logging(log::LevelFilter::Info)?;
+
+    if settings.telemetry.enabled {
+        info!(
+            "Telemetry logging enabled (level={:?})",
+            settings.telemetry.level_filter()
+        );
+    }
 
     let input_path = normalize_path(&args.input)?;
     let model_path = normalize_path(&args.model)?;
@@ -260,9 +283,6 @@ fn main() -> Result<()> {
     } else {
         None
     };
-
-    let mut settings = load_settings(args.config.as_ref())?;
-    apply_cli_overrides(&mut settings, &args);
 
     // Build a centralized quality filter using resolved automation settings so the same
     // policy is used for cropping, batch export, and future GUI wiring.
@@ -1021,6 +1041,20 @@ fn load_settings(config_path: Option<&PathBuf>) -> Result<AppSettings> {
 
 /// Apply command-line arguments to override loaded or default settings.
 fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
+    if args.telemetry {
+        settings.telemetry.enabled = true;
+    }
+    if let Some(level) = args.telemetry_level.as_ref() {
+        let normalized = level.trim();
+        if !normalized.is_empty() {
+            let lower = normalized.to_ascii_lowercase();
+            settings.telemetry.level = lower.clone();
+            if lower == "off" {
+                settings.telemetry.enabled = false;
+            }
+        }
+    }
+
     if let Some(width) = args.width {
         settings.input.width = width;
     }

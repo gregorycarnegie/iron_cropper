@@ -12,6 +12,8 @@ pub mod image_utils;
 pub mod output;
 /// Image quality analysis (Laplacian variance blur detection).
 pub mod quality;
+/// Instrumentation helpers for optional performance tracing.
+pub mod telemetry;
 
 use std::path::Path;
 
@@ -30,6 +32,10 @@ pub use output::{
 };
 pub use quality::QualityFilter;
 pub use quality::{Quality, estimate_sharpness, laplacian_variance};
+pub use telemetry::{
+    TimingGuard, configure as configure_telemetry, telemetry_allows, telemetry_enabled,
+    telemetry_level, timing_guard, timing_guard_if,
+};
 
 /// Initialize logging once for CLI and GUI environments.
 ///
@@ -40,11 +46,12 @@ pub use quality::{Quality, estimate_sharpness, laplacian_variance};
 ///
 /// * `default_filter` - The `LevelFilter` to use if `RUST_LOG` is not set.
 pub fn init_logging(default_filter: LevelFilter) -> Result<()> {
-    if env_logger::try_init_from_env(
+    let mut builder = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(default_filter.as_str()),
-    )
-    .is_err()
-    {
+    );
+    builder.filter_module("yunet::telemetry", LevelFilter::Trace);
+
+    if builder.try_init().is_err() {
         // Logger already initialized; nothing to do.
     }
     Ok(())

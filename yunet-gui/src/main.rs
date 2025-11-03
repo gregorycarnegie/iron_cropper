@@ -15,7 +15,7 @@ use egui::{
     CentralPanel, Color32, Context as EguiContext, DragValue, Key, Rect, RichText, ScrollArea,
     SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, pos2, vec2,
 };
-use log::{error, info, warn};
+use log::{LevelFilter, error, info, warn};
 use rfd::FileDialog;
 use yunet_core::{
     CropSettings as CoreCropSettings, Detection, PositioningMode, PostprocessConfig,
@@ -24,6 +24,7 @@ use yunet_core::{
 use yunet_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename,
     config::{AppSettings, CropSettings as ConfigCropSettings, MetadataMode},
+    configure_telemetry,
     enhance::{EnhancementSettings, apply_enhancements},
     init_logging, load_image,
     quality::{Quality, estimate_sharpness},
@@ -198,6 +199,16 @@ impl YuNetApp {
 
         info!("Loading GUI settings from {}", settings_path.display());
         let settings = load_settings(&settings_path);
+        configure_telemetry(
+            settings.telemetry.enabled,
+            settings.telemetry.level_filter(),
+        );
+        if settings.telemetry.enabled {
+            info!(
+                "Telemetry logging enabled (level={:?})",
+                settings.telemetry.level_filter()
+            );
+        }
         let (job_tx, job_rx) = mpsc::channel();
 
         let detector = match build_detector(&settings) {
@@ -632,6 +643,74 @@ impl YuNetApp {
                             self.settings.detection.top_k = top_k.max(1) as usize;
                             settings_changed = true;
                             requires_cache_refresh = true;
+                        }
+
+                        ui.separator();
+                        ui.heading("Diagnostics");
+                        let mut telemetry_changed = false;
+                        if ui
+                            .checkbox(
+                                &mut self.settings.telemetry.enabled,
+                                "Enable telemetry logging",
+                            )
+                            .changed()
+                        {
+                            settings_changed = true;
+                            telemetry_changed = true;
+                        }
+
+                        let level_options = [
+                            (LevelFilter::Error, "Error"),
+                            (LevelFilter::Warn, "Warn"),
+                            (LevelFilter::Info, "Info"),
+                            (LevelFilter::Debug, "Debug"),
+                            (LevelFilter::Trace, "Trace"),
+                        ];
+
+                        ui.add_enabled_ui(self.settings.telemetry.enabled, |ui| {
+                            let current_level = self.settings.telemetry.level_filter();
+                            let current_label = level_options
+                                .iter()
+                                .find(|(level, _)| *level == current_level)
+                                .map(|(_, label)| *label)
+                                .unwrap_or("Debug");
+                            let mut selected_level = current_level;
+                            egui::ComboBox::from_id_salt("telemetry_level_combo")
+                                .selected_text(current_label)
+                                .show_ui(ui, |ui| {
+                                    for (level, label) in level_options.iter() {
+                                        if ui
+                                            .selectable_label(selected_level == *level, *label)
+                                            .clicked()
+                                        {
+                                            selected_level = *level;
+                                        }
+                                    }
+                                });
+                            if selected_level != current_level {
+                                self.settings.telemetry.set_level(selected_level);
+                                settings_changed = true;
+                                telemetry_changed = true;
+                            }
+                            ui.add(
+                                egui::Label::new("Timings are written to the application log.")
+                                    .wrap(),
+                            );
+                        });
+
+                        if telemetry_changed {
+                            configure_telemetry(
+                                self.settings.telemetry.enabled,
+                                self.settings.telemetry.level_filter(),
+                            );
+                            if self.settings.telemetry.enabled {
+                                info!(
+                                    "Telemetry logging enabled (level={:?})",
+                                    self.settings.telemetry.level_filter()
+                                );
+                            } else {
+                                info!("Telemetry logging disabled");
+                            }
                         }
 
                         if settings_changed {

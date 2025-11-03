@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
+use yunet_utils::telemetry::timing_guard;
 use yunet_utils::{
     compute_resize_scales, config::InputDimensions, load_image, resize_image, rgb_to_bgr_chw,
 };
@@ -62,6 +63,7 @@ pub fn preprocess_image<P: AsRef<Path>>(
     path: P,
     config: &PreprocessConfig,
 ) -> Result<PreprocessOutput> {
+    let _guard = timing_guard("yunet_core::preprocess_image", log::Level::Debug);
     let path_ref = path.as_ref();
     anyhow::ensure!(
         path_ref.exists(),
@@ -84,6 +86,7 @@ pub fn preprocess_dynamic_image(
     image: &DynamicImage,
     config: &PreprocessConfig,
 ) -> Result<PreprocessOutput> {
+    let _guard = timing_guard("yunet_core::preprocess_dynamic_image", log::Level::Trace);
     let input_w = config.input_size.width;
     let input_h = config.input_size.height;
     anyhow::ensure!(

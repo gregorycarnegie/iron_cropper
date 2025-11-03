@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result};
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
 use crate::quality::Quality;
@@ -223,6 +224,52 @@ impl Default for EnhanceSettings {
     }
 }
 
+/// Settings controlling optional runtime telemetry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TelemetrySettings {
+    /// Whether telemetry timing logs are enabled.
+    pub enabled: bool,
+    /// Logging level for telemetry output (error, warn, info, debug, trace).
+    pub level: String,
+}
+
+impl Default for TelemetrySettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            level: "debug".to_string(),
+        }
+    }
+}
+
+impl TelemetrySettings {
+    /// Resolve the configured level string into a `LevelFilter`.
+    pub fn level_filter(&self) -> LevelFilter {
+        match self.level.trim().to_ascii_lowercase().as_str() {
+            "off" => LevelFilter::Off,
+            "error" => LevelFilter::Error,
+            "warn" | "warning" => LevelFilter::Warn,
+            "info" => LevelFilter::Info,
+            "trace" => LevelFilter::Trace,
+            _ => LevelFilter::Debug,
+        }
+    }
+
+    /// Update the level string from a `LevelFilter` value.
+    pub fn set_level(&mut self, level: LevelFilter) {
+        let label = match level {
+            LevelFilter::Off => "off",
+            LevelFilter::Error => "error",
+            LevelFilter::Warn => "warn",
+            LevelFilter::Info => "info",
+            LevelFilter::Debug => "debug",
+            LevelFilter::Trace => "trace",
+        };
+        self.level = label.to_string();
+    }
+}
+
 /// Persistent application settings consumed by CLI and GUI front ends.
 ///
 /// This struct aggregates all user-configurable parameters, allowing them to be
@@ -241,6 +288,8 @@ pub struct AppSettings {
     pub crop: CropSettings,
     /// The parameters for image enhancement.
     pub enhance: EnhanceSettings,
+    /// Telemetry and diagnostics preferences.
+    pub telemetry: TelemetrySettings,
 }
 
 impl Default for AppSettings {
@@ -251,6 +300,7 @@ impl Default for AppSettings {
             detection: DetectionSettings::default(),
             crop: CropSettings::default(),
             enhance: EnhanceSettings::default(),
+            telemetry: TelemetrySettings::default(),
         }
     }
 }
@@ -302,6 +352,8 @@ mod tests {
         assert_eq!(loaded.input, settings.input);
         assert_eq!(loaded.detection.top_k, settings.detection.top_k);
         assert_eq!(loaded.model_path, settings.model_path);
+        assert_eq!(loaded.telemetry.enabled, settings.telemetry.enabled);
+        assert_eq!(loaded.telemetry.level, settings.telemetry.level);
     }
 
     #[test]
@@ -323,5 +375,20 @@ mod tests {
         );
         assert_eq!(loaded.detection.top_k, 123);
         assert!(loaded.model_path.is_some());
+        assert!(!loaded.telemetry.enabled);
+        assert_eq!(loaded.telemetry.level_filter(), LevelFilter::Debug);
+    }
+
+    #[test]
+    fn telemetry_level_parses_variants() {
+        let mut telemetry = TelemetrySettings::default();
+        telemetry.level = "TRACE".into();
+        assert_eq!(telemetry.level_filter(), LevelFilter::Trace);
+
+        telemetry.level = "Warn".into();
+        assert_eq!(telemetry.level_filter(), LevelFilter::Warn);
+
+        telemetry.set_level(LevelFilter::Info);
+        assert_eq!(telemetry.level, "info");
     }
 }
