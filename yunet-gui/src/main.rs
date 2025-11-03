@@ -12,8 +12,9 @@ use std::{
 use anyhow::{Context as AnyhowContext, Result};
 use eframe::{App, CreationContext, Frame, NativeOptions, egui};
 use egui::{
-    CentralPanel, Color32, Context as EguiContext, DragValue, Key, Rect, RichText, ScrollArea,
-    SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, pos2, vec2,
+    CentralPanel, Color32, Context as EguiContext, DragValue, Key, ProgressBar, Rect, RichText,
+    ScrollArea, SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel,
+    pos2, vec2,
 };
 use log::{LevelFilter, error, info, warn};
 use rfd::FileDialog;
@@ -137,6 +138,8 @@ struct PreviewState {
     image_size: Option<(u32, u32)>,
     /// The list of detections with quality scores for the current image.
     detections: Vec<DetectionWithQuality>,
+    /// Whether the preview is currently loading/detecting.
+    is_loading: bool,
 }
 
 impl PreviewState {
@@ -146,6 +149,7 @@ impl PreviewState {
         self.texture = None;
         self.image_size = None;
         self.detections.clear();
+        self.is_loading = true;
     }
 }
 
@@ -492,7 +496,17 @@ impl YuNetApp {
                                 .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
                                 .count();
 
-                            ui.label(format!("Progress: {}/{} files", completed + failed, total));
+                            let processed = completed + failed;
+                            let progress_ratio = if total == 0 {
+                                0.0
+                            } else {
+                                processed as f32 / total as f32
+                            };
+                            ui.add(
+                                ProgressBar::new(progress_ratio)
+                                    .desired_width(ui.available_width())
+                                    .text(format!("{processed}/{total} files")),
+                            );
                             if failed > 0 {
                                 ui.label(
                                     RichText::new(format!("({} failed)", failed))
@@ -513,36 +527,44 @@ impl YuNetApp {
                                             .and_then(|n| n.to_str())
                                             .unwrap_or("unknown");
 
-                                        let status_text = match &batch_file.status {
-                                            BatchFileStatus::Pending => "Pending",
-                                            BatchFileStatus::Processing => "Processing...",
-                                            BatchFileStatus::Completed {
-                                                faces_detected,
-                                                faces_exported,
-                                            } => &format!(
-                                                "{} faces, {} exported",
-                                                faces_detected, faces_exported
-                                            ),
-                                            BatchFileStatus::Failed { error: _ } => "Failed",
-                                        };
-
-                                        let status_color = match &batch_file.status {
-                                            BatchFileStatus::Pending => Color32::GRAY,
-                                            BatchFileStatus::Processing => {
-                                                Color32::from_rgb(100, 150, 255)
-                                            }
-                                            BatchFileStatus::Completed { .. } => {
-                                                Color32::from_rgb(0, 200, 100)
-                                            }
-                                            BatchFileStatus::Failed { .. } => {
-                                                Color32::from_rgb(255, 80, 80)
-                                            }
-                                        };
+                                        let (status_text, status_color, tooltip) =
+                                            match &batch_file.status {
+                                                BatchFileStatus::Pending => (
+                                                    "Pending".to_string(),
+                                                    Color32::GRAY,
+                                                    None,
+                                                ),
+                                                BatchFileStatus::Processing => (
+                                                    "Processing...".to_string(),
+                                                    Color32::from_rgb(100, 150, 255),
+                                                    None,
+                                                ),
+                                                BatchFileStatus::Completed {
+                                                    faces_detected,
+                                                    faces_exported,
+                                                } => (
+                                                    format!(
+                                                        "{} faces, {} exported",
+                                                        faces_detected, faces_exported
+                                                    ),
+                                                    Color32::from_rgb(0, 200, 100),
+                                                    None,
+                                                ),
+                                                BatchFileStatus::Failed { error } => (
+                                                    "Failed".to_string(),
+                                                    Color32::from_rgb(255, 80, 80),
+                                                    Some(error.clone()),
+                                                ),
+                                            };
 
                                         ui.horizontal(|ui| {
                                             ui.label(format!("{}.", idx + 1));
                                             ui.label(filename);
-                                            ui.colored_label(status_color, status_text);
+                                            let status_resp =
+                                                ui.colored_label(status_color, status_text);
+                                            if let Some(tip) = tooltip.as_deref() {
+                                                status_resp.on_hover_text(tip);
+                                            }
                                         });
                                     }
                                 });
@@ -725,11 +747,13 @@ impl YuNetApp {
                         ui.separator();
                         ui.heading("Crop Settings");
 
-                        ui.checkbox(&mut self.show_crop_overlay, "Show crop preview overlay");
+                        ui.checkbox(&mut self.show_crop_overlay, "Show crop preview overlay")
+                            .on_hover_text(
+                                "Draws the proposed crop rectangle for every detected face.",
+                            );
                         ui.add_space(6.0);
 
-                        ui.label("Preset");
-                        egui::ComboBox::from_label("")
+                        let preset_combo = egui::ComboBox::from_label("Preset")
                             .selected_text(&self.settings.crop.preset)
                             .show_ui(ui, |ui| {
                                 let presets = [
@@ -751,27 +775,32 @@ impl YuNetApp {
                                     }
                                 }
                             });
+                        preset_combo
+                            .response
+                            .on_hover_text("Choose a predefined output size/aspect ratio.");
 
                         if self.settings.crop.preset == "custom" {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Width");
+                                ui.label("Width")
+                                    .on_hover_text("Export width in pixels for the crop.");
                                 let mut width = self.settings.crop.output_width;
-                                if ui
+                                let response = ui
                                     .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
-                                    .changed()
-                                {
+                                    .on_hover_text("Drag or type to set the output width.");
+                                if response.changed() {
                                     self.settings.crop.output_width = width;
                                     settings_changed = true;
                                 }
                             });
                             ui.horizontal(|ui| {
-                                ui.label("Height");
+                                ui.label("Height")
+                                    .on_hover_text("Export height in pixels for the crop.");
                                 let mut height = self.settings.crop.output_height;
-                                if ui
+                                let response = ui
                                     .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
-                                    .changed()
-                                {
+                                    .on_hover_text("Drag or type to set the output height.");
+                                if response.changed() {
                                     self.settings.crop.output_height = height;
                                     settings_changed = true;
                                 }
@@ -781,7 +810,12 @@ impl YuNetApp {
                         ui.add_space(6.0);
                         let mut face_pct = self.settings.crop.face_height_pct;
                         if ui
-                            .add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"))
+                            .add(
+                                Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"),
+                            )
+                            .on_hover_text(
+                                "Controls how tall the detected face should be relative to the output height.",
+                            )
                             .changed()
                         {
                             self.settings.crop.face_height_pct = face_pct;
@@ -789,8 +823,7 @@ impl YuNetApp {
                         }
 
                         ui.add_space(6.0);
-                        ui.label("Positioning mode");
-                        egui::ComboBox::from_label(" ")
+                        let positioning_combo = egui::ComboBox::from_label("Positioning mode")
                             .selected_text(&self.settings.crop.positioning_mode)
                             .show_ui(ui, |ui| {
                                 let modes = [
@@ -811,12 +844,21 @@ impl YuNetApp {
                                     }
                                 }
                             });
+                        positioning_combo.response.on_hover_text(
+                            "Adjusts how the crop is aligned around the detected face.",
+                        );
 
                         if self.settings.crop.positioning_mode == "custom" {
                             ui.add_space(4.0);
                             let mut vert = self.settings.crop.vertical_offset;
                             if ui
-                                .add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset"))
+                                .add(
+                                    Slider::new(&mut vert, -1.0..=1.0)
+                                        .text("Vertical offset"),
+                                )
+                                .on_hover_text(
+                                    "Negative values move the crop up, positive values move it down.",
+                                )
                                 .changed()
                             {
                                 self.settings.crop.vertical_offset = vert;
@@ -824,7 +866,13 @@ impl YuNetApp {
                             }
                             let mut horiz = self.settings.crop.horizontal_offset;
                             if ui
-                                .add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset"))
+                                .add(
+                                    Slider::new(&mut horiz, -1.0..=1.0)
+                                        .text("Horizontal offset"),
+                                )
+                                .on_hover_text(
+                                    "Negative values move the crop left, positive values move it right.",
+                                )
                                 .changed()
                             {
                                 self.settings.crop.horizontal_offset = horiz;
@@ -1247,6 +1295,12 @@ impl YuNetApp {
                         });
                     }
                 }
+            } else if self.preview.is_loading {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(48.0);
+                    ui.add(Spinner::new().size(24.0));
+                    ui.label("Loading image and running detection...");
+                });
             } else {
                 ui.vertical_centered(|ui| {
                     ui.add_space(48.0);
@@ -1660,7 +1714,10 @@ impl YuNetApp {
         let source_path = match &self.preview.image_path {
             Some(p) => p.clone(),
             None => {
-                self.last_error = Some("No image loaded".to_string());
+                self.show_error(
+                    "Select an image before exporting.",
+                    "No image loaded when export was requested.",
+                );
                 return;
             }
         };
@@ -1668,8 +1725,12 @@ impl YuNetApp {
         let source_image = match load_image(&source_path) {
             Ok(img) => img,
             Err(e) => {
-                self.last_error = Some(format!("Failed to load source image: {}", e));
-                error!("Failed to load source image: {}", e);
+                let detail = format!("Failed to load source image: {e}");
+                self.show_error(
+                    "Could not open the selected image for export.",
+                    detail.clone(),
+                );
+                error!("{detail}");
                 return;
             }
         };
@@ -1775,24 +1836,23 @@ impl YuNetApp {
         // Update status
         if error_count == 0 {
             if skipped_quality > 0 {
-                self.status_line = format!(
+                self.show_success(format!(
                     "Exported {} face{} ({} skipped for quality) to {}",
                     export_count,
                     if export_count == 1 { "" } else { "s" },
                     skipped_quality,
                     output_dir.display()
-                );
+                ));
             } else {
-                self.status_line = format!(
+                self.show_success(format!(
                     "Successfully exported {} face{} to {}",
                     export_count,
                     if export_count == 1 { "" } else { "s" },
                     output_dir.display()
-                );
+                ));
             }
-            self.last_error = None;
         } else {
-            self.status_line = format!(
+            let mut summary = format!(
                 "Exported {} face{}, {} error{}",
                 export_count,
                 if export_count == 1 { "" } else { "s" },
@@ -1800,10 +1860,12 @@ impl YuNetApp {
                 if error_count == 1 { "" } else { "s" }
             );
             if skipped_quality > 0 {
-                self.status_line
-                    .push_str(&format!(", {} skipped for quality", skipped_quality));
+                summary.push_str(&format!(", {} skipped for quality", skipped_quality));
             }
-            self.last_error = Some(format!("{} export error(s) occurred", error_count));
+            self.show_error(
+                summary,
+                format!("{error_count} export error(s) occurred while writing files."),
+            );
         }
 
         info!(
@@ -1833,6 +1895,10 @@ impl YuNetApp {
             Color32::from_rgb(100, 150, 255),
         );
         let landmark_radius = (3.0 * stroke_scale).clamp(1.0, 6.0);
+
+        if self.should_show_rule_of_thirds_guides() {
+            self.paint_rule_of_thirds_guides(&painter, image_rect, stroke_scale);
+        }
 
         for (index, det_with_quality) in self.preview.detections.iter().enumerate() {
             let bbox = &det_with_quality.detection.bbox;
@@ -1880,6 +1946,40 @@ impl YuNetApp {
         }
     }
 
+    fn should_show_rule_of_thirds_guides(&self) -> bool {
+        if !self.show_crop_overlay {
+            return false;
+        }
+        matches!(
+            self.settings.crop.positioning_mode.as_str(),
+            "rule-of-thirds" | "rule_of_thirds"
+        )
+    }
+
+    fn paint_rule_of_thirds_guides(
+        &self,
+        painter: &egui::Painter,
+        image_rect: Rect,
+        stroke_scale: f32,
+    ) {
+        let guide_color = Color32::from_rgba_unmultiplied(255, 255, 255, 110);
+        let guide_stroke = Stroke::new((1.5 * stroke_scale).clamp(0.5, 4.0), guide_color);
+
+        for i in 1..=2 {
+            let frac = i as f32 / 3.0;
+            let x = image_rect.left() + image_rect.width() * frac;
+            let y = image_rect.top() + image_rect.height() * frac;
+            painter.line_segment(
+                [pos2(x, image_rect.top()), pos2(x, image_rect.bottom())],
+                guide_stroke,
+            );
+            painter.line_segment(
+                [pos2(image_rect.left(), y), pos2(image_rect.right(), y)],
+                guide_stroke,
+            );
+        }
+    }
+
     /// Applies changes to the settings, invalidating the detector or cache as needed.
     fn apply_settings_changes(
         &mut self,
@@ -1892,6 +1992,16 @@ impl YuNetApp {
             self.clear_cache("Detection parameters updated. Re-run detection.");
         }
         self.persist_settings_with_feedback();
+    }
+
+    fn show_success(&mut self, message: impl Into<String>) {
+        self.status_line = message.into();
+        self.last_error = None;
+    }
+
+    fn show_error(&mut self, headline: impl Into<String>, detail: impl Into<String>) {
+        self.status_line = headline.into();
+        self.last_error = Some(detail.into());
     }
 
     /// Persists the current settings to disk and provides feedback to the user.
@@ -1941,6 +2051,7 @@ impl YuNetApp {
             info!("Cancelling pending detection job {job} due to configuration change");
         }
         self.is_busy = false;
+        self.preview.is_loading = false;
         self.status_line = status_message.to_owned();
     }
 
@@ -2020,14 +2131,9 @@ impl YuNetApp {
                 .collect();
 
             self.batch_current_index = None;
-            self.status_line = format!(
-                "Loaded {} images for batch processing",
-                self.batch_files.len()
-            );
-            info!(
-                "Loaded {} images for batch processing",
-                self.batch_files.len()
-            );
+            let loaded = self.batch_files.len();
+            self.show_success(format!("Loaded {loaded} images for batch processing"));
+            info!("Loaded {loaded} images for batch processing");
         }
     }
 
@@ -2056,8 +2162,12 @@ impl YuNetApp {
         let detector = match self.ensure_detector() {
             Ok(d) => d,
             Err(e) => {
-                self.last_error = Some(format!("Failed to load detector: {}", e));
-                error!("Failed to load detector: {}", e);
+                let detail = format!("Failed to load detector: {e}");
+                self.show_error(
+                    "Unable to load the detector for batch export.",
+                    detail.clone(),
+                );
+                error!("{detail}");
                 return;
             }
         };
@@ -2252,6 +2362,11 @@ impl YuNetApp {
             .iter()
             .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
             .count();
+        let failed = self
+            .batch_files
+            .iter()
+            .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
+            .count();
         let total_faces: usize = self
             .batch_files
             .iter()
@@ -2261,16 +2376,59 @@ impl YuNetApp {
             })
             .sum();
 
-        self.status_line = format!(
-            "Batch export complete: {}/{} files processed, {} faces exported to {}",
-            completed,
-            total,
-            total_faces,
-            output_dir.display()
-        );
+        if failed > 0 {
+            let details: Vec<String> = self
+                .batch_files
+                .iter()
+                .filter_map(|f| match &f.status {
+                    BatchFileStatus::Failed { error } => Some(format!(
+                        "{}: {error}",
+                        f.path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown file")
+                    )),
+                    _ => None,
+                })
+                .take(3)
+                .collect();
+            let mut detail_text = details.join("\n");
+            let remaining = failed.saturating_sub(details.len());
+            if remaining > 0 {
+                if !detail_text.is_empty() {
+                    detail_text.push('\n');
+                }
+                detail_text.push_str(&format!(
+                    "...and {} more failure{}",
+                    remaining,
+                    if remaining == 1 { "" } else { "s" }
+                ));
+            }
+            if detail_text.is_empty() {
+                detail_text = format!("{failed} file(s) failed during export.");
+            }
+            self.show_error(
+                format!(
+                    "Batch export finished with {failed} error{} ({} faces saved to {}).",
+                    if failed == 1 { "" } else { "s" },
+                    total_faces,
+                    output_dir.display()
+                ),
+                detail_text,
+            );
+        } else {
+            self.show_success(format!(
+                "Batch export complete: {}/{} files, {} faces exported to {}",
+                completed,
+                total,
+                total_faces,
+                output_dir.display()
+            ));
+        }
+
         info!(
-            "Batch export complete: {}/{} files, {} faces exported",
-            completed, total, total_faces
+            "Batch export complete: {}/{} files, {} faces exported, {} failed",
+            completed, total, total_faces, failed
         );
     }
 
@@ -2283,8 +2441,8 @@ impl YuNetApp {
             self.preview.texture = Some(entry.texture.clone());
             self.preview.image_size = Some(entry.image_size);
             self.preview.detections = entry.detections.clone();
-            self.status_line = format!("Loaded cached detections for {}", path.display());
-            self.last_error = None;
+            self.preview.is_loading = false;
+            self.show_success(format!("Loaded cached detections for {}", path.display()));
             self.is_busy = false;
             self.current_job = None;
             return;
@@ -2293,10 +2451,12 @@ impl YuNetApp {
         let detector = match self.ensure_detector() {
             Ok(detector) => detector,
             Err(err) => {
-                let message = format!("Unable to load YuNet model: {err}");
-                self.last_error = Some(message.clone());
-                self.status_line = "Failed to load YuNet model.".to_owned();
-                warn!("{message}");
+                let detail = format!("Unable to load YuNet model: {err}");
+                self.show_error(
+                    "Failed to load the YuNet model. Check the model path in Settings.",
+                    detail.clone(),
+                );
+                warn!("{detail}");
                 return;
             }
         };
@@ -2421,6 +2581,7 @@ impl YuNetApp {
 
                 self.current_job = None;
                 self.is_busy = false;
+                self.preview.is_loading = false;
 
                 let DetectionJobSuccess {
                     path,
@@ -2445,12 +2606,11 @@ impl YuNetApp {
                 let cached_detections = detections.clone();
                 self.preview.detections = detections;
 
-                self.status_line = format!(
+                self.show_success(format!(
                     "Detected {} face(s) in {}",
                     self.preview.detections.len(),
                     path.display()
-                );
-                self.last_error = None;
+                ));
                 self.apply_quality_rules_to_preview();
 
                 self.cache.insert(
@@ -2470,8 +2630,11 @@ impl YuNetApp {
 
                 self.current_job = None;
                 self.is_busy = false;
-                self.last_error = Some(error.clone());
-                self.status_line = "Detection failed.".to_string();
+                self.preview.is_loading = false;
+                self.show_error(
+                    "Detection failed. Verify the model file and try again.",
+                    format!("Detection error: {error}"),
+                );
                 self.preview.texture = None;
                 self.preview.image_size = None;
                 self.preview.detections.clear();

@@ -345,11 +345,11 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 ### Phase 11: Finalization & Release
 
 - [ ] **Polish & UX refinements**
-  - [ ] Add tooltips explaining each crop parameter
-  - [ ] Add visual guides for rule of thirds in preview
-  - [ ] Error handling with user-friendly messages
-  - [ ] Loading states and progress indicators
-  - [ ] Success/error notifications for batch operations
+  - [x] Add tooltips explaining each crop parameter
+  - [x] Add visual guides for rule of thirds in preview
+  - [x] Error handling with user-friendly messages
+  - [x] Loading states and progress indicators
+  - [x] Success/error notifications for batch operations
 
 - [ ] **Performance optimization**
   - [ ] Cache cropped previews to avoid recomputation
