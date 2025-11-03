@@ -386,13 +386,19 @@ mod tests {
 
     #[test]
     fn telemetry_level_parses_variants() {
-        let mut telemetry = TelemetrySettings::default();
-        telemetry.level = "TRACE".into();
+        let telemetry = TelemetrySettings {
+            level: "TRACE".into(),
+            ..TelemetrySettings::default()
+        };
         assert_eq!(telemetry.level_filter(), LevelFilter::Trace);
 
-        telemetry.level = "Warn".into();
+        let telemetry = TelemetrySettings {
+            level: "Warn".into(),
+            ..TelemetrySettings::default()
+        };
         assert_eq!(telemetry.level_filter(), LevelFilter::Warn);
 
+        let mut telemetry = TelemetrySettings::default();
         telemetry.set_level(LevelFilter::Info);
         assert_eq!(telemetry.level, "info");
     }

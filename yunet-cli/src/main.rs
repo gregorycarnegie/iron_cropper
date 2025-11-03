@@ -778,11 +778,12 @@ mod tests {
 
     #[test]
     fn build_quality_filter_reflects_settings() {
-        let mut settings = QualityAutomationSettings::default();
-        settings.min_quality = Some(Quality::High);
-        settings.auto_select_best_face = true;
-        settings.auto_skip_no_high_quality = true;
-        settings.quality_suffix = true;
+        let settings = QualityAutomationSettings {
+            auto_select_best_face: true,
+            min_quality: Some(Quality::High),
+            auto_skip_no_high_quality: true,
+            quality_suffix: true,
+        };
 
         let filter = build_quality_filter(&settings);
         assert_eq!(filter.min_quality, Some(Quality::High));
@@ -797,6 +798,8 @@ mod tests {
             input: PathBuf::from("image.png"),
             model: PathBuf::from("model.onnx"),
             config: None,
+            telemetry: false,
+            telemetry_level: None,
             width: None,
             height: None,
             score_threshold: None,
@@ -857,6 +860,8 @@ mod tests {
             input: PathBuf::from("image.png"),
             model: PathBuf::from("model.onnx"),
             config: None,
+            telemetry: false,
+            telemetry_level: None,
             width: None,
             height: None,
             score_threshold: None,
@@ -959,6 +964,8 @@ mod tests {
             input: img_path.clone(),
             model: PathBuf::from("model.onnx"),
             config: None,
+            telemetry: false,
+            telemetry_level: None,
             width: None,
             height: None,
             score_threshold: None,

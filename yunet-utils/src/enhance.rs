@@ -756,11 +756,13 @@ mod tests {
         }
         let source = DynamicImage::ImageRgba8(img);
 
-        let mut settings = EnhancementSettings::default();
-        settings.auto_color = true;
-        settings.unsharp_amount = 0.0;
-        settings.unsharp_radius = 0.0;
-        settings.sharpness = 0.0;
+        let settings = EnhancementSettings {
+            auto_color: true,
+            unsharp_amount: 0.0,
+            unsharp_radius: 0.0,
+            sharpness: 0.0,
+            ..EnhancementSettings::default()
+        };
 
         let pipeline = apply_enhancements(&source, &settings).to_rgba8();
         let expected = apply_histogram_equalization(&source).to_rgba8();
@@ -782,10 +784,12 @@ mod tests {
         }
         let source = DynamicImage::ImageRgba8(img);
 
-        let mut settings = EnhancementSettings::default();
-        settings.unsharp_amount = 0.0;
-        settings.sharpness = 0.6;
-        settings.unsharp_radius = 1.0;
+        let settings = EnhancementSettings {
+            unsharp_amount: 0.0,
+            sharpness: 0.6,
+            unsharp_radius: 1.0,
+            ..EnhancementSettings::default()
+        };
 
         let pipeline = apply_enhancements(&source, &settings).to_rgba8();
         let expected = apply_unsharp_mask(&source, 0.6, 1.0).to_rgba8();
@@ -813,12 +817,14 @@ mod tests {
         img.put_pixel(2, 0, image::Rgba([210, 45, 60, 255]));
         let source = DynamicImage::ImageRgba8(img);
 
-        let mut settings = EnhancementSettings::default();
-        settings.red_eye_removal = true;
-        settings.red_eye_threshold = 1.2;
-        settings.unsharp_amount = 0.0;
-        settings.unsharp_radius = 0.0;
-        settings.sharpness = 0.0;
+        let settings = EnhancementSettings {
+            red_eye_removal: true,
+            red_eye_threshold: 1.2,
+            unsharp_amount: 0.0,
+            unsharp_radius: 0.0,
+            sharpness: 0.0,
+            ..EnhancementSettings::default()
+        };
 
         let pipeline = apply_enhancements(&source, &settings).to_rgba8();
         let expected = apply_red_eye_removal(&source, 1.2).to_rgba8();
@@ -839,13 +845,15 @@ mod tests {
         }
         let source = DynamicImage::ImageRgba8(img);
 
-        let mut settings = EnhancementSettings::default();
-        settings.background_blur = true;
-        settings.background_blur_radius = 6.0;
-        settings.background_blur_mask_size = 0.5;
-        settings.unsharp_amount = 0.0;
-        settings.unsharp_radius = 0.0;
-        settings.sharpness = 0.0;
+        let settings = EnhancementSettings {
+            background_blur: true,
+            background_blur_radius: 6.0,
+            background_blur_mask_size: 0.5,
+            unsharp_amount: 0.0,
+            unsharp_radius: 0.0,
+            sharpness: 0.0,
+            ..EnhancementSettings::default()
+        };
 
         let pipeline = apply_enhancements(&source, &settings).to_rgba8();
         let expected = apply_background_blur(&source, 6.0, 0.5).to_rgba8();

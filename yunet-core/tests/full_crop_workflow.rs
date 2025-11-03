@@ -44,20 +44,21 @@ fn make_detection(x: f32, y: f32, width: f32, height: f32, score: f32) -> Detect
 }
 
 fn build_app_crop_settings(core: &CropSettings) -> ConfigCropSettings {
-    let mut cfg = ConfigCropSettings::default();
-    cfg.preset = "custom".to_string();
-    cfg.output_width = core.output_width;
-    cfg.output_height = core.output_height;
-    cfg.face_height_pct = core.face_height_pct;
-    cfg.positioning_mode = match core.positioning_mode {
-        PositioningMode::Center => "center",
-        PositioningMode::RuleOfThirds => "rule_of_thirds",
-        PositioningMode::Custom => "custom",
+    ConfigCropSettings {
+        preset: "custom".to_string(),
+        output_width: core.output_width,
+        output_height: core.output_height,
+        face_height_pct: core.face_height_pct,
+        positioning_mode: match core.positioning_mode {
+            PositioningMode::Center => "center",
+            PositioningMode::RuleOfThirds => "rule_of_thirds",
+            PositioningMode::Custom => "custom",
+        }
+        .to_string(),
+        output_format: "png".to_string(),
+        auto_detect_format: false,
+        ..ConfigCropSettings::default()
     }
-    .to_string();
-    cfg.output_format = "png".to_string();
-    cfg.auto_detect_format = false;
-    cfg
 }
 
 #[test]
@@ -82,7 +83,7 @@ fn full_crop_workflow_selects_best_quality_face() {
 
     let source = DynamicImage::ImageRgba8(base);
 
-    let detections = vec![
+    let detections = [
         make_detection(160.0, 160.0, 140.0, 140.0, 0.94),
         make_detection(40.0, 320.0, 90.0, 90.0, 0.78),
     ];
