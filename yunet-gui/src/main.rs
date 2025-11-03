@@ -1159,7 +1159,9 @@ impl YuNetApp {
                             let response =
                                 ui.add(egui::Image::new(texture).fit_to_exact_size(scaled));
                             if let Some(dimensions) = self.preview.image_size {
-                                self.paint_detections(ui, response.rect, dimensions);
+                                let image_rect =
+                                    Rect::from_center_size(response.rect.center(), scaled);
+                                self.paint_detections(ui, image_rect, dimensions);
                             }
                         });
                     }
@@ -1734,11 +1736,22 @@ impl YuNetApp {
         let painter = ui.painter().with_clip_rect(image_rect);
         let scale_x = image_rect.width() / image_size.0 as f32;
         let scale_y = image_rect.height() / image_size.1 as f32;
+        let stroke_scale = scale_x.min(scale_y).max(0.1);
 
-        let bbox_stroke = Stroke::new(2.0, Color32::from_rgb(255, 145, 77));
+        let bbox_stroke = Stroke::new(
+            (2.0 * stroke_scale).clamp(0.5, 6.0),
+            Color32::from_rgb(255, 145, 77),
+        );
         let landmark_color = Color32::from_rgb(82, 180, 255);
-        let crop_stroke = Stroke::new(3.0, Color32::from_rgb(0, 255, 127));
-        let selected_stroke = Stroke::new(4.0, Color32::from_rgb(100, 150, 255));
+        let crop_stroke = Stroke::new(
+            (3.0 * stroke_scale).clamp(0.5, 6.0),
+            Color32::from_rgb(0, 255, 127),
+        );
+        let selected_stroke = Stroke::new(
+            (4.0 * stroke_scale).clamp(0.5, 8.0),
+            Color32::from_rgb(100, 150, 255),
+        );
+        let landmark_radius = (3.0 * stroke_scale).clamp(1.0, 6.0);
 
         for (index, det_with_quality) in self.preview.detections.iter().enumerate() {
             let bbox = &det_with_quality.detection.bbox;
@@ -1764,7 +1777,7 @@ impl YuNetApp {
                     image_rect.left() + landmark.x * scale_x,
                     image_rect.top() + landmark.y * scale_y,
                 );
-                painter.circle_filled(center, 3.0, landmark_color);
+                painter.circle_filled(center, landmark_radius, landmark_color);
             }
 
             // Paint crop region overlay if enabled
