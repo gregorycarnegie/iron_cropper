@@ -39,6 +39,7 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 
 ## Documentation
 
+- `docs/parity_report.md` � Summary of YuNet vs OpenCV parity metrics.
 - `ARCHITECTURE.md` – End-to-end architecture and crop pipeline notes.
 - `docs/gui_crop_guide.md` – Detailed walkthrough of the GUI crop features.
 - `docs/cli_recipes.md` – Command-line recipes for common automation scenarios.

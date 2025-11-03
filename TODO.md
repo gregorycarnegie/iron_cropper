@@ -338,9 +338,9 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 - [x] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
 - [x] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.
 - [x] **Telemetry**: Add optional timing/logging hooks in `yunet-utils` for inference tracing.
-- [ ] **Parity validation**: Compare detections against OpenCV YuNet on a shared dataset.
-  - [ ] Evaluate IoU overlap, detection recall/precision, and score deltas.
-  - [ ] Document discrepancies and adjust preprocessing/postprocessing until parity is within tolerance.
+- [x] **Parity validation**: Compare detections against OpenCV YuNet on a shared dataset.
+  - [x] Evaluate IoU overlap, detection recall/precision, and score deltas.
+  - [x] Document discrepancies and adjust preprocessing/postprocessing until parity is within tolerance.
 
 ### Phase 11: Finalization & Release
 
