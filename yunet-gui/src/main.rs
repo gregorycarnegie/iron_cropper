@@ -17,6 +17,7 @@ use egui::{
     pos2, vec2,
 };
 use log::{LevelFilter, error, info, warn};
+use rayon::prelude::*;
 use rfd::FileDialog;
 use yunet_core::{
     CropSettings as CoreCropSettings, Detection, PositioningMode, PostprocessConfig,
@@ -65,6 +66,16 @@ enum BatchFileStatus {
 struct BatchFile {
     path: PathBuf,
     status: BatchFileStatus,
+}
+
+#[derive(Clone)]
+struct BatchJobConfig {
+    output_dir: PathBuf,
+    crop_settings: CoreCropSettings,
+    crop_config: ConfigCropSettings,
+    enhancement_settings: EnhancementSettings,
+    enhance_enabled: bool,
+    output_options: OutputOptions,
 }
 
 /// The main application state for the YuNet GUI.
@@ -2155,7 +2166,6 @@ impl YuNetApp {
         let enhancement_settings = self.build_enhancement_settings();
         let enhance_enabled = self.settings.enhance.enabled;
         let crop_config = self.settings.crop.clone();
-        let quality_rules = crop_config.quality_rules.clone();
         let output_options = OutputOptions::from_crop_settings(&crop_config);
 
         // Ensure detector is loaded before processing
@@ -2172,187 +2182,48 @@ impl YuNetApp {
             }
         };
 
-        // Process each batch file
+        if self.batch_files.is_empty() {
+            self.show_error(
+                "No batch files to export.",
+                "Load images into the batch list before starting export.",
+            );
+            return;
+        }
+
         for batch_file in &mut self.batch_files {
             batch_file.status = BatchFileStatus::Processing;
+        }
 
-            // Load image
-            let source_image = match load_image(&batch_file.path) {
-                Ok(img) => img,
-                Err(e) => {
-                    batch_file.status = BatchFileStatus::Failed {
-                        error: format!("Failed to load: {}", e),
-                    };
-                    warn!("Failed to load {}: {}", batch_file.path.display(), e);
-                    continue;
-                }
-            };
+        let tasks: Vec<(usize, PathBuf)> = self
+            .batch_files
+            .iter()
+            .enumerate()
+            .map(|(idx, batch_file)| (idx, batch_file.path.clone()))
+            .collect();
 
-            let detection_output = match detector.detect_image(&source_image) {
-                Ok(output) => output,
-                Err(e) => {
-                    batch_file.status = BatchFileStatus::Failed {
-                        error: format!("Detection failed: {}", e),
-                    };
-                    continue;
-                }
-            };
+        let job_config = Arc::new(BatchJobConfig {
+            output_dir: output_dir.clone(),
+            crop_settings,
+            crop_config: crop_config.clone(),
+            enhancement_settings,
+            enhance_enabled,
+            output_options,
+        });
 
-            let faces_detected = detection_output.detections.len();
-            let mut faces_exported = 0;
+        let detector_for_jobs = detector.clone();
+        let results: Vec<(usize, BatchFileStatus)> = tasks
+            .into_par_iter()
+            .map(|(idx, path)| {
+                let status =
+                    Self::run_batch_job(detector_for_jobs.clone(), path, job_config.clone());
+                (idx, status)
+            })
+            .collect();
 
-            struct ProcessedCrop {
-                index: usize,
-                image: image::DynamicImage,
-                quality: Quality,
-                quality_score: f64,
-                score: f32,
+        for (idx, status) in results {
+            if let Some(batch_file) = self.batch_files.get_mut(idx) {
+                batch_file.status = status;
             }
-
-            let mut processed: Vec<ProcessedCrop> =
-                Vec::with_capacity(detection_output.detections.len());
-            for (face_idx, detection) in detection_output.detections.iter().enumerate() {
-                let bbox = &detection.bbox;
-
-                let crop_region = calculate_crop_region(
-                    source_image.width(),
-                    source_image.height(),
-                    *bbox,
-                    &crop_settings,
-                );
-
-                let cropped = source_image.crop_imm(
-                    crop_region.x,
-                    crop_region.y,
-                    crop_region.width,
-                    crop_region.height,
-                );
-
-                let resized = cropped.resize_exact(
-                    crop_settings.output_width,
-                    crop_settings.output_height,
-                    image::imageops::FilterType::Lanczos3,
-                );
-
-                let final_image = if enhance_enabled {
-                    apply_enhancements(&resized, &enhancement_settings)
-                } else {
-                    resized
-                };
-
-                let (quality_score, quality) = estimate_sharpness(&final_image);
-                processed.push(ProcessedCrop {
-                    index: face_idx,
-                    image: final_image,
-                    quality,
-                    quality_score,
-                    score: detection.score,
-                });
-            }
-
-            if processed.is_empty() {
-                batch_file.status = BatchFileStatus::Completed {
-                    faces_detected,
-                    faces_exported: 0,
-                };
-                continue;
-            }
-
-            let best_quality = processed.iter().map(|c| c.quality).max();
-
-            if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
-                warn!(
-                    "Skipping {} - no high-quality faces detected",
-                    batch_file.path.display()
-                );
-                batch_file.status = BatchFileStatus::Completed {
-                    faces_detected,
-                    faces_exported: 0,
-                };
-                continue;
-            }
-
-            let mut exports = processed;
-            if quality_rules.auto_select_best_face
-                && exports.len() > 1
-                && let Some((best_idx, _)) = exports.iter().enumerate().max_by(|a, b| {
-                    a.1.quality.cmp(&b.1.quality).then_with(|| {
-                        a.1.quality_score
-                            .partial_cmp(&b.1.quality_score)
-                            .unwrap_or(Ordering::Equal)
-                    })
-                })
-            {
-                let best_index = exports[best_idx].index;
-                exports.retain(|c| c.index == best_index);
-            }
-
-            for crop in exports.into_iter() {
-                let should_skip = if let Some(min) = quality_rules.min_quality {
-                    crop.quality < min
-                } else {
-                    false
-                };
-                if should_skip {
-                    info!(
-                        "Skipping face {} from {} due to {:?} quality",
-                        crop.index + 1,
-                        batch_file.path.display(),
-                        crop.quality
-                    );
-                    continue;
-                }
-
-                let source_stem = batch_file
-                    .path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("face");
-                let mut ext = crop_config.output_format.clone();
-                if ext.is_empty() {
-                    ext = "png".to_string();
-                }
-                let ext = ext.to_ascii_lowercase();
-
-                let mut output_filename =
-                    format!("{}_face_{:02}.{}", source_stem, crop.index + 1, ext);
-                if quality_rules.quality_suffix {
-                    let suffix = match crop.quality {
-                        Quality::High => Some("_highq"),
-                        Quality::Medium => Some("_medq"),
-                        Quality::Low => Some("_lowq"),
-                    };
-                    if let Some(suffix) = suffix {
-                        output_filename = append_suffix_to_filename(&output_filename, suffix);
-                    }
-                }
-                let output_path = output_dir.join(output_filename);
-
-                let metadata_ctx = MetadataContext {
-                    source_path: Some(batch_file.path.as_path()),
-                    crop_settings: Some(&crop_config),
-                    detection_score: Some(crop.score),
-                    quality: Some(crop.quality),
-                    quality_score: Some(crop.quality_score),
-                };
-
-                if save_dynamic_image(&crop.image, &output_path, &output_options, &metadata_ctx)
-                    .is_ok()
-                {
-                    faces_exported += 1;
-                } else {
-                    warn!(
-                        "Failed to save face {} from {}",
-                        crop.index + 1,
-                        batch_file.path.display()
-                    );
-                }
-            }
-
-            batch_file.status = BatchFileStatus::Completed {
-                faces_detected,
-                faces_exported,
-            };
         }
 
         // Update status with summary
@@ -2430,6 +2301,187 @@ impl YuNetApp {
             "Batch export complete: {}/{} files, {} faces exported, {} failed",
             completed, total, total_faces, failed
         );
+    }
+
+    fn run_batch_job(
+        detector: Arc<YuNetDetector>,
+        path: PathBuf,
+        config: Arc<BatchJobConfig>,
+    ) -> BatchFileStatus {
+        let source_image = match load_image(&path) {
+            Ok(img) => img,
+            Err(e) => {
+                warn!("Failed to load {}: {}", path.display(), e);
+                return BatchFileStatus::Failed {
+                    error: format!("Failed to load: {e}"),
+                };
+            }
+        };
+
+        let detection_output = match detector.detect_image(&source_image) {
+            Ok(output) => output,
+            Err(e) => {
+                warn!("Detection failed for {}: {}", path.display(), e);
+                return BatchFileStatus::Failed {
+                    error: format!("Detection failed: {e}"),
+                };
+            }
+        };
+
+        let faces_detected = detection_output.detections.len();
+
+        struct ProcessedCrop {
+            index: usize,
+            image: image::DynamicImage,
+            quality: Quality,
+            quality_score: f64,
+            score: f32,
+        }
+
+        let mut processed = Vec::with_capacity(faces_detected);
+        for (face_idx, detection) in detection_output.detections.iter().enumerate() {
+            let bbox = &detection.bbox;
+            let crop_region = calculate_crop_region(
+                source_image.width(),
+                source_image.height(),
+                *bbox,
+                &config.crop_settings,
+            );
+
+            let cropped = source_image.crop_imm(
+                crop_region.x,
+                crop_region.y,
+                crop_region.width,
+                crop_region.height,
+            );
+
+            let resized = cropped.resize_exact(
+                config.crop_settings.output_width,
+                config.crop_settings.output_height,
+                image::imageops::FilterType::Lanczos3,
+            );
+
+            let final_image = if config.enhance_enabled {
+                apply_enhancements(&resized, &config.enhancement_settings)
+            } else {
+                resized
+            };
+
+            let (quality_score, quality) = estimate_sharpness(&final_image);
+            processed.push(ProcessedCrop {
+                index: face_idx,
+                image: final_image,
+                quality,
+                quality_score,
+                score: detection.score,
+            });
+        }
+
+        if processed.is_empty() {
+            return BatchFileStatus::Completed {
+                faces_detected,
+                faces_exported: 0,
+            };
+        }
+
+        let quality_rules = &config.crop_config.quality_rules;
+        let best_quality = processed.iter().map(|c| c.quality).max();
+
+        if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
+            warn!(
+                "Skipping {} - no high-quality faces detected",
+                path.display()
+            );
+            return BatchFileStatus::Completed {
+                faces_detected,
+                faces_exported: 0,
+            };
+        }
+
+        let mut exports = processed;
+        if quality_rules.auto_select_best_face
+            && exports.len() > 1
+            && let Some((best_idx, _)) = exports.iter().enumerate().max_by(|a, b| {
+                a.1.quality.cmp(&b.1.quality).then_with(|| {
+                    a.1.quality_score
+                        .partial_cmp(&b.1.quality_score)
+                        .unwrap_or(Ordering::Equal)
+                })
+            })
+        {
+            let best_index = exports[best_idx].index;
+            exports.retain(|c| c.index == best_index);
+        }
+
+        let mut faces_exported = 0;
+        for crop in exports.into_iter() {
+            let should_skip = if let Some(min) = quality_rules.min_quality {
+                crop.quality < min
+            } else {
+                false
+            };
+            if should_skip {
+                info!(
+                    "Skipping face {} from {} due to {:?} quality",
+                    crop.index + 1,
+                    path.display(),
+                    crop.quality
+                );
+                continue;
+            }
+
+            let source_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("face");
+            let mut ext = config.crop_config.output_format.clone();
+            if ext.is_empty() {
+                ext = "png".to_string();
+            }
+            let ext = ext.to_ascii_lowercase();
+
+            let mut output_filename = format!("{}_face_{:02}.{}", source_stem, crop.index + 1, ext);
+            if quality_rules.quality_suffix {
+                let suffix = match crop.quality {
+                    Quality::High => Some("_highq"),
+                    Quality::Medium => Some("_medq"),
+                    Quality::Low => Some("_lowq"),
+                };
+                if let Some(suffix) = suffix {
+                    output_filename = append_suffix_to_filename(&output_filename, suffix);
+                }
+            }
+            let output_path = config.output_dir.join(output_filename);
+
+            let metadata_ctx = MetadataContext {
+                source_path: Some(path.as_path()),
+                crop_settings: Some(&config.crop_config),
+                detection_score: Some(crop.score),
+                quality: Some(crop.quality),
+                quality_score: Some(crop.quality_score),
+            };
+
+            match save_dynamic_image(
+                &crop.image,
+                &output_path,
+                &config.output_options,
+                &metadata_ctx,
+            ) {
+                Ok(_) => {
+                    faces_exported += 1;
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to save face {} from {}: {}",
+                        crop.index + 1,
+                        path.display(),
+                        err
+                    );
+                }
+            }
+        }
+
+        BatchFileStatus::Completed {
+            faces_detected,
+            faces_exported,
+        }
     }
 
     /// Starts a new detection job for the given image path.
