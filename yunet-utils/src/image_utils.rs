@@ -1,3 +1,8 @@
+//! Image loading and conversion helpers shared across the workspace.
+//!
+//! This module centralizes routines for reading files, resizing RGB buffers, and converting to
+//! tensor-friendly layouts while preserving compatibility with OpenCV glue code.
+
 use std::path::Path;
 
 use anyhow::{Context, Result};

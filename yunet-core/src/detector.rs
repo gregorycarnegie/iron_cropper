@@ -1,3 +1,8 @@
+//! High-level detector abstraction combining preprocessing, model inference, and postprocessing.
+//!
+//! This module exposes [`YuNetDetector`], the primary interface used by both the CLI and GUI
+//! front-ends to run YuNet against images.
+
 use std::path::Path;
 
 use anyhow::Result;

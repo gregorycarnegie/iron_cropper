@@ -1,7 +1,12 @@
-use std::path::Path;
+//! Preprocessing utilities for preparing images for YuNet inference.
+//!
+//! The helpers in this module resize images, convert them into the expected tensor layout, and
+//! return the scale factors necessary to map detections back to the source image.
+
+use std::{borrow::Cow, path::Path};
 
 use anyhow::{Context, Result};
-use image::{DynamicImage, GenericImageView, imageops::FilterType};
+use image::{DynamicImage, GenericImageView, RgbImage, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
 use yunet_utils::telemetry::timing_guard;
 use yunet_utils::{
@@ -95,8 +100,15 @@ pub fn preprocess_dynamic_image(
     );
 
     let (orig_w, orig_h) = image.dimensions();
-    let resized = resize_image(image, input_w, input_h, FilterType::Triangle);
-    let chw = rgb_to_bgr_chw(&resized);
+    let resized_rgb: Cow<'_, RgbImage> = if orig_w == input_w && orig_h == input_h {
+        match image.as_rgb8() {
+            Some(rgb) => Cow::Borrowed(rgb),
+            None => Cow::Owned(image.to_rgb8()),
+        }
+    } else {
+        Cow::Owned(resize_image(image, input_w, input_h, FilterType::Triangle))
+    };
+    let chw = rgb_to_bgr_chw(&resized_rgb);
 
     let shape = [1usize, 3, input_h as usize, input_w as usize];
     // Convert ndarray to Vec without extra copy - into_raw_vec_and_offset returns (vec, offset)

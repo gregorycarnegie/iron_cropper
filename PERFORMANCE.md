@@ -59,6 +59,13 @@
 - **Method**: Cache detection results per image + settings combination
 - **Impact**: Instant results when switching back to previously processed images
 
+### 6. Conditional Resize Bypass
+
+- **Location**: `yunet-core/src/preprocess.rs:86-108`
+- **Method**: Skip the costly resampling step and borrow the existing RGB buffer when the source image already matches the configured input size.
+- **Impact**: Avoids redundant resizing work for 640Ã—640 assets, shaving ~15-20ms per image in telemetry runs and reducing CPU usage in batch jobs.
+- **Implementation**: Uses `Cow<RgbImage>` to borrow in-memory RGB data when possible, falling back to a single owned resize when dimensions differ.
+
 ---
 
 ## Benchmark Infrastructure

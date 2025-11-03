@@ -22,6 +22,7 @@ use yunet_utils::{
     append_suffix_to_filename, apply_enhancements,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
+        default_settings_path,
     },
     configure_telemetry, estimate_sharpness, init_logging, normalize_path, save_dynamic_image,
 };
@@ -42,7 +43,7 @@ struct DetectArgs {
     )]
     model: PathBuf,
 
-    /// Optional settings JSON (defaults to built-in YuNet parameters).
+    /// Optional settings JSON. Defaults to `config/gui_settings.json` when present, otherwise built-in parameters.
     #[arg(long)]
     config: Option<PathBuf>,
 
@@ -1033,9 +1034,23 @@ mod tests {
 fn load_settings(config_path: Option<&PathBuf>) -> Result<AppSettings> {
     if let Some(path) = config_path {
         let resolved = normalize_path(path)?;
-        AppSettings::load_from_path(&resolved)
+        let settings = AppSettings::load_from_path(&resolved)?;
+        info!("Loaded settings from {}", resolved.display());
+        Ok(settings)
     } else {
-        Ok(AppSettings::default())
+        let default_path = default_settings_path();
+        if default_path.exists() {
+            let settings = AppSettings::load_from_path(&default_path).with_context(|| {
+                format!(
+                    "failed to load default settings from {}",
+                    default_path.display()
+                )
+            })?;
+            info!("Loaded settings from {}", default_path.display());
+            Ok(settings)
+        } else {
+            Ok(AppSettings::default())
+        }
     }
 }
 

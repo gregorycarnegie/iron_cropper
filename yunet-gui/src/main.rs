@@ -23,7 +23,9 @@ use yunet_core::{
 };
 use yunet_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename,
-    config::{AppSettings, CropSettings as ConfigCropSettings, MetadataMode},
+    config::{
+        AppSettings, CropSettings as ConfigCropSettings, MetadataMode, default_settings_path,
+    },
     configure_telemetry,
     enhance::{EnhancementSettings, apply_enhancements},
     init_logging, load_image,
@@ -2514,13 +2516,6 @@ fn load_settings(path: &Path) -> AppSettings {
             AppSettings::default()
         }
     }
-}
-
-/// Returns the default path for the GUI settings file.
-fn default_settings_path() -> PathBuf {
-    std::env::current_dir()
-        .map(|dir| dir.join("config/gui_settings.json"))
-        .unwrap_or_else(|_| PathBuf::from("config/gui_settings.json"))
 }
 
 /// Builds a `YuNetDetector` from the given application settings.

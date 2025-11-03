@@ -28,6 +28,10 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - `cargo bench -p yunet-core crop_enhance` – Measure the crop + enhancement micro-benchmark.
 - `cargo fmt --all && cargo clippy --workspace -- -D warnings` – Formatting and linting hygiene.
 
+## Configuration
+
+- Settings persist to `config/gui_settings.json`. The GUI saves changes automatically, and the CLI now reads the same file by default when `--config` is omitted, keeping thresholds and input dimensions in sync across surfaces.
+
 ## Diagnostics
 
 - CLI: pass `--telemetry` (optionally `--telemetry-level trace`) to log scoped timings under the `yunet::telemetry` target. Use `--telemetry-level off` to disable timing logs for that run.

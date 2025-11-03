@@ -1,4 +1,13 @@
-use std::{collections::BTreeMap, fs, path::Path};
+//! Shared configuration types consumed across the YuNet workspace.
+//!
+//! These structures provide a common representation for inference, detection, cropping, and
+//! enhancement settings that can be serialized to disk and reused by CLI and GUI front-ends.
+
+use std::{
+    collections::BTreeMap,
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use log::LevelFilter;
@@ -182,7 +191,7 @@ impl Default for MetadataSettings {
 }
 
 /// Automation options driven by quality analysis.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct QualityAutomationSettings {
     /// Automatically select the highest quality face when multiple are detected.
@@ -193,17 +202,6 @@ pub struct QualityAutomationSettings {
     pub auto_skip_no_high_quality: bool,
     /// Append a quality suffix (e.g., `_highq`) to exported filenames.
     pub quality_suffix: bool,
-}
-
-impl Default for QualityAutomationSettings {
-    fn default() -> Self {
-        Self {
-            auto_select_best_face: false,
-            min_quality: None,
-            auto_skip_no_high_quality: false,
-            quality_suffix: false,
-        }
-    }
 }
 
 impl Default for EnhanceSettings {
@@ -335,6 +333,13 @@ impl AppSettings {
             .with_context(|| format!("failed to write settings file {}", path.display()))?;
         Ok(())
     }
+}
+
+/// Returns the default path for persisted application settings (`config/gui_settings.json`).
+pub fn default_settings_path() -> PathBuf {
+    env::current_dir()
+        .map(|dir| dir.join("config/gui_settings.json"))
+        .unwrap_or_else(|_| PathBuf::from("config/gui_settings.json"))
 }
 
 #[cfg(test)]
