@@ -94,7 +94,7 @@ pub struct CropSettings {
 }
 
 /// Settings for image enhancement operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EnhanceSettings {
     /// Enable enhancements

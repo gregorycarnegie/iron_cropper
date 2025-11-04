@@ -16,6 +16,7 @@ use egui::{
     ScrollArea, SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel,
     pos2, vec2,
 };
+use image::DynamicImage;
 use log::{LevelFilter, error, info, warn};
 use rayon::prelude::*;
 use rfd::FileDialog;
@@ -78,6 +79,45 @@ struct BatchJobConfig {
     output_options: OutputOptions,
 }
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct EnhancementSignature {
+    auto_color: bool,
+    exposure_bits: u32,
+    brightness: i32,
+    contrast_bits: u32,
+    saturation_bits: u32,
+    unsharp_amount_bits: u32,
+    unsharp_radius_bits: u32,
+    sharpness_bits: u32,
+    skin_smooth_bits: u32,
+    skin_sigma_space_bits: u32,
+    skin_sigma_color_bits: u32,
+    red_eye_removal: bool,
+    red_eye_threshold_bits: u32,
+    background_blur: bool,
+    background_blur_radius_bits: u32,
+    background_blur_mask_bits: u32,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct CropPreviewKey {
+    path: PathBuf,
+    face_index: usize,
+    output_width: u32,
+    output_height: u32,
+    positioning_mode: u8,
+    face_height_bits: u32,
+    horizontal_bits: u32,
+    vertical_bits: u32,
+    enhancement: EnhancementSignature,
+    enhance_enabled: bool,
+}
+
+struct CropPreviewCacheEntry {
+    image: Arc<DynamicImage>,
+    texture: Option<TextureHandle>,
+}
+
 /// The main application state for the YuNet GUI.
 struct YuNetApp {
     /// User-configurable settings.
@@ -98,6 +138,8 @@ struct YuNetApp {
     preview: PreviewState,
     /// Cache for detection results to avoid re-running on the same image and settings.
     cache: HashMap<CacheKey, DetectionCacheEntry>,
+    /// Cached cropped previews keyed by face + crop/enhancement configuration.
+    crop_preview_cache: HashMap<CropPreviewKey, CropPreviewCacheEntry>,
     /// The current value of the model path text input.
     model_path_input: String,
     /// Flag indicating if the model path input has been modified.
@@ -151,6 +193,8 @@ struct PreviewState {
     detections: Vec<DetectionWithQuality>,
     /// Whether the preview is currently loading/detecting.
     is_loading: bool,
+    /// Cached original image pixels for computing previews without disk I/O.
+    source_image: Option<Arc<DynamicImage>>,
 }
 
 impl PreviewState {
@@ -161,6 +205,7 @@ impl PreviewState {
         self.image_size = None;
         self.detections.clear();
         self.is_loading = true;
+        self.source_image = None;
     }
 }
 
@@ -182,6 +227,7 @@ struct DetectionJobSuccess {
     color_image: egui::ColorImage,
     detections: Vec<DetectionWithQuality>,
     original_size: (u32, u32),
+    original_image: Arc<DynamicImage>,
 }
 
 /// A key used to cache detection results.
@@ -201,6 +247,7 @@ struct DetectionCacheEntry {
     texture: TextureHandle,
     image_size: (u32, u32),
     detections: Vec<DetectionWithQuality>,
+    source_image: Arc<DynamicImage>,
 }
 
 impl YuNetApp {
@@ -261,6 +308,7 @@ impl YuNetApp {
             job_rx,
             preview: PreviewState::default(),
             cache: HashMap::new(),
+            crop_preview_cache: HashMap::new(),
             model_path_input,
             model_path_dirty: false,
             is_busy: false,
@@ -301,6 +349,8 @@ impl YuNetApp {
                 ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        let initial_crop_settings = self.settings.crop.clone();
+                        let initial_enhance_settings = self.settings.enhance.clone();
                         let mut settings_changed = false;
                         let mut metadata_tags_changed = false;
                         let mut requires_detector_reset = false;
@@ -351,12 +401,15 @@ impl YuNetApp {
                                 .max_height(220.0)
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
-                                    for (index, det_with_quality) in
-                                        self.preview.detections.iter().enumerate()
-                                    {
+                                    for index in 0..self.preview.detections.len() {
+                                        let det_with_quality = &self.preview.detections[index];
+                                        let detection_score = det_with_quality.detection.score;
+                                        let quality = det_with_quality.quality;
+                                        let quality_score = det_with_quality.quality_score;
+                                        let thumbnail = det_with_quality.thumbnail.clone();
                                         let is_selected = self.selected_faces.contains(&index);
 
-                                        let quality_color = match det_with_quality.quality {
+                                        let quality_color = match quality {
                                             Quality::High => Color32::from_rgb(0, 200, 100),
                                             Quality::Medium => Color32::from_rgb(255, 180, 0),
                                             Quality::Low => Color32::from_rgb(255, 80, 80),
@@ -384,13 +437,34 @@ impl YuNetApp {
                                                 .inner_margin(4.0)
                                                 .show(ui, |ui| {
                                                     ui.horizontal(|ui| {
-                                                        // Show thumbnail if available
-                                                        if let Some(thumbnail) =
-                                                            &det_with_quality.thumbnail
+                                                        if let Some(texture) =
+                                                            self.crop_preview_texture_for(
+                                                                ctx, index,
+                                                            )
                                                         {
+                                                            let preview = egui::Image::new((
+                                                                texture.id(),
+                                                                texture.size_vec2(),
+                                                            ))
+                                                            .max_size(vec2(100.0, 100.0));
+                                                            let preview_response =
+                                                                ui.add(preview);
+                                                            if preview_response.clicked() {
+                                                                if is_selected {
+                                                                    self.selected_faces
+                                                                        .remove(&index);
+                                                                } else {
+                                                                    self.selected_faces
+                                                                        .insert(index);
+                                                                }
+                                                            }
+                                                        } else if let Some(thumbnail) = thumbnail {
                                                             let thumb_response = ui.add(
-                                                                egui::Image::new(thumbnail)
-                                                                    .max_width(80.0),
+                                                                egui::Image::new((
+                                                                    thumbnail.id(),
+                                                                    thumbnail.size_vec2(),
+                                                                ))
+                                                                .max_width(80.0),
                                                             );
                                                             if thumb_response.clicked() {
                                                                 if is_selected {
@@ -413,7 +487,7 @@ impl YuNetApp {
                                                             );
                                                             ui.label(format!(
                                                                 "Conf: {:.2}",
-                                                                det_with_quality.detection.score
+                                                                detection_score
                                                             ));
                                                             ui.horizontal(|ui| {
                                                                 ui.label("Quality:");
@@ -421,13 +495,13 @@ impl YuNetApp {
                                                                     quality_color,
                                                                     format!(
                                                                         "{:?}",
-                                                                        det_with_quality.quality
+                                                                        quality
                                                                     ),
                                                                 );
                                                             });
                                                             ui.label(format!(
                                                                 "Score: {:.0}",
-                                                                det_with_quality.quality_score
+                                                                quality_score
                                                             ));
 
                                                             if ui
@@ -1274,6 +1348,12 @@ impl YuNetApp {
                             ))
                             .weak(),
                         );
+
+                        if self.settings.crop != initial_crop_settings
+                            || self.settings.enhance != initial_enhance_settings
+                        {
+                            self.clear_crop_preview_cache();
+                        }
                     });
             });
     }
@@ -1529,6 +1609,7 @@ impl YuNetApp {
         }
         self.crop_history_index -= 1;
         self.settings.crop = self.crop_history[self.crop_history_index].clone();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
         self.apply_quality_rules_to_preview();
         self.refresh_metadata_tags_input();
@@ -1540,6 +1621,7 @@ impl YuNetApp {
         }
         self.crop_history_index += 1;
         self.settings.crop = self.crop_history[self.crop_history_index].clone();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
         self.apply_quality_rules_to_preview();
         self.refresh_metadata_tags_input();
@@ -1555,6 +1637,7 @@ impl YuNetApp {
         }
         self.settings.crop.horizontal_offset = new_value;
         self.push_crop_history();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
     }
 
@@ -1568,6 +1651,7 @@ impl YuNetApp {
         }
         self.settings.crop.vertical_offset = new_value;
         self.push_crop_history();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
     }
 
@@ -1581,6 +1665,7 @@ impl YuNetApp {
         }
         self.settings.crop.face_height_pct = new_value;
         self.push_crop_history();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
     }
 
@@ -1590,6 +1675,7 @@ impl YuNetApp {
         }
         self.settings.crop.preset = preset.to_string();
         self.push_crop_history();
+        self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
     }
 
@@ -1700,6 +1786,7 @@ impl YuNetApp {
         }
         if actions.toggle_enhance {
             self.settings.enhance.enabled = !self.settings.enhance.enabled;
+            self.clear_crop_preview_cache();
             self.persist_settings_with_feedback();
         }
         if actions.export {
@@ -1733,22 +1820,6 @@ impl YuNetApp {
             }
         };
 
-        let source_image = match load_image(&source_path) {
-            Ok(img) => img,
-            Err(e) => {
-                let detail = format!("Failed to load source image: {e}");
-                self.show_error(
-                    "Could not open the selected image for export.",
-                    detail.clone(),
-                );
-                error!("{detail}");
-                return;
-            }
-        };
-
-        let crop_settings = self.build_crop_settings();
-        let enhancement_settings = self.build_enhancement_settings();
-        let enhance_enabled = self.settings.enhance.enabled;
         let crop_config = self.settings.crop.clone();
         let output_options = OutputOptions::from_crop_settings(&crop_config);
 
@@ -1756,90 +1827,72 @@ impl YuNetApp {
         let mut error_count = 0;
         let mut skipped_quality = 0;
 
+        let selected_faces: Vec<usize> = self.selected_faces.iter().copied().collect();
+
         // Export each selected face
-        for &face_idx in &self.selected_faces {
-            if let Some(det_with_quality) = self.preview.detections.get(face_idx) {
-                if self.should_skip_quality(det_with_quality.quality) {
-                    info!(
-                        "Skipping face {} due to {:?} quality",
-                        face_idx + 1,
-                        det_with_quality.quality
-                    );
-                    skipped_quality += 1;
+        for face_idx in selected_faces {
+            let Some(det_with_quality) = self.preview.detections.get(face_idx).cloned() else {
+                continue;
+            };
+            let detection_score = det_with_quality.detection.score;
+            let quality = det_with_quality.quality;
+            let quality_score = det_with_quality.quality_score;
+
+            if self.should_skip_quality(quality) {
+                info!(
+                    "Skipping face {} due to {:?} quality",
+                    face_idx + 1,
+                    quality
+                );
+                skipped_quality += 1;
+                continue;
+            }
+
+            let (_, preview_image) = match self.ensure_crop_preview_entry(face_idx) {
+                Some(entry) => entry,
+                None => {
+                    warn!("Failed to prepare crop preview for face {}", face_idx + 1);
+                    error_count += 1;
                     continue;
                 }
+            };
 
-                let bbox = &det_with_quality.detection.bbox;
+            // Generate output filename
+            let source_stem = source_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("face");
+            let ext = match crop_config.output_format.as_str() {
+                "jpeg" | "jpg" => "jpg",
+                "webp" => "webp",
+                _ => "png",
+            };
+            let mut output_filename = format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
+            if let Some(suffix) = self.quality_suffix(quality) {
+                output_filename = append_suffix_to_filename(&output_filename, suffix);
+            }
+            let output_path = output_dir.join(output_filename);
 
-                // Calculate crop region
-                let crop_region = calculate_crop_region(
-                    source_image.width(),
-                    source_image.height(),
-                    *bbox,
-                    &crop_settings,
-                );
+            let metadata_ctx = MetadataContext {
+                source_path: Some(source_path.as_path()),
+                crop_settings: Some(&crop_config),
+                detection_score: Some(detection_score),
+                quality: Some(quality),
+                quality_score: Some(quality_score),
+            };
 
-                // Extract crop
-                let cropped = source_image.crop_imm(
-                    crop_region.x,
-                    crop_region.y,
-                    crop_region.width,
-                    crop_region.height,
-                );
-
-                // Resize to output dimensions
-                let resized = cropped.resize_exact(
-                    crop_settings.output_width,
-                    crop_settings.output_height,
-                    image::imageops::FilterType::Lanczos3,
-                );
-
-                // Apply enhancements if enabled
-                let final_image = if enhance_enabled {
-                    apply_enhancements(&resized, &enhancement_settings)
-                } else {
-                    resized
-                };
-
-                // Generate output filename
-                let source_stem = source_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("face");
-                let ext = match crop_config.output_format.as_str() {
-                    "jpeg" | "jpg" => "jpg",
-                    "webp" => "webp",
-                    _ => "png",
-                };
-                let mut output_filename =
-                    format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
-                if let Some(suffix) = self.quality_suffix(det_with_quality.quality) {
-                    output_filename = append_suffix_to_filename(&output_filename, suffix);
+            match save_dynamic_image(&preview_image, &output_path, &output_options, &metadata_ctx) {
+                Ok(_) => {
+                    info!(
+                        "Exported face {} to {}",
+                        face_idx + 1,
+                        output_path.display()
+                    );
+                    export_count += 1;
                 }
-                let output_path = output_dir.join(output_filename);
-
-                let metadata_ctx = MetadataContext {
-                    source_path: Some(source_path.as_path()),
-                    crop_settings: Some(&crop_config),
-                    detection_score: Some(det_with_quality.detection.score),
-                    quality: Some(det_with_quality.quality),
-                    quality_score: Some(det_with_quality.quality_score),
-                };
-
-                match save_dynamic_image(&final_image, &output_path, &output_options, &metadata_ctx)
-                {
-                    Ok(_) => {
-                        info!(
-                            "Exported face {} to {}",
-                            face_idx + 1,
-                            output_path.display()
-                        );
-                        export_count += 1;
-                    }
-                    Err(e) => {
-                        warn!("Failed to save face {}: {}", face_idx + 1, e);
-                        error_count += 1;
-                    }
+                Err(e) => {
+                    warn!("Failed to save face {}: {}", face_idx + 1, e);
+                    error_count += 1;
                 }
             }
         }
@@ -2064,6 +2117,162 @@ impl YuNetApp {
         self.is_busy = false;
         self.preview.is_loading = false;
         self.status_line = status_message.to_owned();
+        self.clear_crop_preview_cache();
+    }
+
+    fn clear_crop_preview_cache(&mut self) {
+        if !self.crop_preview_cache.is_empty() {
+            info!(
+                "Clearing cached crop previews ({})",
+                self.crop_preview_cache.len()
+            );
+        }
+        self.crop_preview_cache.clear();
+    }
+
+    fn enhancement_signature(&self, settings: &EnhancementSettings) -> EnhancementSignature {
+        EnhancementSignature {
+            auto_color: settings.auto_color,
+            exposure_bits: settings.exposure_stops.to_bits(),
+            brightness: settings.brightness,
+            contrast_bits: settings.contrast.to_bits(),
+            saturation_bits: settings.saturation.to_bits(),
+            unsharp_amount_bits: settings.unsharp_amount.to_bits(),
+            unsharp_radius_bits: settings.unsharp_radius.to_bits(),
+            sharpness_bits: settings.sharpness.to_bits(),
+            skin_smooth_bits: settings.skin_smooth_amount.to_bits(),
+            skin_sigma_space_bits: settings.skin_smooth_sigma_space.to_bits(),
+            skin_sigma_color_bits: settings.skin_smooth_sigma_color.to_bits(),
+            red_eye_removal: settings.red_eye_removal,
+            red_eye_threshold_bits: settings.red_eye_threshold.to_bits(),
+            background_blur: settings.background_blur,
+            background_blur_radius_bits: settings.background_blur_radius.to_bits(),
+            background_blur_mask_bits: settings.background_blur_mask_size.to_bits(),
+        }
+    }
+
+    fn positioning_mode_id(mode: PositioningMode) -> u8 {
+        match mode {
+            PositioningMode::Center => 0,
+            PositioningMode::RuleOfThirds => 1,
+            PositioningMode::Custom => 2,
+        }
+    }
+
+    fn ensure_crop_preview_entry(
+        &mut self,
+        face_idx: usize,
+    ) -> Option<(CropPreviewKey, Arc<DynamicImage>)> {
+        let path = self.preview.image_path.clone()?;
+        let detection = self.preview.detections.get(face_idx)?;
+
+        let crop_settings = self.build_crop_settings();
+        let enhancement_settings = self.build_enhancement_settings();
+        let enhance_enabled = self.settings.enhance.enabled;
+        let signature = self.enhancement_signature(&enhancement_settings);
+
+        let key = CropPreviewKey {
+            path: path.clone(),
+            face_index: face_idx,
+            output_width: crop_settings.output_width,
+            output_height: crop_settings.output_height,
+            positioning_mode: Self::positioning_mode_id(crop_settings.positioning_mode),
+            face_height_bits: crop_settings.face_height_pct.to_bits(),
+            horizontal_bits: crop_settings.horizontal_offset.to_bits(),
+            vertical_bits: crop_settings.vertical_offset.to_bits(),
+            enhancement: signature,
+            enhance_enabled,
+        };
+
+        if let Some(entry) = self.crop_preview_cache.get(&key) {
+            return Some((key, entry.image.clone()));
+        }
+
+        let source_image = if let Some(img) = &self.preview.source_image {
+            img.clone()
+        } else {
+            match load_image(&path) {
+                Ok(img) => {
+                    let arc = Arc::new(img);
+                    self.preview.source_image = Some(arc.clone());
+                    arc
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to load {} for crop preview: {}",
+                        path.display(),
+                        err
+                    );
+                    return None;
+                }
+            }
+        };
+
+        let bbox = detection.detection.bbox;
+        let crop_region = calculate_crop_region(
+            source_image.width(),
+            source_image.height(),
+            bbox,
+            &crop_settings,
+        );
+        let cropped = source_image.crop_imm(
+            crop_region.x,
+            crop_region.y,
+            crop_region.width,
+            crop_region.height,
+        );
+        let resized = cropped.resize_exact(
+            crop_settings.output_width,
+            crop_settings.output_height,
+            image::imageops::FilterType::Lanczos3,
+        );
+        let final_image = if enhance_enabled {
+            apply_enhancements(&resized, &enhancement_settings)
+        } else {
+            resized
+        };
+        let arc_image = Arc::new(final_image);
+        self.crop_preview_cache.insert(
+            key.clone(),
+            CropPreviewCacheEntry {
+                image: arc_image.clone(),
+                texture: None,
+            },
+        );
+        Some((key, arc_image))
+    }
+
+    fn load_texture_from_image(
+        &mut self,
+        ctx: &EguiContext,
+        image: &DynamicImage,
+    ) -> TextureHandle {
+        let rgba = image.to_rgba8();
+        let size = [rgba.width() as usize, rgba.height() as usize];
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+        let texture_name = format!("yunet-crop-preview-{}", self.texture_seq);
+        self.texture_seq = self.texture_seq.wrapping_add(1);
+        ctx.load_texture(texture_name, color_image, TextureOptions::LINEAR)
+    }
+
+    fn crop_preview_texture_for(
+        &mut self,
+        ctx: &EguiContext,
+        face_idx: usize,
+    ) -> Option<TextureHandle> {
+        let (key, image) = self.ensure_crop_preview_entry(face_idx)?;
+        if let Some(texture) = self
+            .crop_preview_cache
+            .get(&key)
+            .and_then(|entry| entry.texture.clone())
+        {
+            return Some(texture);
+        }
+        let texture = self.load_texture_from_image(ctx, &image);
+        if let Some(entry) = self.crop_preview_cache.get_mut(&key) {
+            entry.texture = Some(texture.clone());
+        }
+        Some(texture)
     }
 
     /// Applies the model path from the text input field.
@@ -2330,21 +2539,19 @@ impl YuNetApp {
 
         let faces_detected = detection_output.detections.len();
 
-        struct ProcessedCrop {
+        struct FaceCandidate {
             index: usize,
-            image: image::DynamicImage,
             quality: Quality,
             quality_score: f64,
             score: f32,
         }
 
-        let mut processed = Vec::with_capacity(faces_detected);
+        let mut candidates = Vec::with_capacity(faces_detected);
         for (face_idx, detection) in detection_output.detections.iter().enumerate() {
-            let bbox = &detection.bbox;
             let crop_region = calculate_crop_region(
                 source_image.width(),
                 source_image.height(),
-                *bbox,
+                detection.bbox,
                 &config.crop_settings,
             );
 
@@ -2368,16 +2575,15 @@ impl YuNetApp {
             };
 
             let (quality_score, quality) = estimate_sharpness(&final_image);
-            processed.push(ProcessedCrop {
+            candidates.push(FaceCandidate {
                 index: face_idx,
-                image: final_image,
                 quality,
                 quality_score,
                 score: detection.score,
             });
         }
 
-        if processed.is_empty() {
+        if candidates.is_empty() {
             return BatchFileStatus::Completed {
                 faces_detected,
                 faces_exported: 0,
@@ -2385,7 +2591,7 @@ impl YuNetApp {
         }
 
         let quality_rules = &config.crop_config.quality_rules;
-        let best_quality = processed.iter().map(|c| c.quality).max();
+        let best_quality = candidates.iter().map(|c| c.quality).max();
 
         if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
             warn!(
@@ -2398,7 +2604,7 @@ impl YuNetApp {
             };
         }
 
-        let mut exports = processed;
+        let mut exports = candidates;
         if quality_rules.auto_select_best_face
             && exports.len() > 1
             && let Some((best_idx, _)) = exports.iter().enumerate().max_by(|a, b| {
@@ -2414,21 +2620,52 @@ impl YuNetApp {
         }
 
         let mut faces_exported = 0;
-        for crop in exports.into_iter() {
+        for candidate in exports.into_iter() {
             let should_skip = if let Some(min) = quality_rules.min_quality {
-                crop.quality < min
+                candidate.quality < min
             } else {
                 false
             };
             if should_skip {
                 info!(
                     "Skipping face {} from {} due to {:?} quality",
-                    crop.index + 1,
+                    candidate.index + 1,
                     path.display(),
-                    crop.quality
+                    candidate.quality
                 );
                 continue;
             }
+
+            let detection = match detection_output.detections.get(candidate.index) {
+                Some(det) => det,
+                None => continue,
+            };
+
+            let crop_region = calculate_crop_region(
+                source_image.width(),
+                source_image.height(),
+                detection.bbox,
+                &config.crop_settings,
+            );
+
+            let cropped = source_image.crop_imm(
+                crop_region.x,
+                crop_region.y,
+                crop_region.width,
+                crop_region.height,
+            );
+
+            let resized = cropped.resize_exact(
+                config.crop_settings.output_width,
+                config.crop_settings.output_height,
+                image::imageops::FilterType::Lanczos3,
+            );
+
+            let final_image = if config.enhance_enabled {
+                apply_enhancements(&resized, &config.enhancement_settings)
+            } else {
+                resized
+            };
 
             let source_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("face");
             let mut ext = config.crop_config.output_format.clone();
@@ -2437,9 +2674,10 @@ impl YuNetApp {
             }
             let ext = ext.to_ascii_lowercase();
 
-            let mut output_filename = format!("{}_face_{:02}.{}", source_stem, crop.index + 1, ext);
+            let mut output_filename =
+                format!("{}_face_{:02}.{}", source_stem, candidate.index + 1, ext);
             if quality_rules.quality_suffix {
-                let suffix = match crop.quality {
+                let suffix = match candidate.quality {
                     Quality::High => Some("_highq"),
                     Quality::Medium => Some("_medq"),
                     Quality::Low => Some("_lowq"),
@@ -2453,13 +2691,13 @@ impl YuNetApp {
             let metadata_ctx = MetadataContext {
                 source_path: Some(path.as_path()),
                 crop_settings: Some(&config.crop_config),
-                detection_score: Some(crop.score),
-                quality: Some(crop.quality),
-                quality_score: Some(crop.quality_score),
+                detection_score: Some(candidate.score),
+                quality: Some(candidate.quality),
+                quality_score: Some(candidate.quality_score),
             };
 
             match save_dynamic_image(
-                &crop.image,
+                &final_image,
                 &output_path,
                 &config.output_options,
                 &metadata_ctx,
@@ -2470,7 +2708,7 @@ impl YuNetApp {
                 Err(err) => {
                     warn!(
                         "Failed to save face {} from {}: {}",
-                        crop.index + 1,
+                        candidate.index + 1,
                         path.display(),
                         err
                     );
@@ -2494,6 +2732,8 @@ impl YuNetApp {
             self.preview.image_size = Some(entry.image_size);
             self.preview.detections = entry.detections.clone();
             self.preview.is_loading = false;
+            self.preview.source_image = Some(entry.source_image.clone());
+            self.clear_crop_preview_cache();
             self.show_success(format!("Loaded cached detections for {}", path.display()));
             self.is_busy = false;
             self.current_job = None;
@@ -2515,6 +2755,7 @@ impl YuNetApp {
 
         let job_id = self.next_job_id();
         self.preview.begin_loading(path.clone());
+        self.clear_crop_preview_cache();
         self.status_line = format!("Running detection for {}", path.display());
         self.last_error = None;
         self.is_busy = true;
@@ -2579,39 +2820,39 @@ impl YuNetApp {
     }
 
     /// Creates thumbnail textures for detected faces.
-    fn create_thumbnails(&mut self, ctx: &EguiContext, detections: &mut [DetectionWithQuality]) {
-        // Load the source image to crop face thumbnails
-        if let Some(path) = &self.preview.image_path
-            && let Ok(image) = load_image(path)
-        {
-            for (index, det) in detections.iter_mut().enumerate() {
-                let bbox = &det.detection.bbox;
-                let x = bbox.x.max(0.0) as u32;
-                let y = bbox.y.max(0.0) as u32;
-                let w = bbox.width.max(1.0) as u32;
-                let h = bbox.height.max(1.0) as u32;
+    fn create_thumbnails(
+        &mut self,
+        ctx: &EguiContext,
+        detections: &mut [DetectionWithQuality],
+        image: &DynamicImage,
+    ) {
+        for (index, det) in detections.iter_mut().enumerate() {
+            let bbox = &det.detection.bbox;
+            let x = bbox.x.max(0.0) as u32;
+            let y = bbox.y.max(0.0) as u32;
+            let w = bbox.width.max(1.0) as u32;
+            let h = bbox.height.max(1.0) as u32;
 
-                // Clamp to image bounds
-                let img_w = image.width();
-                let img_h = image.height();
-                let x = x.min(img_w.saturating_sub(1));
-                let y = y.min(img_h.saturating_sub(1));
-                let w = w.min(img_w.saturating_sub(x));
-                let h = h.min(img_h.saturating_sub(y));
+            // Clamp to image bounds
+            let img_w = image.width();
+            let img_h = image.height();
+            let x = x.min(img_w.saturating_sub(1));
+            let y = y.min(img_h.saturating_sub(1));
+            let w = w.min(img_w.saturating_sub(x));
+            let h = h.min(img_h.saturating_sub(y));
 
-                let face_region = image.crop_imm(x, y, w, h);
-                // Resize to thumbnail size (96x96)
-                let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
-                let thumb_rgba = thumb.to_rgba8();
-                let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
-                let thumb_color =
-                    egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());
+            let face_region = image.crop_imm(x, y, w, h);
+            // Resize to thumbnail size (96x96)
+            let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
+            let thumb_rgba = thumb.to_rgba8();
+            let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
+            let thumb_color =
+                egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());
 
-                let texture_name = format!("yunet-face-thumb-{}-{}", self.texture_seq, index);
-                self.texture_seq = self.texture_seq.wrapping_add(1);
-                let texture = ctx.load_texture(texture_name, thumb_color, TextureOptions::LINEAR);
-                det.thumbnail = Some(texture);
-            }
+            let texture_name = format!("yunet-face-thumb-{}-{}", self.texture_seq, index);
+            self.texture_seq = self.texture_seq.wrapping_add(1);
+            let texture = ctx.load_texture(texture_name, thumb_color, TextureOptions::LINEAR);
+            det.thumbnail = Some(texture);
         }
     }
 
@@ -2640,6 +2881,7 @@ impl YuNetApp {
                     color_image,
                     mut detections,
                     original_size,
+                    original_image,
                 } = data;
 
                 let texture_name = format!("yunet-image-preview-{}", self.texture_seq);
@@ -2651,9 +2893,10 @@ impl YuNetApp {
                 self.preview.texture = Some(texture);
                 self.preview.image_size = Some(original_size);
                 self.preview.image_path = Some(path.clone());
+                self.preview.source_image = Some(original_image.clone());
 
                 // Create thumbnails for face regions
-                self.create_thumbnails(ctx, &mut detections);
+                self.create_thumbnails(ctx, &mut detections, &original_image);
 
                 let cached_detections = detections.clone();
                 self.preview.detections = detections;
@@ -2671,6 +2914,7 @@ impl YuNetApp {
                         texture: cache_texture,
                         image_size: original_size,
                         detections: cached_detections,
+                        source_image: original_image,
                     },
                 );
             }
@@ -2690,6 +2934,7 @@ impl YuNetApp {
                 self.preview.texture = None;
                 self.preview.image_size = None;
                 self.preview.detections.clear();
+                self.preview.source_image = None;
             }
         }
     }
@@ -2754,8 +2999,10 @@ fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
 
 /// Performs face detection on an image and returns the results.
 fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<DetectionJobSuccess> {
-    let image = load_image(&path)
-        .with_context(|| format!("failed to load image from {}", path.display()))?;
+    let image = Arc::new(
+        load_image(&path)
+            .with_context(|| format!("failed to load image from {}", path.display()))?,
+    );
     let detection_output = detector
         .detect_image(&image)
         .with_context(|| format!("YuNet detection failed for {}", path.display()))?;
@@ -2801,6 +3048,7 @@ fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<Dete
         color_image,
         detections: detections_with_quality,
         original_size: detection_output.original_size,
+        original_image: image,
     })
 }
 
