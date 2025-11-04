@@ -351,7 +351,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - [x] Loading states and progress indicators
   - [x] Success/error notifications for batch operations
 
-- [ ] **Performance optimization**
+- [x] **Performance optimization**
   - [x] Cache cropped previews to avoid recomputation
   - [x] Parallelize batch cropping with rayon
   - [x] Optimize enhancement pipeline (SIMD if possible)
