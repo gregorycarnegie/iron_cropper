@@ -5,6 +5,7 @@
 //! lightweight and pure-Rust using the `image` crate.
 
 use image::{DynamicImage, ImageBuffer, Rgba};
+use wide::f32x4;
 
 const EPSILON: f32 = 1e-6;
 
@@ -74,6 +75,36 @@ fn identity_lut() -> [u8; 256] {
         *item = i as u8;
     }
     lut
+}
+
+#[inline]
+fn build_lut(mut mapper: impl FnMut(u8) -> u8) -> [u8; 256] {
+    let mut lut = [0u8; 256];
+    for (value, slot) in lut.iter_mut().enumerate() {
+        *slot = mapper(value as u8);
+    }
+    lut
+}
+
+#[inline]
+fn apply_lut_rgb(img: &DynamicImage, lut: &[u8; 256]) -> DynamicImage {
+    let mut buf = img.to_rgba8();
+    for pixel in buf.as_mut().chunks_exact_mut(4) {
+        pixel[0] = lut[pixel[0] as usize];
+        pixel[1] = lut[pixel[1] as usize];
+        pixel[2] = lut[pixel[2] as usize];
+    }
+    DynamicImage::ImageRgba8(buf)
+}
+
+#[inline]
+fn clamp_vec_to_u8(vec: f32x4) -> [u8; 4] {
+    let rounded: [f32; 4] = vec.round().into();
+    let mut out = [0u8; 4];
+    for (idx, value) in rounded.iter().enumerate() {
+        out[idx] = value.clamp(0.0, 255.0) as u8;
+    }
+    out
 }
 
 fn build_equalization_lut(hist: &[u32; 256], total: u32) -> [u8; 256] {
@@ -156,26 +187,22 @@ fn apply_exposure(img: &DynamicImage, stops: f32) -> DynamicImage {
         return img.clone();
     }
     let factor = 2f32.powf(stops.clamp(-2.0, 2.0));
-    let mut buf = img.to_rgba8();
-    let (w, h) = buf.dimensions();
-    for y in 0..h {
-        for x in 0..w {
-            let mut px = buf.get_pixel(x, y).0;
-            for channel in px.iter_mut().take(3) {
-                let val = (*channel as f32 * factor).round().clamp(0.0, 255.0) as u8;
-                *channel = val;
-            }
-            buf.put_pixel(x, y, image::Rgba(px));
-        }
-    }
-    DynamicImage::ImageRgba8(buf)
+    let lut = build_lut(|value| {
+        let boosted = (value as f32 * factor).round().clamp(0.0, 255.0);
+        boosted as u8
+    });
+    apply_lut_rgb(img, &lut)
 }
 
 fn apply_brightness(img: &DynamicImage, offset: i32) -> DynamicImage {
     if offset == 0 {
         return img.clone();
     }
-    DynamicImage::ImageRgba8(image::imageops::brighten(&img.to_rgba8(), offset))
+    let lut = build_lut(|value| {
+        let value = value as i32 + offset;
+        value.clamp(0, 255) as u8
+    });
+    apply_lut_rgb(img, &lut)
 }
 
 fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
@@ -183,23 +210,12 @@ fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
         return img.clone();
     }
     let multiplier = multiplier.clamp(0.5, 2.0);
-    let mut buf = img.to_rgba8();
-    let (w, h) = buf.dimensions();
-    for y in 0..h {
-        for x in 0..w {
-            let mut px = buf.get_pixel(x, y).0;
-            for channel in px.iter_mut().take(3) {
-                let normalized = *channel as f32 / 255.0;
-                let contrasted = ((normalized - 0.5) * multiplier + 0.5)
-                    .clamp(0.0, 1.0)
-                    .mul_add(255.0, 0.0)
-                    .round() as u8;
-                *channel = contrasted;
-            }
-            buf.put_pixel(x, y, image::Rgba(px));
-        }
-    }
-    DynamicImage::ImageRgba8(buf)
+    let lut = build_lut(|value| {
+        let normalized = value as f32 / 255.0;
+        let contrasted = ((normalized - 0.5) * multiplier + 0.5).clamp(0.0, 1.0) * 255.0;
+        contrasted.round() as u8
+    });
+    apply_lut_rgb(img, &lut)
 }
 
 /// Adjust saturation by mixing with per-pixel luminance: new = gray*(1-s) + orig*s.
@@ -209,30 +225,63 @@ fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
     }
     let multiplier = saturation.clamp(0.0, 2.5);
     let mut buf = img.to_rgba8();
-    let (w, h) = buf.dimensions();
-    for y in 0..h {
-        for x in 0..w {
-            let mut p = buf.get_pixel(x, y).0;
-            let r = p[0] as f32;
-            let g = p[1] as f32;
-            let b = p[2] as f32;
-            // Rec. 601 luma
-            let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-            let nr = (gray * (1.0 - multiplier) + r * multiplier)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            let ng = (gray * (1.0 - multiplier) + g * multiplier)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            let nb = (gray * (1.0 - multiplier) + b * multiplier)
-                .round()
-                .clamp(0.0, 255.0) as u8;
-            p[0] = nr;
-            p[1] = ng;
-            p[2] = nb;
-            buf.put_pixel(x, y, image::Rgba(p));
+    let data = buf.as_mut();
+    let vec_inv = f32x4::splat(1.0 - multiplier);
+    let vec_mul = f32x4::splat(multiplier);
+    let coeff_r = f32x4::splat(0.299);
+    let coeff_g = f32x4::splat(0.587);
+    let coeff_b = f32x4::splat(0.114);
+    let mut idx = 0;
+
+    while idx + 16 <= data.len() {
+        let mut r = [0.0f32; 4];
+        let mut g = [0.0f32; 4];
+        let mut b = [0.0f32; 4];
+        let mut a = [0u8; 4];
+        for lane in 0..4 {
+            let base = idx + lane * 4;
+            r[lane] = data[base] as f32;
+            g[lane] = data[base + 1] as f32;
+            b[lane] = data[base + 2] as f32;
+            a[lane] = data[base + 3];
         }
+
+        let rv = f32x4::from(r);
+        let gv = f32x4::from(g);
+        let bv = f32x4::from(b);
+        let gray = rv * coeff_r + gv * coeff_g + bv * coeff_b;
+
+        let new_r = clamp_vec_to_u8(gray * vec_inv + rv * vec_mul);
+        let new_g = clamp_vec_to_u8(gray * vec_inv + gv * vec_mul);
+        let new_b = clamp_vec_to_u8(gray * vec_inv + bv * vec_mul);
+
+        for lane in 0..4 {
+            let base = idx + lane * 4;
+            data[base] = new_r[lane];
+            data[base + 1] = new_g[lane];
+            data[base + 2] = new_b[lane];
+            data[base + 3] = a[lane];
+        }
+
+        idx += 16;
     }
+
+    for pixel in data[idx..].chunks_exact_mut(4) {
+        let r = pixel[0] as f32;
+        let g = pixel[1] as f32;
+        let b = pixel[2] as f32;
+        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        pixel[0] = (gray * (1.0 - multiplier) + r * multiplier)
+            .round()
+            .clamp(0.0, 255.0) as u8;
+        pixel[1] = (gray * (1.0 - multiplier) + g * multiplier)
+            .round()
+            .clamp(0.0, 255.0) as u8;
+        pixel[2] = (gray * (1.0 - multiplier) + b * multiplier)
+            .round()
+            .clamp(0.0, 255.0) as u8;
+    }
+
     DynamicImage::ImageRgba8(buf)
 }
 

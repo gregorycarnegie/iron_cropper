@@ -66,6 +66,13 @@
 - **Impact**: Avoids redundant resizing work for 640Ã—640 assets, shaving ~15-20ms per image in telemetry runs and reducing CPU usage in batch jobs.
 - **Implementation**: Uses `Cow<RgbImage>` to borrow in-memory RGB data when possible, falling back to a single owned resize when dimensions differ.
 
+### 7. Enhancement Pipeline LUT + SIMD Passes (Phase 11)
+
+- **Location**: `yunet-utils/src/enhance.rs`
+- **Method**: Reuse lookup tables for exposure/brightness/contrast tweaks and process saturation four pixels at a time with `wide::f32x4`, keeping scalar tail handling for leftovers.
+- **Benchmark command**: `cargo bench crop_and_enhance_pipeline`
+- **Result**: Criterion median improved from **895 ms → 798 ms** (−10.9%, p < 0.05), demonstrating the SIMD/LUT path outperforms the original scalar loops.
+
 ---
 
 ## Benchmark Infrastructure

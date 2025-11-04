@@ -10,7 +10,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.4.0"
+version = "0.4.1"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
@@ -32,3 +32,4 @@ imageproc = "0.25.0"
 tempfile = "3.23.0"
 base64 = "0.22.1"
 crc32fast = "1.5.0"
+wide = "0.8.1"
