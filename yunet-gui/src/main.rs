@@ -900,8 +900,17 @@ impl YuNetApp {
                                         .selectable_label(self.settings.crop.preset == value, label)
                                         .clicked()
                                     {
-                                        self.settings.crop.preset = value.to_string();
-                                        settings_changed = true;
+                                        if self.settings.crop.preset != value {
+                                            self.settings.crop.preset = value.to_string();
+                                            if value != "custom" {
+                                                if let Some(preset) = preset_by_name(value) {
+                                                    self.settings.crop.output_width = preset.width;
+                                                    self.settings.crop.output_height = preset.height;
+                                                }
+                                            }
+                                            self.clear_crop_preview_cache();
+                                            settings_changed = true;
+                                        }
                                     }
                                 }
                             });
@@ -909,32 +918,41 @@ impl YuNetApp {
                             .response
                             .on_hover_text("Choose a predefined output size/aspect ratio.");
 
-                        if self.settings.crop.preset == "custom" {
-                            ui.add_space(4.0);
-                            ui.horizontal(|ui| {
-                                ui.label("Width")
-                                    .on_hover_text("Export width in pixels for the crop.");
-                                let mut width = self.settings.crop.output_width;
-                                let response = ui
-                                    .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
-                                    .on_hover_text("Drag or type to set the output width.");
-                                if response.changed() {
-                                    self.settings.crop.output_width = width;
-                                    settings_changed = true;
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Height")
-                                    .on_hover_text("Export height in pixels for the crop.");
-                                let mut height = self.settings.crop.output_height;
-                                let response = ui
-                                    .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
-                                    .on_hover_text("Drag or type to set the output height.");
-                                if response.changed() {
-                                    self.settings.crop.output_height = height;
-                                    settings_changed = true;
-                                }
-                            });
+                        ui.add_space(4.0);
+                        let (mut width, mut height) = self.resolved_output_dimensions();
+                        let mut dimensions_changed = false;
+                        ui.horizontal(|ui| {
+                            ui.label("Width")
+                                .on_hover_text("Export width in pixels for the crop.");
+                            let response = ui
+                                .add(DragValue::new(&mut width).range(64..=4096).speed(16.0))
+                                .on_hover_text(
+                                    "Drag or type to set the output width. Editing switches to the Custom preset.",
+                                );
+                            if response.changed() {
+                                self.settings.crop.output_width = width;
+                                dimensions_changed = true;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Height")
+                                .on_hover_text("Export height in pixels for the crop.");
+                            let response = ui
+                                .add(DragValue::new(&mut height).range(64..=4096).speed(16.0))
+                                .on_hover_text(
+                                    "Drag or type to set the output height. Editing switches to the Custom preset.",
+                                );
+                            if response.changed() {
+                                self.settings.crop.output_height = height;
+                                dimensions_changed = true;
+                            }
+                        });
+                        if dimensions_changed {
+                            if self.settings.crop.preset != "custom" {
+                                self.settings.crop.preset = "custom".to_string();
+                            }
+                            self.clear_crop_preview_cache();
+                            settings_changed = true;
                         }
 
                         ui.add_space(6.0);
@@ -1489,9 +1507,8 @@ impl YuNetApp {
         }
     }
 
-    /// Builds yunet-core CropSettings from the GUI settings.
-    fn build_crop_settings(&self) -> CoreCropSettings {
-        let (output_width, output_height) = if self.settings.crop.preset == "custom" {
+    fn resolved_output_dimensions(&self) -> (u32, u32) {
+        if self.settings.crop.preset == "custom" {
             (
                 self.settings.crop.output_width,
                 self.settings.crop.output_height,
@@ -1499,9 +1516,13 @@ impl YuNetApp {
         } else if let Some(preset) = preset_by_name(&self.settings.crop.preset) {
             (preset.width, preset.height)
         } else {
-            // Fallback to linkedin if preset not found
             (400, 400)
-        };
+        }
+    }
+
+    /// Builds yunet-core CropSettings from the GUI settings.
+    fn build_crop_settings(&self) -> CoreCropSettings {
+        let (output_width, output_height) = self.resolved_output_dimensions();
 
         let positioning_mode = match self.settings.crop.positioning_mode.as_str() {
             "rule-of-thirds" | "rule_of_thirds" => PositioningMode::RuleOfThirds,
@@ -1719,6 +1740,12 @@ impl YuNetApp {
             return;
         }
         self.settings.crop.preset = preset.to_string();
+        if preset != "custom" {
+            if let Some(info) = preset_by_name(preset) {
+                self.settings.crop.output_width = info.width;
+                self.settings.crop.output_height = info.height;
+            }
+        }
         self.push_crop_history();
         self.clear_crop_preview_cache();
         self.persist_settings_with_feedback();
@@ -3155,6 +3182,8 @@ mod tests {
 
         app.set_crop_preset("passport");
         assert_eq!(app.settings.crop.preset, "passport");
+        assert_eq!(app.settings.crop.output_width, 413);
+        assert_eq!(app.settings.crop.output_height, 531);
         assert_eq!(app.crop_history.len(), base_history + 4);
 
         let settings_file = temp_dir.path().join("gui_settings_test.json");
@@ -3162,6 +3191,26 @@ mod tests {
             settings_file.exists(),
             "persisted settings file should be created"
         );
+    }
+
+    #[test]
+    fn resolved_dimensions_follow_preset_and_custom_settings() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        app.set_crop_preset("idcard");
+        let (preset_w, preset_h) = app.resolved_output_dimensions();
+        assert_eq!((preset_w, preset_h), (332, 498));
+
+        app.settings.crop.preset = "custom".to_string();
+        app.settings.crop.output_width = 720;
+        app.settings.crop.output_height = 960;
+
+        let (custom_w, custom_h) = app.resolved_output_dimensions();
+        assert_eq!((custom_w, custom_h), (720, 960));
+
+        let core_settings = app.build_crop_settings();
+        assert_eq!(core_settings.output_width, 720);
+        assert_eq!(core_settings.output_height, 960);
     }
 
     #[test]
