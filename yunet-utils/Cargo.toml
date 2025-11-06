@@ -20,6 +20,7 @@ serde_json.workspace = true
 base64.workspace = true
 crc32fast.workspace = true
 wide.workspace = true
+tiny-skia.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

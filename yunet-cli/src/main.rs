@@ -19,7 +19,7 @@ use yunet_core::{BoundingBox, Detection, PostprocessConfig, PreprocessConfig, Yu
 use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
 use yunet_utils::{
     EnhancementSettings, MetadataContext, OutputOptions, Quality, QualityFilter,
-    append_suffix_to_filename, apply_enhancements,
+    append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         default_settings_path,
@@ -413,6 +413,7 @@ fn main() -> Result<()> {
                             crop_img = apply_enhancements(&crop_img, enh);
                         }
                         let (quality_score, quality) = estimate_sharpness(&crop_img);
+                        apply_shape_mask_dynamic(&mut crop_img, &settings.crop.shape);
                         processed.push(ProcessedCrop {
                             index: idx,
                             image: crop_img,
@@ -1168,6 +1169,8 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     if !args.metadata_tags.is_empty() {
         settings.crop.metadata.custom_tags = parse_metadata_tags_args(&args.metadata_tags);
     }
+
+    settings.crop.sanitize();
 }
 
 fn build_core_crop_settings(cfg: &ConfigCropSettings) -> CropSettings {

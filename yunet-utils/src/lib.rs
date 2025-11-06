@@ -12,6 +12,8 @@ pub mod image_utils;
 pub mod output;
 /// Image quality analysis (Laplacian variance blur detection).
 pub mod quality;
+/// Shape metadata and masking helpers for custom crop geometry.
+pub mod shape;
 /// Instrumentation helpers for optional performance tracing.
 pub mod telemetry;
 
@@ -32,6 +34,10 @@ pub use output::{
 };
 pub use quality::QualityFilter;
 pub use quality::{Quality, estimate_sharpness, laplacian_variance};
+pub use shape::{
+    CropShape, PolygonCornerStyle, apply_shape_mask, apply_shape_mask_dynamic,
+    outline_points_for_rect,
+};
 pub use telemetry::{
     TimingGuard, configure as configure_telemetry, telemetry_allows, telemetry_enabled,
     telemetry_level, timing_guard, timing_guard_if,

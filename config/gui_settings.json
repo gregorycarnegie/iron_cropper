@@ -13,7 +13,7 @@
     "preset": "custom",
     "output_width": 330,
     "output_height": 500,
-    "face_height_pct": 70.0,
+    "face_height_pct": 64.0,
     "positioning_mode": "center",
     "vertical_offset": 0.0,
     "horizontal_offset": 0.0,
@@ -33,6 +33,10 @@
       "min_quality": null,
       "auto_skip_no_high_quality": false,
       "quality_suffix": true
+    },
+    "shape": {
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.26
     }
   },
   "enhance": {

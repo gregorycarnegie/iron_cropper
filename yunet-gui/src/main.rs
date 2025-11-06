@@ -27,13 +27,14 @@ use yunet_core::{
     PreprocessConfig, YuNetDetector, calculate_crop_region, preset_by_name,
 };
 use yunet_utils::{
-    MetadataContext, OutputOptions, append_suffix_to_filename,
+    CropShape, MetadataContext, OutputOptions, PolygonCornerStyle, append_suffix_to_filename,
+    apply_shape_mask,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, default_settings_path,
     },
     configure_telemetry,
     enhance::{EnhancementSettings, apply_enhancements},
-    init_logging, load_image,
+    init_logging, load_image, outline_points_for_rect,
     quality::{Quality, estimate_sharpness},
     save_dynamic_image,
 };
@@ -144,6 +145,15 @@ struct EnhancementSignature {
     background_blur_mask_bits: u32,
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct ShapeSignature {
+    kind: u8,
+    primary_bits: u32,
+    secondary_bits: u32,
+    sides: u8,
+    rotation_bits: u32,
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct CropPreviewKey {
     path: PathBuf,
@@ -154,6 +164,7 @@ struct CropPreviewKey {
     face_height_bits: u32,
     horizontal_bits: u32,
     vertical_bits: u32,
+    shape: ShapeSignature,
     enhancement: EnhancementSignature,
     enhance_enabled: bool,
 }
@@ -1115,6 +1126,14 @@ impl YuNetApp {
                             if self.settings.crop.preset != "custom" {
                                 self.settings.crop.preset = "custom".to_string();
                             }
+                            self.clear_crop_preview_cache();
+                            preview_invalidated = true;
+                            settings_changed = true;
+                        }
+
+                        ui.add_space(6.0);
+                        if self.edit_shape_controls(ui) {
+                            self.settings.crop.sanitize();
                             self.clear_crop_preview_cache();
                             preview_invalidated = true;
                             settings_changed = true;
@@ -2374,7 +2393,20 @@ impl YuNetApp {
                     crop_region.height as f32 * scale_y,
                 );
                 let crop_rect = Rect::from_min_size(crop_top_left, crop_size);
-                painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
+                let shape_points = outline_points_for_rect(
+                    crop_rect.width(),
+                    crop_rect.height(),
+                    &self.settings.crop.shape,
+                );
+                if shape_points.len() >= 2 {
+                    let mut outline = Vec::with_capacity(shape_points.len());
+                    for (x, y) in shape_points {
+                        outline.push(pos2(crop_rect.left() + x, crop_rect.top() + y));
+                    }
+                    painter.add(egui::Shape::closed_line(outline, crop_stroke));
+                } else {
+                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
+                }
             }
         }
     }
@@ -2528,6 +2560,224 @@ impl YuNetApp {
         }
     }
 
+    fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
+        let shape = settings.shape.clone().sanitized();
+        match shape {
+            CropShape::Rectangle => ShapeSignature {
+                kind: 0,
+                primary_bits: 0,
+                secondary_bits: 0,
+                sides: 0,
+                rotation_bits: 0,
+            },
+            CropShape::Ellipse => ShapeSignature {
+                kind: 1,
+                primary_bits: 0,
+                secondary_bits: 0,
+                sides: 0,
+                rotation_bits: 0,
+            },
+            CropShape::RoundedRectangle { radius_pct } => ShapeSignature {
+                kind: 2,
+                primary_bits: radius_pct.to_bits(),
+                secondary_bits: 0,
+                sides: 0,
+                rotation_bits: 0,
+            },
+            CropShape::ChamferedRectangle { size_pct } => ShapeSignature {
+                kind: 3,
+                primary_bits: size_pct.to_bits(),
+                secondary_bits: 0,
+                sides: 0,
+                rotation_bits: 0,
+            },
+            CropShape::Polygon {
+                sides,
+                rotation_deg,
+                corner_style,
+            } => {
+                let (kind, primary, secondary) = match corner_style {
+                    PolygonCornerStyle::Sharp => (4_u8, 0_u32, 0_u32),
+                    PolygonCornerStyle::Rounded { radius_pct } => {
+                        (5_u8, radius_pct.to_bits(), 0_u32)
+                    }
+                    PolygonCornerStyle::Chamfered { size_pct } => (6_u8, size_pct.to_bits(), 0_u32),
+                };
+                ShapeSignature {
+                    kind,
+                    primary_bits: primary,
+                    secondary_bits: secondary,
+                    sides,
+                    rotation_bits: rotation_deg.to_bits(),
+                }
+            }
+        }
+    }
+
+    fn edit_shape_controls(&mut self, ui: &mut Ui) -> bool {
+        let mut shape = self.settings.crop.shape.clone();
+        let mut changed = false;
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum Variant {
+            Rectangle,
+            RoundedRect,
+            ChamferRect,
+            Ellipse,
+            PolygonSharp,
+            PolygonRounded,
+            PolygonChamfered,
+        }
+
+        let mut variant = match &shape {
+            CropShape::Rectangle => Variant::Rectangle,
+            CropShape::RoundedRectangle { .. } => Variant::RoundedRect,
+            CropShape::ChamferedRectangle { .. } => Variant::ChamferRect,
+            CropShape::Ellipse => Variant::Ellipse,
+            CropShape::Polygon { corner_style, .. } => match corner_style {
+                PolygonCornerStyle::Sharp => Variant::PolygonSharp,
+                PolygonCornerStyle::Rounded { .. } => Variant::PolygonRounded,
+                PolygonCornerStyle::Chamfered { .. } => Variant::PolygonChamfered,
+            },
+        };
+
+        let current_label = match variant {
+            Variant::Rectangle => "Rectangle",
+            Variant::RoundedRect => "Rounded rectangle",
+            Variant::ChamferRect => "Chamfered rectangle",
+            Variant::Ellipse => "Ellipse",
+            Variant::PolygonSharp => "Polygon",
+            Variant::PolygonRounded => "Polygon (rounded)",
+            Variant::PolygonChamfered => "Polygon (chamfered)",
+        };
+
+        let mut variant_changed = false;
+        egui::ComboBox::from_label("Shape")
+            .selected_text(current_label)
+            .show_ui(ui, |ui| {
+                let mut select_variant = |label: &str, target: Variant| {
+                    let selected = variant == target;
+                    if ui.selectable_label(selected, label).clicked() && !selected {
+                        variant = target;
+                        variant_changed = true;
+                    }
+                };
+                select_variant("Rectangle", Variant::Rectangle);
+                select_variant("Rounded rectangle", Variant::RoundedRect);
+                select_variant("Chamfered rectangle", Variant::ChamferRect);
+                select_variant("Ellipse", Variant::Ellipse);
+                select_variant("Polygon", Variant::PolygonSharp);
+                select_variant("Polygon (rounded)", Variant::PolygonRounded);
+                select_variant("Polygon (chamfered)", Variant::PolygonChamfered);
+            });
+
+        if variant_changed {
+            shape = match variant {
+                Variant::Rectangle => CropShape::Rectangle,
+                Variant::RoundedRect => CropShape::RoundedRectangle { radius_pct: 0.12 },
+                Variant::ChamferRect => CropShape::ChamferedRectangle { size_pct: 0.12 },
+                Variant::Ellipse => CropShape::Ellipse,
+                Variant::PolygonSharp => CropShape::Polygon {
+                    sides: 6,
+                    rotation_deg: 0.0,
+                    corner_style: PolygonCornerStyle::Sharp,
+                },
+                Variant::PolygonRounded => CropShape::Polygon {
+                    sides: 6,
+                    rotation_deg: 0.0,
+                    corner_style: PolygonCornerStyle::Rounded { radius_pct: 0.1 },
+                },
+                Variant::PolygonChamfered => CropShape::Polygon {
+                    sides: 6,
+                    rotation_deg: 0.0,
+                    corner_style: PolygonCornerStyle::Chamfered { size_pct: 0.1 },
+                },
+            };
+            changed = true;
+        }
+
+        match &mut shape {
+            CropShape::RoundedRectangle { radius_pct } => {
+                let mut radius = (*radius_pct * 100.0).clamp(0.0, 50.0);
+                if ui
+                    .add(Slider::new(&mut radius, 0.0..=50.0).text("Corner radius (%)"))
+                    .changed()
+                {
+                    *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                    changed = true;
+                }
+            }
+            CropShape::ChamferedRectangle { size_pct } => {
+                let mut size = (*size_pct * 100.0).clamp(0.0, 50.0);
+                if ui
+                    .add(Slider::new(&mut size, 0.0..=50.0).text("Chamfer size (%)"))
+                    .changed()
+                {
+                    *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                    changed = true;
+                }
+            }
+            CropShape::Polygon {
+                sides,
+                rotation_deg,
+                corner_style,
+            } => {
+                let mut sides_u32 = *sides as u32;
+                if ui
+                    .add(
+                        DragValue::new(&mut sides_u32)
+                            .range(3..=24)
+                            .speed(1.0)
+                            .suffix(" sides"),
+                    )
+                    .changed()
+                {
+                    *sides = sides_u32.clamp(3, 24) as u8;
+                    changed = true;
+                }
+                if ui
+                    .add(Slider::new(rotation_deg, -180.0..=180.0).text("Rotation (°)"))
+                    .changed()
+                {
+                    changed = true;
+                }
+
+                match corner_style {
+                    PolygonCornerStyle::Sharp => {}
+                    PolygonCornerStyle::Rounded { radius_pct } => {
+                        let mut radius = (*radius_pct * 100.0).clamp(0.0, 40.0);
+                        if ui
+                            .add(Slider::new(&mut radius, 0.0..=40.0).text("Corner radius (%)"))
+                            .changed()
+                        {
+                            *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                            changed = true;
+                        }
+                    }
+                    PolygonCornerStyle::Chamfered { size_pct } => {
+                        let mut size = (*size_pct * 100.0).clamp(0.0, 40.0);
+                        if ui
+                            .add(Slider::new(&mut size, 0.0..=40.0).text("Chamfer size (%)"))
+                            .changed()
+                        {
+                            *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            CropShape::Rectangle | CropShape::Ellipse => {}
+        }
+
+        let sanitized = shape.sanitized();
+        if sanitized != self.settings.crop.shape {
+            self.settings.crop.shape = sanitized;
+            changed = true;
+        }
+
+        changed
+    }
+
     fn ensure_crop_preview_entry(
         &mut self,
         face_idx: usize,
@@ -2549,6 +2799,7 @@ impl YuNetApp {
             face_height_bits: crop_settings.face_height_pct.to_bits(),
             horizontal_bits: crop_settings.horizontal_offset.to_bits(),
             vertical_bits: crop_settings.vertical_offset.to_bits(),
+            shape: Self::shape_signature(&self.settings.crop),
             enhancement: signature,
             enhance_enabled,
         };
@@ -2595,11 +2846,14 @@ impl YuNetApp {
             crop_settings.output_height,
             image::imageops::FilterType::Lanczos3,
         );
-        let final_image = if enhance_enabled {
+        let processed = if enhance_enabled {
             apply_enhancements(&resized, &enhancement_settings)
         } else {
             resized
         };
+        let mut rgba = processed.to_rgba8();
+        apply_shape_mask(&mut rgba, &self.settings.crop.shape);
+        let final_image = DynamicImage::ImageRgba8(rgba);
         let arc_image = Arc::new(final_image);
         self.crop_preview_cache.insert(
             key.clone(),
@@ -2743,7 +2997,8 @@ impl YuNetApp {
         let crop_settings = self.build_crop_settings();
         let enhancement_settings = self.build_enhancement_settings();
         let enhance_enabled = self.settings.enhance.enabled;
-        let crop_config = self.settings.crop.clone();
+        let mut crop_config = self.settings.crop.clone();
+        crop_config.sanitize();
         let output_options = OutputOptions::from_crop_settings(&crop_config);
 
         // Ensure detector is loaded before processing
@@ -2937,11 +3192,14 @@ impl YuNetApp {
                 image::imageops::FilterType::Lanczos3,
             );
 
-            let final_image = if config.enhance_enabled {
+            let processed = if config.enhance_enabled {
                 apply_enhancements(&resized, &config.enhancement_settings)
             } else {
                 resized
             };
+            let mut rgba = processed.to_rgba8();
+            apply_shape_mask(&mut rgba, &config.crop_config.shape);
+            let final_image = DynamicImage::ImageRgba8(rgba);
 
             let (quality_score, quality) = estimate_sharpness(&final_image);
             candidates.push(FaceCandidate {

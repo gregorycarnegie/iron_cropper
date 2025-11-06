@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::quality::Quality;
+use crate::{quality::Quality, shape::CropShape};
 
 /// Shared detection parameters that should mirror YuNet defaults.
 ///
@@ -91,6 +91,15 @@ pub struct CropSettings {
     pub metadata: MetadataSettings,
     /// Quality-based automation options.
     pub quality_rules: QualityAutomationSettings,
+    /// Geometric shape applied to the exported crop.
+    pub shape: CropShape,
+}
+
+impl CropSettings {
+    /// Clamp values to sensible ranges.
+    pub fn sanitize(&mut self) {
+        self.shape = self.shape.sanitized();
+    }
 }
 
 /// Settings for image enhancement operations.
@@ -138,6 +147,7 @@ impl Default for CropSettings {
             auto_detect_format: true,
             metadata: MetadataSettings::default(),
             quality_rules: QualityAutomationSettings::default(),
+            shape: CropShape::Rectangle,
         }
     }
 }
@@ -292,14 +302,16 @@ pub struct AppSettings {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self {
+        let mut settings = Self {
             model_path: Some("models/face_detection_yunet_2023mar_640.onnx".into()),
             input: InputDimensions::default(),
             detection: DetectionSettings::default(),
             crop: CropSettings::default(),
             enhance: EnhanceSettings::default(),
             telemetry: TelemetrySettings::default(),
-        }
+        };
+        settings.crop.sanitize();
+        settings
     }
 }
 
@@ -318,6 +330,8 @@ impl AppSettings {
         if settings.model_path.is_none() {
             settings.model_path = Some(AppSettings::default().model_path.unwrap());
         }
+
+        settings.crop.sanitize();
 
         Ok(settings)
     }
