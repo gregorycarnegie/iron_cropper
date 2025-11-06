@@ -73,7 +73,7 @@ fn load_app_icon() -> Option<egui::IconData> {
                 let score = image.width().saturating_mul(image.height());
                 if best
                     .as_ref()
-                    .map_or(true, |(_, best_score)| score > *best_score)
+                    .is_none_or(|(_, best_score)| score > *best_score)
                 {
                     best = Some((image, score));
                 }
@@ -1073,19 +1073,18 @@ impl YuNetApp {
                                     if ui
                                         .selectable_label(self.settings.crop.preset == value, label)
                                         .clicked()
+                                        && self.settings.crop.preset != value
                                     {
-                                        if self.settings.crop.preset != value {
-                                            self.settings.crop.preset = value.to_string();
-                                            if value != "custom" {
-                                                if let Some(preset) = preset_by_name(value) {
-                                                    self.settings.crop.output_width = preset.width;
-                                                    self.settings.crop.output_height = preset.height;
-                                                }
-                                            }
-                                            self.clear_crop_preview_cache();
-                                            preview_invalidated = true;
-                                            settings_changed = true;
+                                        self.settings.crop.preset = value.to_string();
+                                        if value != "custom"
+                                            && let Some(preset) = preset_by_name(value)
+                                        {
+                                            self.settings.crop.output_width = preset.width;
+                                            self.settings.crop.output_height = preset.height;
                                         }
+                                        self.clear_crop_preview_cache();
+                                        preview_invalidated = true;
+                                        settings_changed = true;
                                     }
                                 }
                             });
@@ -2056,11 +2055,11 @@ impl YuNetApp {
             return;
         }
         self.settings.crop.preset = preset.to_string();
-        if preset != "custom" {
-            if let Some(info) = preset_by_name(preset) {
-                self.settings.crop.output_width = info.width;
-                self.settings.crop.output_height = info.height;
-            }
+        if preset != "custom"
+            && let Some(info) = preset_by_name(preset)
+        {
+            self.settings.crop.output_width = info.width;
+            self.settings.crop.output_height = info.height;
         }
         self.push_crop_history();
         self.clear_crop_preview_cache();
