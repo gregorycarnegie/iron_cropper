@@ -1,29 +1,90 @@
 //! Global theme customizations for the YuNet GUI.
 
-use egui::{Color32, Context, Margin, Stroke, Visuals};
+use egui::{Color32, Context, CornerRadius, Margin, Shadow, Stroke, Visuals};
+
+/// Shared color palette used by the GUI.
+#[derive(Clone, Copy)]
+pub struct Palette {
+    pub canvas: Color32,
+    pub panel: Color32,
+    pub panel_dark: Color32,
+    pub panel_light: Color32,
+    pub accent: Color32,
+    pub accent_soft: Color32,
+    pub success: Color32,
+    pub warning: Color32,
+    pub danger: Color32,
+    pub subtle_text: Color32,
+    pub outline: Color32,
+}
+
+/// Returns the default palette.
+pub fn palette() -> Palette {
+    Palette {
+        canvas: Color32::from_rgb(12, 16, 24),
+        panel: Color32::from_rgb(22, 26, 36),
+        panel_dark: Color32::from_rgb(16, 20, 30),
+        panel_light: Color32::from_rgb(32, 36, 48),
+        accent: Color32::from_rgb(118, 201, 255),
+        accent_soft: Color32::from_rgba_unmultiplied(118, 201, 255, 60),
+        success: Color32::from_rgb(94, 223, 164),
+        warning: Color32::from_rgb(255, 206, 117),
+        danger: Color32::from_rgb(255, 135, 135),
+        subtle_text: Color32::from_rgb(185, 193, 208),
+        outline: Color32::from_rgba_unmultiplied(105, 114, 140, 140),
+    }
+}
 
 /// Apply the global YuNet GUI theme to the provided egui context.
-///
-/// This function sets up custom spacing, padding, and color schemes.
 pub fn apply(ctx: &Context) {
+    let palette = palette();
     let mut style = (*ctx.style()).clone();
 
-    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-    style.spacing.button_padding = egui::vec2(10.0, 6.0);
-    style.spacing.window_margin = Margin::same(12);
-    style.visuals = dark_visuals();
+    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+    style.spacing.button_padding = egui::vec2(12.0, 8.0);
+    style.spacing.window_margin = Margin::same(14);
+    style.visuals = visuals_from_palette(palette);
 
     ctx.set_style(style);
 }
 
-/// Creates a custom dark theme for the application.
-fn dark_visuals() -> Visuals {
+fn visuals_from_palette(palette: Palette) -> Visuals {
     let mut visuals = Visuals::dark();
-    visuals.override_text_color = Some(Color32::from_rgb(220, 220, 230));
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, Color32::from_rgb(180, 180, 190));
-    visuals.widgets.inactive.bg_fill = Color32::from_rgb(36, 36, 42);
-    visuals.widgets.active.bg_fill = Color32::from_rgb(52, 54, 64);
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(46, 48, 56);
-    visuals.extreme_bg_color = Color32::from_rgb(18, 18, 24);
+    visuals.override_text_color = Some(Color32::from_rgb(232, 236, 245));
+    visuals.hyperlink_color = palette.accent;
+    visuals.panel_fill = palette.panel;
+    visuals.extreme_bg_color = palette.canvas;
+
+    visuals.widgets.noninteractive.bg_fill = palette.panel_dark;
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, palette.subtle_text);
+
+    visuals.widgets.inactive.bg_fill = palette.panel;
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, palette.outline);
+
+    visuals.widgets.hovered.bg_fill = palette.panel_light;
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, palette.accent_soft);
+
+    visuals.widgets.active.bg_fill = palette.panel_light;
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0, palette.accent);
+
+    visuals.widgets.open.bg_fill = palette.panel_light;
+    visuals.selection.bg_fill = palette.accent;
+    visuals.selection.stroke = Stroke::new(1.5, palette.panel_dark);
+
+    visuals.window_corner_radius = CornerRadius::same(18);
+    visuals.menu_corner_radius = CornerRadius::same(12);
+    visuals.window_shadow = Shadow {
+        offset: [0, 6],
+        blur: 24,
+        spread: 2,
+        color: Color32::from_rgba_unmultiplied(0, 0, 0, 220),
+    };
+    visuals.popup_shadow = Shadow {
+        offset: [0, 4],
+        blur: 20,
+        spread: 1,
+        color: Color32::from_rgba_unmultiplied(0, 0, 0, 200),
+    };
+
     visuals
 }

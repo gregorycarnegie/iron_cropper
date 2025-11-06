@@ -13,9 +13,9 @@ use std::{
 use anyhow::{Context as AnyhowContext, Result};
 use eframe::{App, CreationContext, Frame, NativeOptions, egui};
 use egui::{
-    CentralPanel, Color32, Context as EguiContext, DragValue, Key, ProgressBar, Rect, RichText,
-    ScrollArea, SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel,
-    pos2, vec2,
+    Align, Button, CentralPanel, Color32, Context as EguiContext, CornerRadius, DragValue, Key,
+    Layout, Margin, ProgressBar, Rect, Response, RichText, ScrollArea, Sense, SidePanel, Slider,
+    Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, Ui, UiBuilder, pos2, vec2,
 };
 use ico::IconDir;
 use image::DynamicImage;
@@ -370,23 +370,189 @@ impl YuNetApp {
         }
     }
 
-    /// Renders the top status bar.
+    /// Renders the top status bar with quick stats and actions.
     fn show_status_bar(&mut self, ctx: &EguiContext) {
-        TopBottomPanel::top("yunet_status_bar").show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.heading(RichText::new("YuNet Face Detection").strong());
-                ui.separator();
-                ui.label(&self.status_line);
-                if let Some(err) = &self.last_error {
-                    ui.separator();
-                    ui.colored_label(ui.visuals().warn_fg_color, err);
-                }
+        let palette = theme::palette();
+        TopBottomPanel::top("yunet_status_bar")
+            .frame(
+                egui::Frame::new()
+                    .fill(palette.panel_dark)
+                    .stroke(Stroke::new(1.0, palette.outline))
+                    .inner_margin(Margin::symmetric(20, 16)),
+            )
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 6.0;
+                    ui.horizontal(|ui| {
+                        ui.heading(RichText::new("YuNet Studio").size(26.0).strong());
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            self.draw_status_badge(ui, palette);
+                        });
+                    });
+
+                    ui.label(RichText::new(&self.status_line).color(palette.subtle_text));
+
+                    if let Some(err) = &self.last_error {
+                        ui.colored_label(palette.danger, err);
+                    } else if self.preview.detections.is_empty() && !self.is_busy {
+                        ui.label(
+                            RichText::new("Choose an image to begin detecting faces.")
+                                .color(palette.subtle_text),
+                        );
+                    }
+
+                    ui.add_space(6.0);
+                    self.draw_status_chips(ui, palette);
+                    ui.add_space(10.0);
+                    self.draw_quick_actions(ui, palette);
+                });
             });
+    }
+
+    fn draw_status_badge(&self, ui: &mut Ui, palette: theme::Palette) {
+        let (label, color) = if self.is_busy {
+            ("Detecting...", palette.accent)
+        } else if self.detector.is_none() {
+            ("Model Required", palette.warning)
+        } else {
+            ("Ready", palette.success)
+        };
+
+        egui::Frame::new()
+            .fill(palette.panel_light)
+            .stroke(Stroke::new(1.0, color))
+            .corner_radius(CornerRadius::same(64))
+            .inner_margin(Margin::symmetric(14, 6))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if self.is_busy {
+                        ui.add(Spinner::new().size(16.0));
+                    }
+                    ui.label(RichText::new(label).size(15.0).strong());
+                });
+            });
+    }
+
+    fn draw_status_chips(&self, ui: &mut Ui, palette: theme::Palette) {
+        ui.horizontal_wrapped(|ui| {
+            self.status_chip(
+                ui,
+                palette,
+                format!("Faces {}", self.preview.detections.len()),
+                palette.accent,
+            );
+            self.status_chip(
+                ui,
+                palette,
+                format!("Selected {}", self.selected_faces.len()),
+                if self.selected_faces.is_empty() {
+                    palette.subtle_text
+                } else {
+                    palette.success
+                },
+            );
+
+            self.status_chip(
+                ui,
+                palette,
+                format!("Batch {}", self.batch_files.len()),
+                if self.batch_files.is_empty() {
+                    palette.subtle_text
+                } else {
+                    palette.warning
+                },
+            );
         });
+    }
+
+    fn draw_quick_actions(&mut self, ui: &mut Ui, palette: theme::Palette) {
+        ui.horizontal_wrapped(|ui| {
+            if self
+                .quick_action_button(ui, palette, "Open Image", "Pick a single file", true)
+                .clicked()
+            {
+                self.open_image_dialog();
+            }
+            if self
+                .quick_action_button(ui, palette, "Load Batch", "Queue multiple images", true)
+                .clicked()
+            {
+                self.open_batch_dialog();
+            }
+
+            let export_enabled = !self.selected_faces.is_empty();
+            if self
+                .quick_action_button(
+                    ui,
+                    palette,
+                    "Export Selected",
+                    "Sends crops to disk",
+                    export_enabled,
+                )
+                .clicked()
+            {
+                self.export_selected_faces();
+            }
+
+            let batch_enabled = !self.batch_files.is_empty();
+            let subtitle = format!("{} queued", self.batch_files.len());
+            if self
+                .quick_action_button(ui, palette, "Run Batch", &subtitle, batch_enabled)
+                .clicked()
+            {
+                self.start_batch_export();
+            }
+        });
+    }
+
+    fn quick_action_button(
+        &self,
+        ui: &mut Ui,
+        palette: theme::Palette,
+        title: &str,
+        subtitle: &str,
+        enabled: bool,
+    ) -> Response {
+        let text = format!("{title}\n{subtitle}");
+        ui.add_enabled(
+            enabled,
+            Button::new(RichText::new(text).size(15.0))
+                .wrap()
+                .min_size(vec2(150.0, 64.0))
+                .fill(if enabled {
+                    palette.panel_light
+                } else {
+                    palette.panel_dark
+                })
+                .stroke(Stroke::new(1.0, palette.outline))
+                .corner_radius(CornerRadius::same(16)),
+        )
+    }
+
+    fn status_chip(
+        &self,
+        ui: &mut Ui,
+        palette: theme::Palette,
+        text: impl Into<String>,
+        accent: Color32,
+    ) {
+        egui::Frame::new()
+            .fill(palette.panel_dark)
+            .stroke(Stroke::new(1.0, accent))
+            .corner_radius(CornerRadius::same(24))
+            .inner_margin(Margin::symmetric(12, 4))
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(text.into())
+                        .size(14.0)
+                        .color(palette.subtle_text),
+                );
+            });
     }
 
     /// Renders the left-hand configuration panel.
     fn show_configuration_panel(&mut self, ctx: &EguiContext) {
+        let palette = theme::palette();
         SidePanel::left("yunet_settings_panel")
             .resizable(true)
             .default_width(320.0)
@@ -462,28 +628,24 @@ impl YuNetApp {
                                             Quality::Low => Color32::from_rgb(255, 80, 80),
                                         };
 
-                                        let frame_color = if is_selected {
-                                            Color32::from_rgb(100, 150, 255)
+                                        let frame_fill = if is_selected {
+                                            palette.panel_light
                                         } else {
-                                            ui.visuals().widgets.noninteractive.bg_fill
+                                            palette.panel_dark
                                         };
-
                                         let frame_stroke = if is_selected {
-                                            Stroke::new(3.0, Color32::from_rgb(100, 150, 255))
+                                            Stroke::new(2.0, palette.accent)
                                         } else {
-                                            Stroke::new(
-                                                1.0,
-                                                ui.visuals().widgets.noninteractive.bg_stroke.color,
-                                            )
+                                            Stroke::new(1.0, palette.outline)
                                         };
 
-                                        let response = ui.group(|ui| {
-                                            egui::Frame::new()
-                                                .fill(frame_color)
-                                                .stroke(frame_stroke)
-                                                .inner_margin(4.0)
-                                                .show(ui, |ui| {
-                                                    ui.horizontal(|ui| {
+                                        let response = egui::Frame::new()
+                                            .fill(frame_fill)
+                                            .stroke(frame_stroke)
+                                            .corner_radius(CornerRadius::same(12))
+                                            .inner_margin(Margin::symmetric(10, 8))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
                                                         if let Some(texture) =
                                                             self.crop_preview_texture_for(
                                                                 ctx, index,
@@ -570,7 +732,6 @@ impl YuNetApp {
                                                         });
                                                     });
                                                 });
-                                        });
 
                                         if response.response.clicked() {
                                             if is_selected {
@@ -1463,46 +1624,142 @@ impl YuNetApp {
 
     /// Renders the main image preview panel.
     fn show_preview(&mut self, ctx: &EguiContext) {
-        CentralPanel::default().show(ctx, |ui| {
-            if let Some(texture) = &self.preview.texture {
-                let available = ui.available_size();
-                if available.x > 0.0 && available.y > 0.0 {
-                    let tex_size = texture.size_vec2();
-                    if tex_size.x > 0.0 && tex_size.y > 0.0 {
-                        let scale = (available.x / tex_size.x)
-                            .min(available.y / tex_size.y)
-                            .max(0.0);
-                        let scale = if scale.is_finite() && scale > 0.0 {
-                            scale
-                        } else {
-                            1.0
-                        };
-                        let scaled = tex_size * scale;
-                        ui.centered_and_justified(|ui| {
-                            let response =
-                                ui.add(egui::Image::new(texture).fit_to_exact_size(scaled));
-                            if let Some(dimensions) = self.preview.image_size {
-                                let image_rect =
-                                    Rect::from_center_size(response.rect.center(), scaled);
-                                self.paint_detections(ui, image_rect, dimensions);
-                            }
-                        });
+        let palette = theme::palette();
+        CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(palette.canvas)
+                    .inner_margin(Margin::symmetric(16, 16)),
+            )
+            .show(ctx, |ui| {
+                if let Some(texture) = self.preview.texture.clone() {
+                    let image_dimensions = self.preview.image_size;
+                    let available = ui.available_size();
+                    if available.x > 0.0 && available.y > 0.0 {
+                        let tex_size = texture.size_vec2();
+                        if tex_size.x > 0.0 && tex_size.y > 0.0 {
+                            let scale = (available.x / tex_size.x)
+                                .min(available.y / tex_size.y)
+                                .max(0.0);
+                            let scale = if scale.is_finite() && scale > 0.0 {
+                                scale
+                            } else {
+                                1.0
+                            };
+                            let scaled = tex_size * scale;
+                            ui.centered_and_justified(|ui| {
+                                let response =
+                                    ui.add(egui::Image::new(&texture).fit_to_exact_size(scaled));
+                                if let Some(dimensions) = image_dimensions {
+                                    let image_rect =
+                                        Rect::from_center_size(response.rect.center(), scaled);
+                                    self.paint_detections(ui, image_rect, dimensions);
+                                    self.preview_overlay(ui, image_rect, palette);
+                                }
+                            });
+                        }
                     }
+                } else if self.preview.is_loading {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(64.0);
+                        ui.add(Spinner::new().size(28.0));
+                        ui.label(
+                            RichText::new("Loading image and running detection...").size(16.0),
+                        );
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(64.0);
+                        ui.heading("Drop an image or pick one from Quick Actions.");
+                        ui.label("The preview area will light up once detection finishes.");
+                    });
                 }
-            } else if self.preview.is_loading {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(48.0);
-                    ui.add(Spinner::new().size(24.0));
-                    ui.label("Loading image and running detection...");
+            });
+    }
+
+    fn preview_overlay(&mut self, ui: &mut Ui, image_rect: Rect, palette: theme::Palette) {
+        let overlay_size = vec2(260.0, 170.0);
+        if image_rect.width() < overlay_size.x + 20.0 || image_rect.height() < overlay_size.y + 20.0
+        {
+            return;
+        }
+
+        let overlay_rect =
+            Rect::from_min_size(image_rect.left_top() + vec2(16.0, 16.0), overlay_size);
+        ui.scope_builder(UiBuilder::new().max_rect(overlay_rect), |overlay_ui| {
+            egui::Frame::new()
+                .fill(palette.panel_dark)
+                .stroke(Stroke::new(1.0, palette.outline))
+                .corner_radius(CornerRadius::same(16))
+                .inner_margin(Margin::symmetric(14, 10))
+                .show(overlay_ui, |ui| {
+                    ui.label(RichText::new("Preview HUD").strong());
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        self.status_chip(
+                            ui,
+                            palette,
+                            format!("Faces {}", self.preview.detections.len()),
+                            palette.accent,
+                        );
+                        self.status_chip(
+                            ui,
+                            palette,
+                            format!("Selected {}", self.selected_faces.len()),
+                            if self.selected_faces.is_empty() {
+                                palette.subtle_text
+                            } else {
+                                palette.success
+                            },
+                        );
+                    });
+
+                    ui.add_space(6.0);
+                    self.quality_legend(ui, palette);
+                    ui.add_space(6.0);
+
+                    if self.preview.detections.is_empty() {
+                        ui.label(RichText::new("No faces detected yet.").weak());
+                    } else {
+                        ui.checkbox(&mut self.show_crop_overlay, "Show crop guides");
+                    }
+
+                    ui.add_space(6.0);
+                    let selected = self.selected_faces.len();
+                    if selected > 0 {
+                        let button_label = format!(
+                            "Export {} face{}",
+                            selected,
+                            if selected == 1 { "" } else { "s" }
+                        );
+                        if ui.button(button_label).clicked() {
+                            self.export_selected_faces();
+                        }
+                    } else {
+                        ui.label(
+                            RichText::new("Select faces from the list to export.")
+                                .color(palette.subtle_text),
+                        );
+                    }
                 });
-            } else {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(48.0);
-                    ui.heading("Image preview will appear here.");
-                    ui.label("Select an image to run detection.");
-                });
-            }
         });
+    }
+
+    fn quality_legend(&self, ui: &mut Ui, palette: theme::Palette) {
+        ui.horizontal(|ui| {
+            self.legend_dot(ui, palette, palette.success, "High");
+            ui.add_space(8.0);
+            self.legend_dot(ui, palette, palette.warning, "Medium");
+            ui.add_space(8.0);
+            self.legend_dot(ui, palette, palette.danger, "Low");
+        });
+    }
+
+    fn legend_dot(&self, ui: &mut Ui, palette: theme::Palette, color: Color32, label: &str) {
+        let (rect, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
+        ui.painter().circle_filled(rect.center(), 5.0, color);
+        ui.add_space(4.0);
+        ui.label(RichText::new(label).color(palette.subtle_text));
     }
 
     /// Applies an enhancement preset to the current settings.
