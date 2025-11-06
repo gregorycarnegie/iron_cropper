@@ -10,7 +10,7 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "idcard",
+    "preset": "linkedin",
     "output_width": 400,
     "output_height": 400,
     "face_height_pct": 70.0,

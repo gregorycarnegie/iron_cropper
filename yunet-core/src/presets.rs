@@ -54,13 +54,20 @@ pub fn standard_presets() -> &'static [CropPreset] {
 
 /// Find a preset by name (case-insensitive). Returns `None` if not found.
 pub fn preset_by_name(name: &str) -> Option<CropPreset> {
-    let name_lower = name.to_lowercase();
+    let lookup_key = normalize_name(name);
     for p in standard_presets() {
-        if p.name.to_lowercase() == name_lower {
+        if normalize_name(p.name) == lookup_key {
             return Some(p.clone());
         }
     }
     None
+}
+
+fn normalize_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
 }
 
 #[cfg(test)]
@@ -83,6 +90,15 @@ mod tests {
         let p = preset_by_name("instagram").expect("instagram preset");
         assert_eq!(p.width, 1080);
         assert_eq!(p.name, "Instagram");
+    }
+
+    #[test]
+    fn preset_lookup_ignores_spacing_and_case() {
+        let p = preset_by_name("IDCard").expect("ID Card preset");
+        assert_eq!(p.width, 332);
+        assert_eq!(p.height, 498);
+        let p2 = preset_by_name("id card").expect("ID Card preset with space");
+        assert_eq!(p2.name, "ID Card");
     }
 
     #[test]
