@@ -397,6 +397,8 @@ impl YuNetApp {
                         let initial_crop_settings = self.settings.crop.clone();
                         let initial_enhance_settings = self.settings.enhance.clone();
                         let mut settings_changed = false;
+                        let mut enhancement_changed = false;
+                        let mut preview_invalidated = false;
                         let mut metadata_tags_changed = false;
                         let mut requires_detector_reset = false;
                         let mut requires_cache_refresh = false;
@@ -909,6 +911,7 @@ impl YuNetApp {
                                                 }
                                             }
                                             self.clear_crop_preview_cache();
+                                            preview_invalidated = true;
                                             settings_changed = true;
                                         }
                                     }
@@ -952,6 +955,7 @@ impl YuNetApp {
                                 self.settings.crop.preset = "custom".to_string();
                             }
                             self.clear_crop_preview_cache();
+                            preview_invalidated = true;
                             settings_changed = true;
                         }
 
@@ -1279,7 +1283,12 @@ impl YuNetApp {
                         ui.separator();
                         ui.heading("Enhancement Settings");
 
-                        ui.checkbox(&mut self.settings.enhance.enabled, "Enable enhancements");
+                        let enable_response =
+                            ui.checkbox(&mut self.settings.enhance.enabled, "Enable enhancements");
+                        if enable_response.changed() {
+                            settings_changed = true;
+                            enhancement_changed = true;
+                        }
                         ui.add_space(6.0);
 
                         if self.settings.enhance.enabled {
@@ -1304,15 +1313,22 @@ impl YuNetApp {
                                             self.settings.enhance.preset = value.to_string();
                                             self.apply_enhancement_preset();
                                             settings_changed = true;
+                                            enhancement_changed = true;
                                         }
                                     }
                                 });
 
                             ui.add_space(6.0);
-                            ui.checkbox(
-                                &mut self.settings.enhance.auto_color,
-                                "Auto color correction",
-                            );
+                            if ui
+                                .checkbox(
+                                    &mut self.settings.enhance.auto_color,
+                                    "Auto color correction",
+                                )
+                                .changed()
+                            {
+                                settings_changed = true;
+                                enhancement_changed = true;
+                            }
 
                             ui.add_space(6.0);
                             let mut exp = self.settings.enhance.exposure_stops;
@@ -1322,6 +1338,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.exposure_stops = exp;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             let mut bright = self.settings.enhance.brightness;
@@ -1331,6 +1348,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.brightness = bright;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             let mut con = self.settings.enhance.contrast;
@@ -1340,6 +1358,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.contrast = con;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             let mut sat = self.settings.enhance.saturation;
@@ -1349,6 +1368,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.saturation = sat;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             let mut sharp = self.settings.enhance.sharpness;
@@ -1358,6 +1378,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.sharpness = sharp;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             let mut skin_smooth = self.settings.enhance.skin_smooth;
@@ -1369,6 +1390,7 @@ impl YuNetApp {
                             {
                                 self.settings.enhance.skin_smooth = skin_smooth;
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             if ui
@@ -1379,6 +1401,7 @@ impl YuNetApp {
                                 .changed()
                             {
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             if ui
@@ -1389,6 +1412,7 @@ impl YuNetApp {
                                 .changed()
                             {
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
 
                             ui.add_space(6.0);
@@ -1396,7 +1420,18 @@ impl YuNetApp {
                                 self.settings.enhance =
                                     yunet_utils::config::EnhanceSettings::default();
                                 settings_changed = true;
+                                enhancement_changed = true;
                             }
+                        }
+
+                        if enhancement_changed {
+                            self.clear_crop_preview_cache();
+                            if !self.preview.detections.is_empty() {
+                                for idx in 0..self.preview.detections.len() {
+                                    let _ = self.crop_preview_texture_for(ctx, idx);
+                                }
+                            }
+                            ctx.request_repaint();
                         }
 
                         if settings_changed {
@@ -1412,9 +1447,14 @@ impl YuNetApp {
                             .weak(),
                         );
 
-                        if self.settings.crop != initial_crop_settings
-                            || self.settings.enhance != initial_enhance_settings
-                        {
+                        let crop_changed = self.settings.crop != initial_crop_settings;
+                        let enhance_changed_now =
+                            self.settings.enhance != initial_enhance_settings;
+
+                        if crop_changed && !preview_invalidated {
+                            self.clear_crop_preview_cache();
+                        }
+                        if enhance_changed_now && !enhancement_changed {
                             self.clear_crop_preview_cache();
                         }
                     });
