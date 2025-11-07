@@ -327,6 +327,12 @@ impl PointerSnapshot {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PreviewSpace {
+    rect: Rect,
+    image_size: (u32, u32),
+}
+
 /// State related to the image preview panel.
 #[derive(Default)]
 struct PreviewState {
@@ -2071,27 +2077,25 @@ impl YuNetApp {
         }
 
         let pointer = PointerSnapshot::capture(ctx);
-        if pointer.pressed {
-            if let Some(origin) = pointer.press_origin
-                && image_rect.contains(origin)
-                && !self.pointer_over_any_bbox(image_rect, image_size, origin)
-                && let Some(image_pos) = self.screen_pos_to_image(origin, image_rect, image_size)
-            {
-                self.manual_box_draft = Some(ManualBoxDraft {
-                    start: image_pos,
-                    current: image_pos,
-                });
-            }
+        if pointer.pressed
+            && let Some(origin) = pointer.press_origin
+            && image_rect.contains(origin)
+            && !self.pointer_over_any_bbox(image_rect, image_size, origin)
+            && let Some(image_pos) = self.screen_pos_to_image(origin, image_rect, image_size)
+        {
+            self.manual_box_draft = Some(ManualBoxDraft {
+                start: image_pos,
+                current: image_pos,
+            });
         }
 
         if let Some(mut draft) = self.manual_box_draft {
-            if pointer.down {
-                if let Some(pos) = pointer
+            if pointer.down
+                && let Some(pos) = pointer
                     .pos
                     .and_then(|p| self.screen_pos_to_image(p, image_rect, image_size))
-                {
-                    draft.current = pos;
-                }
+            {
+                draft.current = pos;
             }
 
             if pointer.released {
@@ -2114,18 +2118,14 @@ impl YuNetApp {
         image_size: (u32, u32),
     ) {
         let len = self.preview.detections.len();
+        let preview_space = PreviewSpace {
+            rect: image_rect,
+            image_size,
+        };
         for index in 0..len {
             let bbox = self.preview.detections[index].active_bbox();
             let rect = self.bbox_to_screen_rect(bbox, image_rect, image_size);
-            self.handle_drag_control(
-                ctx,
-                ui,
-                rect,
-                index,
-                image_rect,
-                image_size,
-                DragHandle::Move,
-            );
+            self.handle_drag_control(ctx, ui, rect, index, preview_space, DragHandle::Move);
 
             for handle in [
                 DragHandle::NorthWest,
@@ -2134,15 +2134,7 @@ impl YuNetApp {
                 DragHandle::SouthEast,
             ] {
                 let handle_rect = self.handle_rect_for(rect, handle);
-                self.handle_drag_control(
-                    ctx,
-                    ui,
-                    handle_rect,
-                    index,
-                    image_rect,
-                    image_size,
-                    handle,
-                );
+                self.handle_drag_control(ctx, ui, handle_rect, index, preview_space, handle);
             }
         }
     }
@@ -2153,8 +2145,7 @@ impl YuNetApp {
         ui: &mut Ui,
         control_rect: Rect,
         index: usize,
-        image_rect: Rect,
-        image_size: (u32, u32),
+        preview_space: PreviewSpace,
         handle: DragHandle,
     ) {
         let id = ui
@@ -2176,17 +2167,23 @@ impl YuNetApp {
             && active.handle == handle
             && response.dragged()
         {
-            self.apply_active_drag(active, response.drag_delta(), image_rect, image_size);
+            self.apply_active_drag(
+                active,
+                response.drag_delta(),
+                preview_space.rect,
+                preview_space.image_size,
+            );
         }
 
         let drag_active = matches!(
             self.active_bbox_drag,
             Some(active) if active.index == index && active.handle == handle
         );
-        if drag_active && !ctx.input(|i| i.pointer.primary_down()) {
-            if let Some(active) = self.active_bbox_drag.take() {
-                self.on_bbox_drag_finished(ctx, active.index);
-            }
+        if drag_active
+            && !ctx.input(|i| i.pointer.primary_down())
+            && let Some(active) = self.active_bbox_drag.take()
+        {
+            self.on_bbox_drag_finished(ctx, active.index);
         }
     }
 
