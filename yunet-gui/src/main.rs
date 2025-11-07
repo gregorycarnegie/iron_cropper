@@ -14,8 +14,9 @@ use anyhow::{Context as AnyhowContext, Result};
 use eframe::{App, CreationContext, Frame, NativeOptions, egui};
 use egui::{
     Align, Button, CentralPanel, Color32, Context as EguiContext, CornerRadius, DragValue, Key,
-    Layout, Margin, ProgressBar, Rect, Response, RichText, ScrollArea, Sense, SidePanel, Slider,
-    Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, Ui, UiBuilder, pos2, vec2,
+    Layout, Margin, ProgressBar, Rect, Response, Rgba, RichText, ScrollArea, Sense, SidePanel,
+    Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, Ui, UiBuilder, pos2,
+    vec2,
 };
 use ico::IconDir;
 use image::DynamicImage;
@@ -23,8 +24,8 @@ use log::{LevelFilter, error, info, warn};
 use rayon::prelude::*;
 use rfd::FileDialog;
 use yunet_core::{
-    CropSettings as CoreCropSettings, Detection, PositioningMode, PostprocessConfig,
-    PreprocessConfig, YuNetDetector, calculate_crop_region, preset_by_name,
+    BoundingBox, CropSettings as CoreCropSettings, Detection, Landmark, PositioningMode,
+    PostprocessConfig, PreprocessConfig, YuNetDetector, calculate_crop_region, preset_by_name,
 };
 use yunet_utils::{
     CropShape, MetadataContext, OutputOptions, PolygonCornerStyle, append_suffix_to_filename,
@@ -221,6 +222,25 @@ struct YuNetApp {
     batch_files: Vec<BatchFile>,
     /// Current index in batch processing.
     batch_current_index: Option<usize>,
+    /// Normalized anchor (0-1) describing the HUD offset inside the preview image.
+    preview_hud_anchor: egui::Vec2,
+    /// Whether the preview HUD content is collapsed.
+    preview_hud_minimized: bool,
+    /// Drag origin for HUD repositioning.
+    preview_hud_drag_origin: Option<egui::Pos2>,
+    /// Whether manual bounding-box draw mode is active.
+    manual_box_tool_enabled: bool,
+    /// In-progress manual bounding box draft in image coordinates.
+    manual_box_draft: Option<ManualBoxDraft>,
+    /// Currently active drag handle for adjusting a bounding box.
+    active_bbox_drag: Option<ActiveBoxDrag>,
+}
+
+/// Indicates whether a bounding box originated from the detector or the user.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DetectionOrigin {
+    Detector,
+    Manual,
 }
 
 /// A detection with associated quality score and thumbnail.
@@ -234,6 +254,77 @@ struct DetectionWithQuality {
     quality: Quality,
     /// Thumbnail texture handle for the face region.
     thumbnail: Option<TextureHandle>,
+    /// Active bounding box (may diverge from the detector output).
+    current_bbox: BoundingBox,
+    /// Original bounding box (detector or initial manual draft).
+    original_bbox: BoundingBox,
+    /// Where this bounding box came from.
+    origin: DetectionOrigin,
+}
+
+impl DetectionWithQuality {
+    fn active_bbox(&self) -> BoundingBox {
+        self.current_bbox
+    }
+
+    fn reset_bbox(&mut self) {
+        self.current_bbox = self.original_bbox;
+    }
+
+    fn set_bbox(&mut self, bbox: BoundingBox) {
+        self.current_bbox = bbox;
+    }
+
+    fn is_manual(&self) -> bool {
+        matches!(self.origin, DetectionOrigin::Manual)
+    }
+
+    fn is_modified(&self) -> bool {
+        self.current_bbox != self.original_bbox
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ManualBoxDraft {
+    start: egui::Pos2,
+    current: egui::Pos2,
+}
+
+#[derive(Clone, Copy)]
+struct ActiveBoxDrag {
+    index: usize,
+    handle: DragHandle,
+    start_bbox: BoundingBox,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DragHandle {
+    Move,
+    NorthWest,
+    NorthEast,
+    SouthWest,
+    SouthEast,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PointerSnapshot {
+    pressed: bool,
+    released: bool,
+    down: bool,
+    press_origin: Option<egui::Pos2>,
+    pos: Option<egui::Pos2>,
+}
+
+impl PointerSnapshot {
+    fn capture(ctx: &EguiContext) -> Self {
+        ctx.input(|input| PointerSnapshot {
+            pressed: input.pointer.primary_pressed(),
+            released: input.pointer.primary_released(),
+            down: input.pointer.primary_down(),
+            press_origin: input.pointer.press_origin(),
+            pos: input.pointer.interact_pos(),
+        })
+    }
 }
 
 /// State related to the image preview panel.
@@ -378,6 +469,12 @@ impl YuNetApp {
             metadata_tags_input,
             batch_files: Vec::new(),
             batch_current_index: None,
+            preview_hud_anchor: vec2(0.02, 0.02),
+            preview_hud_minimized: true,
+            preview_hud_drag_origin: None,
+            manual_box_tool_enabled: false,
+            manual_box_draft: None,
+            active_bbox_drag: None,
         }
     }
 
@@ -607,6 +704,34 @@ impl YuNetApp {
 
                         ui.separator();
                         ui.heading("Detected Faces");
+                        ui.horizontal(|ui| {
+                            let enabled = self.preview.texture.is_some();
+                            let label = if self.manual_box_tool_enabled {
+                                "Exit draw mode"
+                            } else {
+                                "Draw bounding box"
+                            };
+                            if ui
+                                .add_enabled(enabled, Button::new(label))
+                                .clicked()
+                            {
+                                self.manual_box_tool_enabled = !self.manual_box_tool_enabled;
+                                if !self.manual_box_tool_enabled {
+                                    self.manual_box_draft = None;
+                                }
+                            }
+                            if self.manual_box_tool_enabled {
+                                ui.label(
+                                    RichText::new("Click and drag in the preview area")
+                                        .color(palette.subtle_text),
+                                );
+                            } else if !enabled {
+                                ui.label(
+                                    RichText::new("Load an image to draw boxes")
+                                        .color(palette.subtle_text),
+                                );
+                            }
+                        });
                         if self.preview.detections.is_empty() {
                             if self.is_busy {
                                 ui.label("Waiting for results…");
@@ -620,17 +745,35 @@ impl YuNetApp {
                             ));
                             ui.add_space(8.0);
 
+                            let mut pending_removal: Option<usize> = None;
                             ScrollArea::vertical()
                                 .id_salt("detected_faces_scroll")
                                 .max_height(220.0)
                                 .auto_shrink([false, false])
                                 .show(ui, |ui| {
-                                    for index in 0..self.preview.detections.len() {
-                                        let det_with_quality = &self.preview.detections[index];
-                                        let detection_score = det_with_quality.detection.score;
-                                        let quality = det_with_quality.quality;
-                                        let quality_score = det_with_quality.quality_score;
-                                        let thumbnail = det_with_quality.thumbnail.clone();
+                                    let len = self.preview.detections.len();
+                                    for index in 0..len {
+                                        if pending_removal.is_some() {
+                                            break;
+                                        }
+                                        let (
+                                            detection_score,
+                                            quality,
+                                            quality_score,
+                                            thumbnail,
+                                            is_manual,
+                                            is_modified,
+                                        ) = {
+                                            let det = &self.preview.detections[index];
+                                            (
+                                                det.detection.score,
+                                                det.quality,
+                                                det.quality_score,
+                                                det.thumbnail.clone(),
+                                                det.is_manual(),
+                                                det.is_modified(),
+                                            )
+                                        };
                                         let is_selected = self.selected_faces.contains(&index);
 
                                         let quality_color = match quality {
@@ -650,6 +793,7 @@ impl YuNetApp {
                                             Stroke::new(1.0, palette.outline)
                                         };
 
+                                        let mut remove_requested = false;
                                         let response = egui::Frame::new()
                                             .fill(frame_fill)
                                             .stroke(frame_stroke)
@@ -698,13 +842,23 @@ impl YuNetApp {
                                                         }
 
                                                         ui.vertical(|ui| {
-                                                            ui.label(
-                                                                RichText::new(format!(
-                                                                    "Face {}",
-                                                                    index + 1
-                                                                ))
-                                                                .strong(),
-                                                            );
+                                                            let title = if is_manual {
+                                                                format!("Manual {}", index + 1)
+                                                            } else {
+                                                                format!("Face {}", index + 1)
+                                                            };
+                                                            ui.label(RichText::new(title).strong());
+                                                            if is_manual {
+                                                                ui.label(
+                                                                    RichText::new("User box")
+                                                                        .color(palette.accent),
+                                                                );
+                                                            } else if is_modified {
+                                                                ui.label(
+                                                                    RichText::new("Adjusted box")
+                                                                        .color(palette.accent),
+                                                                );
+                                                            }
                                                             ui.label(format!(
                                                                 "Conf: {:.2}",
                                                                 detection_score
@@ -724,22 +878,34 @@ impl YuNetApp {
                                                                 quality_score
                                                             ));
 
-                                                            if ui
-                                                                .small_button(if is_selected {
-                                                                    "Deselect"
-                                                                } else {
-                                                                    "Select"
-                                                                })
-                                                                .clicked()
-                                                            {
-                                                                if is_selected {
-                                                                    self.selected_faces
-                                                                        .remove(&index);
-                                                                } else {
-                                                                    self.selected_faces
-                                                                        .insert(index);
+                                                            ui.horizontal(|ui| {
+                                                                if ui
+                                                                    .small_button(if is_selected {
+                                                                        "Deselect"
+                                                                    } else {
+                                                                        "Select"
+                                                                    })
+                                                                    .clicked()
+                                                                {
+                                                                    if is_selected {
+                                                                        self.selected_faces
+                                                                            .remove(&index);
+                                                                    } else {
+                                                                        self.selected_faces
+                                                                            .insert(index);
+                                                                    }
                                                                 }
-                                                            }
+
+                                                                if ui.small_button("Reset box").clicked() {
+                                                                    self.reset_detection_bbox(ctx, index);
+                                                                }
+
+                                                                if is_manual
+                                                                    && ui.small_button("Remove").clicked()
+                                                                {
+                                                                    remove_requested = true;
+                                                                }
+                                                            });
                                                         });
                                                     });
                                                 });
@@ -751,8 +917,16 @@ impl YuNetApp {
                                                 self.selected_faces.insert(index);
                                             }
                                         }
+
+                                        if remove_requested {
+                                            pending_removal = Some(index);
+                                        }
                                     }
                                 });
+
+                            if let Some(index) = pending_removal {
+                                self.remove_detection(index);
+                            }
 
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
@@ -1666,11 +1840,15 @@ impl YuNetApp {
                             };
                             let scaled = tex_size * scale;
                             ui.centered_and_justified(|ui| {
-                                let response =
-                                    ui.add(egui::Image::new(&texture).fit_to_exact_size(scaled));
+                                let image_widget =
+                                    egui::Image::new(&texture).fit_to_exact_size(scaled);
+                                let response = ui.add(image_widget);
                                 if let Some(dimensions) = image_dimensions {
                                     let image_rect =
                                         Rect::from_center_size(response.rect.center(), scaled);
+                                    self.handle_preview_interactions(
+                                        ctx, ui, image_rect, dimensions,
+                                    );
                                     self.paint_detections(ui, image_rect, dimensions);
                                     self.preview_overlay(ui, image_rect, palette);
                                 }
@@ -1696,22 +1874,71 @@ impl YuNetApp {
     }
 
     fn preview_overlay(&mut self, ui: &mut Ui, image_rect: Rect, palette: theme::Palette) {
-        let overlay_size = vec2(260.0, 170.0);
-        if image_rect.width() < overlay_size.x + 20.0 || image_rect.height() < overlay_size.y + 20.0
-        {
+        let overlay_size = self.preview_hud_size();
+        if image_rect.width() < overlay_size.x || image_rect.height() < overlay_size.y {
             return;
         }
 
-        let overlay_rect =
-            Rect::from_min_size(image_rect.left_top() + vec2(16.0, 16.0), overlay_size);
+        let mut overlay_rect = self.preview_hud_rect(image_rect, overlay_size);
+        let overlay_id = ui.make_persistent_id("preview_hud_overlay");
+        let drag_response = ui.interact(overlay_rect, overlay_id, Sense::drag());
+
+        if drag_response.drag_started() {
+            self.preview_hud_drag_origin = Some(overlay_rect.left_top());
+        }
+
+        if let Some(origin) = self.preview_hud_drag_origin {
+            let desired = origin + drag_response.drag_delta();
+            overlay_rect = self.update_hud_anchor_from_top_left(image_rect, overlay_size, desired);
+        }
+
+        if self.preview_hud_drag_origin.is_some() && !ui.ctx().input(|i| i.pointer.primary_down()) {
+            self.preview_hud_drag_origin = None;
+        }
+
+        let hovered = drag_response.hovered() || drag_response.dragged();
+        let fill = if hovered {
+            palette.panel_dark
+        } else {
+            translucent_color(palette.panel_dark, 0.7)
+        };
+
         ui.scope_builder(UiBuilder::new().max_rect(overlay_rect), |overlay_ui| {
             egui::Frame::new()
-                .fill(palette.panel_dark)
+                .fill(fill)
                 .stroke(Stroke::new(1.0, palette.outline))
                 .corner_radius(CornerRadius::same(16))
                 .inner_margin(Margin::symmetric(14, 10))
                 .show(overlay_ui, |ui| {
-                    ui.label(RichText::new("Preview HUD").strong());
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Preview HUD").strong());
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let label = if self.preview_hud_minimized {
+                                "Expand"
+                            } else {
+                                "Minimize"
+                            };
+                            if ui.small_button(label).clicked() {
+                                self.preview_hud_minimized = !self.preview_hud_minimized;
+                                ui.ctx().request_repaint();
+                            }
+                        });
+                    });
+
+                    if self.preview_hud_minimized {
+                        ui.add_space(4.0);
+                        ui.label(format!(
+                            "Faces: {}  |  Selected: {}",
+                            self.preview.detections.len(),
+                            self.selected_faces.len()
+                        ));
+                        ui.label(
+                            RichText::new("Drag to reposition / expand for actions")
+                                .color(palette.subtle_text),
+                        );
+                        return;
+                    }
+
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         self.status_chip(
@@ -1761,6 +1988,492 @@ impl YuNetApp {
                     }
                 });
         });
+    }
+
+    fn preview_hud_size(&self) -> egui::Vec2 {
+        if self.preview_hud_minimized {
+            vec2(220.0, 72.0)
+        } else {
+            vec2(260.0, 190.0)
+        }
+    }
+
+    fn preview_hud_rect(&self, image_rect: Rect, overlay_size: egui::Vec2) -> Rect {
+        let available_width = (image_rect.width() - overlay_size.x).max(0.0);
+        let available_height = (image_rect.height() - overlay_size.y).max(0.0);
+        let anchor_x = self.preview_hud_anchor.x.clamp(0.0, 1.0);
+        let anchor_y = self.preview_hud_anchor.y.clamp(0.0, 1.0);
+        let top_left = pos2(
+            image_rect.left() + anchor_x * available_width,
+            image_rect.top() + anchor_y * available_height,
+        );
+        Rect::from_min_size(top_left, overlay_size)
+    }
+
+    fn update_hud_anchor_from_top_left(
+        &mut self,
+        image_rect: Rect,
+        overlay_size: egui::Vec2,
+        desired_top_left: egui::Pos2,
+    ) -> Rect {
+        let clamped = self.clamp_hud_top_left(image_rect, overlay_size, desired_top_left);
+        self.preview_hud_anchor = self.anchor_from_top_left(image_rect, overlay_size, clamped);
+        Rect::from_min_size(clamped, overlay_size)
+    }
+
+    fn clamp_hud_top_left(
+        &self,
+        image_rect: Rect,
+        overlay_size: egui::Vec2,
+        desired: egui::Pos2,
+    ) -> egui::Pos2 {
+        let min_x = image_rect.left();
+        let min_y = image_rect.top();
+        let max_x = (image_rect.right() - overlay_size.x).max(min_x);
+        let max_y = (image_rect.bottom() - overlay_size.y).max(min_y);
+        pos2(desired.x.clamp(min_x, max_x), desired.y.clamp(min_y, max_y))
+    }
+
+    fn anchor_from_top_left(
+        &self,
+        image_rect: Rect,
+        overlay_size: egui::Vec2,
+        top_left: egui::Pos2,
+    ) -> egui::Vec2 {
+        let denom_x = (image_rect.width() - overlay_size.x).max(1.0);
+        let denom_y = (image_rect.height() - overlay_size.y).max(1.0);
+        vec2(
+            ((top_left.x - image_rect.left()) / denom_x).clamp(0.0, 1.0),
+            ((top_left.y - image_rect.top()) / denom_y).clamp(0.0, 1.0),
+        )
+    }
+
+    fn handle_preview_interactions(
+        &mut self,
+        ctx: &EguiContext,
+        ui: &mut Ui,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) {
+        self.update_manual_box_draft(ctx, image_rect, image_size);
+        self.handle_bbox_drag_interactions(ctx, ui, image_rect, image_size);
+    }
+
+    fn update_manual_box_draft(
+        &mut self,
+        ctx: &EguiContext,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) {
+        if !self.manual_box_tool_enabled {
+            self.manual_box_draft = None;
+            return;
+        }
+
+        let pointer = PointerSnapshot::capture(ctx);
+        if pointer.pressed {
+            if let Some(origin) = pointer.press_origin
+                && image_rect.contains(origin)
+                && !self.pointer_over_any_bbox(image_rect, image_size, origin)
+                && let Some(image_pos) = self.screen_pos_to_image(origin, image_rect, image_size)
+            {
+                self.manual_box_draft = Some(ManualBoxDraft {
+                    start: image_pos,
+                    current: image_pos,
+                });
+            }
+        }
+
+        if let Some(mut draft) = self.manual_box_draft {
+            if pointer.down {
+                if let Some(pos) = pointer
+                    .pos
+                    .and_then(|p| self.screen_pos_to_image(p, image_rect, image_size))
+                {
+                    draft.current = pos;
+                }
+            }
+
+            if pointer.released {
+                if let Some(bbox) = self.draft_to_bbox(draft, image_size) {
+                    self.add_manual_detection(ctx, bbox);
+                    self.status_line = "Manual bounding box added.".to_string();
+                }
+                self.manual_box_draft = None;
+            } else {
+                self.manual_box_draft = Some(draft);
+            }
+        }
+    }
+
+    fn handle_bbox_drag_interactions(
+        &mut self,
+        ctx: &EguiContext,
+        ui: &mut Ui,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) {
+        let len = self.preview.detections.len();
+        for index in 0..len {
+            let bbox = self.preview.detections[index].active_bbox();
+            let rect = self.bbox_to_screen_rect(bbox, image_rect, image_size);
+            self.handle_drag_control(
+                ctx,
+                ui,
+                rect,
+                index,
+                image_rect,
+                image_size,
+                DragHandle::Move,
+            );
+
+            for handle in [
+                DragHandle::NorthWest,
+                DragHandle::NorthEast,
+                DragHandle::SouthWest,
+                DragHandle::SouthEast,
+            ] {
+                let handle_rect = self.handle_rect_for(rect, handle);
+                self.handle_drag_control(
+                    ctx,
+                    ui,
+                    handle_rect,
+                    index,
+                    image_rect,
+                    image_size,
+                    handle,
+                );
+            }
+        }
+    }
+
+    fn handle_drag_control(
+        &mut self,
+        ctx: &EguiContext,
+        ui: &mut Ui,
+        control_rect: Rect,
+        index: usize,
+        image_rect: Rect,
+        image_size: (u32, u32),
+        handle: DragHandle,
+    ) {
+        let id = ui
+            .id()
+            .with(("bbox_handle", index, Self::drag_handle_id(handle)));
+        let response = ui.interact(control_rect, id, Sense::drag());
+
+        if response.drag_started() {
+            let start_bbox = self.preview.detections[index].active_bbox();
+            self.active_bbox_drag = Some(ActiveBoxDrag {
+                index,
+                handle,
+                start_bbox,
+            });
+        }
+
+        if let Some(active) = self.active_bbox_drag
+            && active.index == index
+            && active.handle == handle
+            && response.dragged()
+        {
+            self.apply_active_drag(active, response.drag_delta(), image_rect, image_size);
+        }
+
+        let drag_active = matches!(
+            self.active_bbox_drag,
+            Some(active) if active.index == index && active.handle == handle
+        );
+        if drag_active && !ctx.input(|i| i.pointer.primary_down()) {
+            if let Some(active) = self.active_bbox_drag.take() {
+                self.on_bbox_drag_finished(ctx, active.index);
+            }
+        }
+    }
+
+    fn drag_handle_id(handle: DragHandle) -> u8 {
+        match handle {
+            DragHandle::Move => 0,
+            DragHandle::NorthWest => 1,
+            DragHandle::NorthEast => 2,
+            DragHandle::SouthWest => 3,
+            DragHandle::SouthEast => 4,
+        }
+    }
+
+    fn handle_rect_for(&self, rect: Rect, handle: DragHandle) -> Rect {
+        let size = 12.0;
+        let center = match handle {
+            DragHandle::NorthWest => pos2(rect.left(), rect.top()),
+            DragHandle::NorthEast => pos2(rect.right(), rect.top()),
+            DragHandle::SouthWest => pos2(rect.left(), rect.bottom()),
+            DragHandle::SouthEast => pos2(rect.right(), rect.bottom()),
+            DragHandle::Move => rect.center(),
+        };
+        Rect::from_center_size(center, vec2(size, size))
+    }
+
+    fn apply_active_drag(
+        &mut self,
+        active: ActiveBoxDrag,
+        drag_delta: egui::Vec2,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) {
+        if image_size.0 == 0 || image_size.1 == 0 {
+            return;
+        }
+
+        let scale_x = image_rect.width() / image_size.0 as f32;
+        let scale_y = image_rect.height() / image_size.1 as f32;
+        if scale_x <= 0.0 || scale_y <= 0.0 {
+            return;
+        }
+
+        let mut bbox = active.start_bbox;
+        let delta_x = drag_delta.x / scale_x;
+        let delta_y = drag_delta.y / scale_y;
+
+        match active.handle {
+            DragHandle::Move => {
+                bbox.x += delta_x;
+                bbox.y += delta_y;
+            }
+            DragHandle::NorthWest => {
+                bbox.x += delta_x;
+                bbox.y += delta_y;
+                bbox.width -= delta_x;
+                bbox.height -= delta_y;
+            }
+            DragHandle::NorthEast => {
+                bbox.y += delta_y;
+                bbox.width += delta_x;
+                bbox.height -= delta_y;
+            }
+            DragHandle::SouthWest => {
+                bbox.x += delta_x;
+                bbox.width -= delta_x;
+                bbox.height += delta_y;
+            }
+            DragHandle::SouthEast => {
+                bbox.width += delta_x;
+                bbox.height += delta_y;
+            }
+        }
+
+        let clamped = self.clamp_bbox_to_image(bbox, image_size);
+        if let Some(det) = self.preview.detections.get_mut(active.index) {
+            det.set_bbox(clamped);
+        }
+    }
+
+    fn on_bbox_drag_finished(&mut self, ctx: &EguiContext, index: usize) {
+        self.clear_crop_preview_cache();
+        self.refresh_detection_thumbnail_at(ctx, index);
+    }
+
+    fn pointer_over_any_bbox(
+        &self,
+        image_rect: Rect,
+        image_size: (u32, u32),
+        pointer: egui::Pos2,
+    ) -> bool {
+        if !image_rect.contains(pointer) {
+            return false;
+        }
+        self.preview.detections.iter().any(|det| {
+            self.bbox_to_screen_rect(det.active_bbox(), image_rect, image_size)
+                .expand(8.0)
+                .contains(pointer)
+        })
+    }
+
+    fn screen_pos_to_image(
+        &self,
+        pos: egui::Pos2,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) -> Option<egui::Pos2> {
+        if image_size.0 == 0 || image_size.1 == 0 || image_rect.width() <= 0.0 {
+            return None;
+        }
+        let rel_x = ((pos.x - image_rect.left()) / image_rect.width()).clamp(0.0, 1.0);
+        let rel_y = ((pos.y - image_rect.top()) / image_rect.height()).clamp(0.0, 1.0);
+        Some(pos2(
+            rel_x * image_size.0 as f32,
+            rel_y * image_size.1 as f32,
+        ))
+    }
+
+    fn image_point_to_screen(
+        &self,
+        point: egui::Pos2,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) -> egui::Pos2 {
+        if image_size.0 == 0 || image_size.1 == 0 {
+            return pos2(image_rect.left(), image_rect.top());
+        }
+        let scale_x = image_rect.width() / image_size.0 as f32;
+        let scale_y = image_rect.height() / image_size.1 as f32;
+        pos2(
+            image_rect.left() + point.x * scale_x,
+            image_rect.top() + point.y * scale_y,
+        )
+    }
+
+    fn bbox_to_screen_rect(
+        &self,
+        bbox: BoundingBox,
+        image_rect: Rect,
+        image_size: (u32, u32),
+    ) -> Rect {
+        if image_size.0 == 0 || image_size.1 == 0 {
+            return Rect::from_min_size(image_rect.left_top(), vec2(0.0, 0.0));
+        }
+        let scale_x = image_rect.width() / image_size.0 as f32;
+        let scale_y = image_rect.height() / image_size.1 as f32;
+        let top_left = pos2(
+            image_rect.left() + bbox.x * scale_x,
+            image_rect.top() + bbox.y * scale_y,
+        );
+        let size = vec2(bbox.width * scale_x, bbox.height * scale_y);
+        Rect::from_min_size(top_left, size)
+    }
+
+    fn clamp_bbox_to_image(&self, mut bbox: BoundingBox, image_size: (u32, u32)) -> BoundingBox {
+        let img_w = image_size.0 as f32;
+        let img_h = image_size.1 as f32;
+        let min_size = 8.0;
+        bbox.width = bbox.width.max(min_size).min(img_w.max(1.0));
+        bbox.height = bbox.height.max(min_size).min(img_h.max(1.0));
+        bbox.x = bbox.x.clamp(0.0, (img_w - bbox.width).max(0.0));
+        bbox.y = bbox.y.clamp(0.0, (img_h - bbox.height).max(0.0));
+        bbox
+    }
+
+    fn draft_to_bbox(&self, draft: ManualBoxDraft, image_size: (u32, u32)) -> Option<BoundingBox> {
+        let x1 = draft.start.x.min(draft.current.x);
+        let x2 = draft.start.x.max(draft.current.x);
+        let y1 = draft.start.y.min(draft.current.y);
+        let y2 = draft.start.y.max(draft.current.y);
+        let width = (x2 - x1).abs();
+        let height = (y2 - y1).abs();
+        if width < 8.0 || height < 8.0 {
+            return None;
+        }
+        let bbox = BoundingBox {
+            x: x1,
+            y: y1,
+            width,
+            height,
+        };
+        Some(self.clamp_bbox_to_image(bbox, image_size))
+    }
+
+    fn add_manual_detection(&mut self, ctx: &EguiContext, bbox: BoundingBox) {
+        let landmarks = self.placeholder_landmarks(bbox);
+        let detection = Detection {
+            bbox,
+            landmarks,
+            score: 1.0,
+        };
+        let det = DetectionWithQuality {
+            detection,
+            quality_score: 0.0,
+            quality: Quality::High,
+            thumbnail: None,
+            current_bbox: bbox,
+            original_bbox: bbox,
+            origin: DetectionOrigin::Manual,
+        };
+        self.preview.detections.push(det);
+        let index = self.preview.detections.len() - 1;
+        self.selected_faces.insert(index);
+        self.clear_crop_preview_cache();
+        self.refresh_detection_thumbnail_at(ctx, index);
+    }
+
+    fn placeholder_landmarks(&self, bbox: BoundingBox) -> [Landmark; 5] {
+        let cx = bbox.x + bbox.width * 0.5;
+        let cy = bbox.y + bbox.height * 0.5;
+        [
+            Landmark {
+                x: bbox.x + bbox.width * 0.3,
+                y: bbox.y + bbox.height * 0.35,
+            },
+            Landmark {
+                x: bbox.x + bbox.width * 0.7,
+                y: bbox.y + bbox.height * 0.35,
+            },
+            Landmark { x: cx, y: cy },
+            Landmark {
+                x: bbox.x + bbox.width * 0.35,
+                y: bbox.y + bbox.height * 0.75,
+            },
+            Landmark {
+                x: bbox.x + bbox.width * 0.65,
+                y: bbox.y + bbox.height * 0.75,
+            },
+        ]
+    }
+
+    fn refresh_detection_thumbnail_at(&mut self, ctx: &EguiContext, index: usize) {
+        let Some(image) = self.preview.source_image.clone() else {
+            return;
+        };
+        let Some(det) = self.preview.detections.get_mut(index) else {
+            return;
+        };
+        let bbox = det.active_bbox();
+
+        let mut x = bbox.x.max(0.0) as u32;
+        let mut y = bbox.y.max(0.0) as u32;
+        let mut w = bbox.width.max(1.0) as u32;
+        let mut h = bbox.height.max(1.0) as u32;
+
+        let img_w = image.width();
+        let img_h = image.height();
+        x = x.min(img_w.saturating_sub(1));
+        y = y.min(img_h.saturating_sub(1));
+        w = w.min(img_w.saturating_sub(x));
+        h = h.min(img_h.saturating_sub(y));
+
+        let face_region = image.crop_imm(x, y, w, h);
+        let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
+        let thumb_rgba = thumb.to_rgba8();
+        let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
+        let thumb_color = egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());
+        let texture_name = format!("yunet-face-thumb-{}-{}", self.texture_seq, index);
+        self.texture_seq = self.texture_seq.wrapping_add(1);
+        let texture = ctx.load_texture(texture_name, thumb_color, TextureOptions::LINEAR);
+        det.thumbnail = Some(texture);
+    }
+
+    fn reset_detection_bbox(&mut self, ctx: &EguiContext, index: usize) {
+        if let Some(det) = self.preview.detections.get_mut(index) {
+            det.reset_bbox();
+        }
+        self.on_bbox_drag_finished(ctx, index);
+    }
+
+    fn remove_detection(&mut self, index: usize) {
+        if index >= self.preview.detections.len() {
+            return;
+        }
+        self.preview.detections.remove(index);
+        let mut new_selection = HashSet::new();
+        for face_idx in self.selected_faces.iter().copied() {
+            if face_idx == index {
+                continue;
+            } else if face_idx > index {
+                new_selection.insert(face_idx - 1);
+            } else {
+                new_selection.insert(face_idx);
+            }
+        }
+        self.selected_faces = new_selection;
+        self.active_bbox_drag = None;
+        self.clear_crop_preview_cache();
     }
 
     fn quality_legend(&self, ui: &mut Ui, palette: theme::Palette) {
@@ -2332,10 +3045,9 @@ impl YuNetApp {
         let scale_y = image_rect.height() / image_size.1 as f32;
         let stroke_scale = scale_x.min(scale_y).max(0.1);
 
-        let bbox_stroke = Stroke::new(
-            (2.0 * stroke_scale).clamp(0.5, 6.0),
-            Color32::from_rgb(255, 145, 77),
-        );
+        let base_bbox_color = Color32::from_rgb(255, 145, 77);
+        let manual_bbox_color = Color32::from_rgb(255, 214, 142);
+        let bbox_width = (2.0 * stroke_scale).clamp(0.5, 6.0);
         let landmark_color = Color32::from_rgb(82, 180, 255);
         let crop_stroke = Stroke::new(
             (3.0 * stroke_scale).clamp(0.5, 6.0),
@@ -2352,7 +3064,7 @@ impl YuNetApp {
         }
 
         for (index, det_with_quality) in self.preview.detections.iter().enumerate() {
-            let bbox = &det_with_quality.detection.bbox;
+            let bbox = det_with_quality.active_bbox();
             let is_selected = self.selected_faces.contains(&index);
 
             let top_left = pos2(
@@ -2368,21 +3080,42 @@ impl YuNetApp {
             }
 
             // Draw detection bounding box
+            let bbox_color = if det_with_quality.is_manual() {
+                manual_bbox_color
+            } else {
+                base_bbox_color
+            };
+            let bbox_stroke = Stroke::new(bbox_width, bbox_color);
             painter.rect_stroke(rect, 0.0, bbox_stroke, egui::StrokeKind::Inside);
 
-            for landmark in &det_with_quality.detection.landmarks {
-                let center = pos2(
-                    image_rect.left() + landmark.x * scale_x,
-                    image_rect.top() + landmark.y * scale_y,
-                );
-                painter.circle_filled(center, landmark_radius, landmark_color);
+            if !det_with_quality.is_manual() {
+                for landmark in &det_with_quality.detection.landmarks {
+                    let center = pos2(
+                        image_rect.left() + landmark.x * scale_x,
+                        image_rect.top() + landmark.y * scale_y,
+                    );
+                    painter.circle_filled(center, landmark_radius, landmark_color);
+                }
+            }
+
+            // Draw resize handles
+            let handle_size = (10.0 * stroke_scale).clamp(4.0, 12.0);
+            let handle_color = Color32::from_rgba_unmultiplied(255, 255, 255, 210);
+            for center in [
+                pos2(rect.left(), rect.top()),
+                pos2(rect.right(), rect.top()),
+                pos2(rect.left(), rect.bottom()),
+                pos2(rect.right(), rect.bottom()),
+            ] {
+                let handle_rect = Rect::from_center_size(center, vec2(handle_size, handle_size));
+                painter.rect_filled(handle_rect, 2.0, handle_color);
             }
 
             // Paint crop region overlay if enabled
             if self.show_crop_overlay {
                 let crop_settings = self.build_crop_settings();
                 let crop_region =
-                    calculate_crop_region(image_size.0, image_size.1, *bbox, &crop_settings);
+                    calculate_crop_region(image_size.0, image_size.1, bbox, &crop_settings);
                 let crop_top_left = pos2(
                     image_rect.left() + crop_region.x as f32 * scale_x,
                     image_rect.top() + crop_region.y as f32 * scale_y,
@@ -2407,6 +3140,17 @@ impl YuNetApp {
                     painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
                 }
             }
+        }
+
+        if let Some(draft) = self.manual_box_draft {
+            let a = self.image_point_to_screen(draft.start, image_rect, image_size);
+            let b = self.image_point_to_screen(draft.current, image_rect, image_size);
+            let draft_rect = Rect::from_two_pos(a, b);
+            let draft_stroke = Stroke::new(
+                (2.5 * stroke_scale).clamp(1.0, 4.0),
+                Color32::from_rgb(100, 200, 255),
+            );
+            painter.rect_stroke(draft_rect, 0.0, draft_stroke, egui::StrokeKind::Inside);
         }
     }
 
@@ -2827,7 +3571,7 @@ impl YuNetApp {
             }
         };
 
-        let bbox = detection.detection.bbox;
+        let bbox = detection.active_bbox();
         let crop_region = calculate_crop_region(
             source_image.width(),
             source_image.height(),
@@ -3453,7 +4197,7 @@ impl YuNetApp {
         image: &DynamicImage,
     ) {
         for (index, det) in detections.iter_mut().enumerate() {
-            let bbox = &det.detection.bbox;
+            let bbox = det.active_bbox();
             let x = bbox.x.max(0.0) as u32;
             let y = bbox.y.max(0.0) as u32;
             let w = bbox.width.max(1.0) as u32;
@@ -3526,6 +4270,9 @@ impl YuNetApp {
 
                 let cached_detections = detections.clone();
                 self.preview.detections = detections;
+                self.manual_box_draft = None;
+                self.active_bbox_drag = None;
+                self.manual_box_tool_enabled = false;
 
                 self.show_success(format!(
                     "Detected {} face(s) in {}",
@@ -3604,6 +4351,12 @@ fn load_settings(path: &Path) -> AppSettings {
     }
 }
 
+fn translucent_color(color: Color32, alpha_multiplier: f32) -> Color32 {
+    let rgba: Rgba = color.into();
+    let new_alpha = (rgba.a() * alpha_multiplier).clamp(0.0, 1.0);
+    Rgba::from_rgba_premultiplied(rgba.r(), rgba.g(), rgba.b(), new_alpha).into()
+}
+
 /// Builds a `YuNetDetector` from the given application settings.
 fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
     let model_path = settings
@@ -3639,7 +4392,7 @@ fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<Dete
         .into_iter()
         .map(|detection| {
             // Crop face region for quality analysis
-            let bbox = &detection.bbox;
+            let bbox = detection.bbox;
             let x = bbox.x.max(0.0) as u32;
             let y = bbox.y.max(0.0) as u32;
             let w = bbox.width.max(1.0) as u32;
@@ -3661,6 +4414,9 @@ fn perform_detection(detector: Arc<YuNetDetector>, path: PathBuf) -> Result<Dete
                 quality_score,
                 quality,
                 thumbnail: None, // Will be created on the GUI thread
+                current_bbox: bbox,
+                original_bbox: bbox,
+                origin: DetectionOrigin::Detector,
             }
         })
         .collect();
