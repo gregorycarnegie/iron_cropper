@@ -9,6 +9,7 @@ description = "egui desktop app for YuNet face detection."
 anyhow.workspace = true
 eframe.workspace = true
 egui.workspace = true
+egui_extras.workspace = true
 image.workspace = true
 ico.workspace = true
 log.workspace = true

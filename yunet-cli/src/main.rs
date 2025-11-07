@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{ArgAction, Parser};
 use image::GenericImageView;
 use log::{debug, info, warn};
@@ -24,7 +24,13 @@ use yunet_utils::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         default_settings_path,
     },
-    configure_telemetry, estimate_sharpness, init_logging, normalize_path, save_dynamic_image,
+    configure_telemetry, estimate_sharpness, init_logging,
+    mapping::ColumnSelector,
+    mapping::MappingFormat,
+    mapping::MappingReadOptions,
+    mapping::detect_format as detect_mapping_format,
+    mapping::load_mapping_entries,
+    normalize_path, save_dynamic_image,
 };
 
 /// Run YuNet face detection over images or directories.
@@ -32,8 +38,8 @@ use yunet_utils::{
 #[command(author, version, about)]
 struct DetectArgs {
     /// Path to an image file or a directory containing images.
-    #[arg(short, long)]
-    input: PathBuf,
+    #[arg(short, long, required_unless_present = "mapping-file")]
+    input: Option<PathBuf>,
 
     /// Path to the YuNet ONNX model.
     #[arg(
@@ -233,6 +239,34 @@ struct DetectArgs {
     /// Enhancement preset to apply when --enhance is set. Options: natural, vivid, professional
     #[arg(long)]
     enhancement_preset: Option<String>,
+
+    /// Optional mapping file that lists source images and desired output names.
+    #[arg(long = "mapping-file")]
+    mapping_file: Option<PathBuf>,
+    /// Column containing source paths inside the mapping file (name or zero-based index).
+    #[arg(long = "mapping-source-col")]
+    mapping_source_col: Option<String>,
+    /// Column containing output names inside the mapping file (name or zero-based index).
+    #[arg(long = "mapping-output-col")]
+    mapping_output_col: Option<String>,
+    /// Whether the mapping file contains a header row (defaults to true for CSV/Excel/Parquet).
+    #[arg(long = "mapping-has-headers")]
+    mapping_has_headers: Option<bool>,
+    /// Optional delimiter for CSV/TSV mappings (defaults to comma).
+    #[arg(long = "mapping-delimiter")]
+    mapping_delimiter: Option<char>,
+    /// Optional sheet name when loading from Excel.
+    #[arg(long = "mapping-sheet")]
+    mapping_sheet: Option<String>,
+    /// Optional explicit mapping format (csv, excel, parquet, sqlite).
+    #[arg(long = "mapping-format")]
+    mapping_format: Option<String>,
+    /// SQLite table to read when using .db/.sqlite files (defaults to the first table).
+    #[arg(long = "mapping-sql-table")]
+    mapping_sql_table: Option<String>,
+    /// Custom SQL query to run when using SQLite mapping files.
+    #[arg(long = "mapping-sql-query")]
+    mapping_sql_query: Option<String>,
 }
 
 /// A serializable representation of a single detection.
@@ -256,6 +290,13 @@ struct ImageDetections {
     annotated: Option<String>,
 }
 
+#[derive(Clone)]
+struct ProcessingItem {
+    source: PathBuf,
+    output_override: Option<PathBuf>,
+    mapping_row: Option<usize>,
+}
+
 fn main() -> Result<()> {
     let args = DetectArgs::parse();
 
@@ -275,7 +316,6 @@ fn main() -> Result<()> {
         );
     }
 
-    let input_path = normalize_path(&args.input)?;
     let model_path = normalize_path(&args.model)?;
     let annotate_dir = if let Some(dir) = args.annotate.as_ref() {
         fs::create_dir_all(dir)
@@ -301,15 +341,27 @@ fn main() -> Result<()> {
     );
     let detector = YuNetDetector::new(&model_path, preprocess_config, postprocess_config)?;
 
-    let images = collect_images(&input_path)?;
-    if images.is_empty() {
-        anyhow::bail!(
-            "no images found at {} (supported extensions: jpg, jpeg, png, bmp)",
-            input_path.display()
+    let processing_items = if let Some(mapping_file) = args.mapping_file.as_ref() {
+        collect_mapping_targets(mapping_file, &args)?
+    } else {
+        let input_arg = args
+            .input
+            .as_ref()
+            .ok_or_else(|| anyhow!("--input is required when --mapping-file is not provided"))?;
+        let input_path = normalize_path(input_arg)?;
+        collect_standard_targets(&input_path)?
+    };
+    if processing_items.is_empty() {
+        anyhow::bail!("no images were queued for processing");
+    }
+
+    if args.mapping_file.is_some() && !args.crop {
+        info!(
+            "Mapping loaded without --crop; output overrides will be applied when cropping is executed."
         );
     }
 
-    info!("Processing {} image(s)...", images.len());
+    info!("Processing {} target(s)...", processing_items.len());
 
     // Wrap detector in Arc<Mutex<>> for thread-safe shared access
     let detector = Arc::new(Mutex::new(detector));
@@ -340,9 +392,9 @@ fn main() -> Result<()> {
     let crops_saved = Arc::new(AtomicUsize::new(0));
     let crops_skipped_quality = Arc::new(AtomicUsize::new(0));
 
-    let results: Vec<ImageDetections> = images
+    let results: Vec<ImageDetections> = processing_items
         .par_iter()
-        .filter_map(|image_path| {
+        .filter_map(|target| {
             // mark image as started
             images_processed.fetch_add(1, Ordering::Relaxed);
             let detector = Arc::clone(&detector);
@@ -350,6 +402,11 @@ fn main() -> Result<()> {
             let settings = Arc::clone(&shared_settings);
             let quality_filter = Arc::clone(&quality_filter);
             let enhancement_settings = Arc::clone(&enhancement_settings);
+            let image_path = &target.source;
+            let override_target = target.output_override.clone();
+            if let Some(row) = target.mapping_row {
+                debug!("Mapping row {} -> {}", row, image_path.display());
+            }
 
             // Lock the detector for this thread
             let output = match detector.lock().unwrap().detect_path(image_path) {
@@ -480,6 +537,7 @@ fn main() -> Result<()> {
                                 }
                             }
 
+                            let multi_face = exports.len() > 1;
                             for crop in exports.into_iter() {
                                 if quality_filter.should_skip(crop.quality) {
                                     info!(
@@ -493,50 +551,72 @@ fn main() -> Result<()> {
                                     continue;
                                 }
 
-                                let stem = image_path
-                                    .file_stem()
-                                    .and_then(|s| s.to_str())
-                                    .unwrap_or("image");
                                 let mut ext = settings.crop.output_format.clone();
                                 if ext.is_empty() {
                                     ext = "png".to_string();
                                 }
                                 let ext = ext.to_ascii_lowercase();
 
-                                let mut out_name = if let Some(tmpl) = args.naming_template.as_ref()
-                                {
-                                    use std::time::{SystemTime, UNIX_EPOCH};
-                                    let ts = SystemTime::now()
-                                        .duration_since(UNIX_EPOCH)
-                                        .map(|d| d.as_secs())
-                                        .unwrap_or(0);
-                                    let mut name = tmpl.clone();
-                                    name = name.replace("{original}", stem);
-                                    name = name.replace("{index}", &(crop.index + 1).to_string());
-                                    name = name.replace(
-                                        "{width}",
-                                        &settings.crop.output_width.to_string(),
-                                    );
-                                    name = name.replace(
-                                        "{height}",
-                                        &settings.crop.output_height.to_string(),
-                                    );
-                                    name = name.replace("{ext}", &ext);
-                                    name = name.replace("{timestamp}", &ts.to_string());
-                                    if !tmpl.contains("{ext}") {
-                                        format!("{}.{}", name, ext)
-                                    } else {
-                                        name
-                                    }
+                                let out_path = if let Some(custom) = override_target.as_ref() {
+                                    resolve_override_output_path(
+                                        out_dir,
+                                        custom,
+                                        &ext,
+                                        crop.index,
+                                        multi_face,
+                                    )
                                 } else {
-                                    format!("{}_face{}.{}", stem, crop.index + 1, ext)
+                                    let stem = image_path
+                                        .file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("image");
+                                    let mut out_name =
+                                        if let Some(tmpl) = args.naming_template.as_ref() {
+                                            use std::time::{SystemTime, UNIX_EPOCH};
+                                            let ts = SystemTime::now()
+                                                .duration_since(UNIX_EPOCH)
+                                                .map(|d| d.as_secs())
+                                                .unwrap_or(0);
+                                            let mut name = tmpl.clone();
+                                            name = name.replace("{original}", stem);
+                                            name = name.replace(
+                                                "{index}",
+                                                &(crop.index + 1).to_string(),
+                                            );
+                                            name = name.replace(
+                                                "{width}",
+                                                &settings.crop.output_width.to_string(),
+                                            );
+                                            name = name.replace(
+                                                "{height}",
+                                                &settings.crop.output_height.to_string(),
+                                            );
+                                            name = name.replace("{ext}", &ext);
+                                            name = name.replace("{timestamp}", &ts.to_string());
+                                            if !tmpl.contains("{ext}") {
+                                                format!("{}.{}", name, ext)
+                                            } else {
+                                                name
+                                            }
+                                        } else {
+                                            format!("{}_face{}.{}", stem, crop.index + 1, ext)
+                                        };
+
+                                    if let Some(suffix) = quality_filter.suffix_for(crop.quality) {
+                                        out_name = append_suffix_to_filename(&out_name, suffix);
+                                    }
+
+                                    out_dir.join(&out_name)
                                 };
 
-                                if let Some(suffix) = quality_filter.suffix_for(crop.quality) {
-                                    out_name = append_suffix_to_filename(&out_name, suffix);
+                                if let Some(parent) = out_path.parent()
+                                    && let Err(err) = fs::create_dir_all(parent)
+                                {
+                                    warn!(
+                                        "Failed to create directory {}: {err}",
+                                        parent.display()
+                                    );
                                 }
-
-                                let out_path = out_dir.join(&out_name);
 
                                 let metadata_ctx = MetadataContext {
                                     source_path: Some(image_path.as_path()),
@@ -796,7 +876,7 @@ mod tests {
     #[test]
     fn enhancement_preset_vivid_applies_defaults_and_overrides() {
         let args = DetectArgs {
-            input: PathBuf::from("image.png"),
+            input: Some(PathBuf::from("image.png")),
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,
@@ -846,6 +926,15 @@ mod tests {
             enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("vivid".to_string()),
+            mapping_file: None,
+            mapping_source_col: None,
+            mapping_output_col: None,
+            mapping_has_headers: None,
+            mapping_delimiter: None,
+            mapping_sheet: None,
+            mapping_format: None,
+            mapping_sql_table: None,
+            mapping_sql_query: None,
         };
         let enh = build_enhancement_settings(&args).expect("should build");
         assert_eq!(enh.unsharp_amount, 0.9);
@@ -858,7 +947,7 @@ mod tests {
     #[test]
     fn enhancement_preset_allows_explicit_override() {
         let args = DetectArgs {
-            input: PathBuf::from("image.png"),
+            input: Some(PathBuf::from("image.png")),
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,
@@ -908,6 +997,15 @@ mod tests {
             enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("vivid".to_string()),
+            mapping_file: None,
+            mapping_source_col: None,
+            mapping_output_col: None,
+            mapping_has_headers: None,
+            mapping_delimiter: None,
+            mapping_sheet: None,
+            mapping_format: None,
+            mapping_sql_table: None,
+            mapping_sql_query: None,
         };
         let enh = build_enhancement_settings(&args).expect("should build");
         // explicit override should win
@@ -962,7 +1060,7 @@ mod tests {
 
         // Build args to request enhancement with a preset
         let args = DetectArgs {
-            input: img_path.clone(),
+            input: Some(img_path.clone()),
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,
@@ -1012,6 +1110,15 @@ mod tests {
             enhance_background_blur: None,
             naming_template: None,
             enhancement_preset: Some("natural".to_string()),
+            mapping_file: None,
+            mapping_source_col: None,
+            mapping_output_col: None,
+            mapping_has_headers: None,
+            mapping_delimiter: None,
+            mapping_sheet: None,
+            mapping_format: None,
+            mapping_sql_table: None,
+            mapping_sql_query: None,
         };
 
         let enh = build_enhancement_settings(&args).expect("enh settings");
@@ -1241,6 +1348,165 @@ fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
     }
     images.sort();
     Ok(images)
+}
+
+fn collect_standard_targets(input_path: &Path) -> Result<Vec<ProcessingItem>> {
+    let images = collect_images(input_path)?;
+    if images.is_empty() {
+        anyhow::bail!(
+            "no images found at {} (supported extensions: jpg, jpeg, png, bmp)",
+            input_path.display()
+        );
+    }
+    Ok(images
+        .into_iter()
+        .map(|path| ProcessingItem {
+            source: path,
+            output_override: None,
+            mapping_row: None,
+        })
+        .collect())
+}
+
+fn collect_mapping_targets(mapping_file: &Path, args: &DetectArgs) -> Result<Vec<ProcessingItem>> {
+    let mapping_path = normalize_path(mapping_file)?;
+    let source_selector = ColumnSelector::parse_token(
+        args.mapping_source_col
+            .as_deref()
+            .ok_or_else(|| anyhow!("--mapping-source-col is required with --mapping-file"))?,
+    )?;
+    let output_selector = ColumnSelector::parse_token(
+        args.mapping_output_col
+            .as_deref()
+            .ok_or_else(|| anyhow!("--mapping-output-col is required with --mapping-file"))?,
+    )?;
+
+    let user_format = match args.mapping_format.as_deref() {
+        Some(token) => Some(parse_mapping_format_token(token)?),
+        None => None,
+    };
+    let mut read_options = MappingReadOptions {
+        format: user_format,
+        has_headers: args.mapping_has_headers,
+        delimiter: args.mapping_delimiter.map(|c| c as u8),
+        sheet_name: args.mapping_sheet.clone(),
+        sql_table: args.mapping_sql_table.clone(),
+        sql_query: args.mapping_sql_query.clone(),
+        ..Default::default()
+    };
+    let resolved_format = read_options
+        .format
+        .unwrap_or_else(|| detect_mapping_format(&mapping_path));
+    read_options.format = Some(resolved_format);
+
+    info!(
+        "Loading mapping ({}) from {}",
+        resolved_format.display_name(),
+        mapping_path.display()
+    );
+
+    let entries = load_mapping_entries(
+        &mapping_path,
+        &read_options,
+        &source_selector,
+        &output_selector,
+    )
+    .with_context(|| format!("failed to load mapping from {}", mapping_path.display()))?;
+    if entries.is_empty() {
+        anyhow::bail!(
+            "no usable rows found in mapping file {}",
+            mapping_path.display()
+        );
+    }
+
+    let mapping_dir = mapping_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut items = Vec::new();
+    for (idx, entry) in entries.into_iter().enumerate() {
+        let row_no = idx + 1;
+        let raw_source = PathBuf::from(entry.source_path);
+        let resolved_source = if raw_source.is_absolute() {
+            raw_source
+        } else {
+            mapping_dir.join(raw_source)
+        };
+        if !resolved_source.exists() {
+            warn!(
+                "Skipping mapping row {}: source {} was not found",
+                row_no,
+                resolved_source.display()
+            );
+            continue;
+        }
+        items.push(ProcessingItem {
+            source: resolved_source,
+            output_override: Some(PathBuf::from(entry.output_name)),
+            mapping_row: Some(row_no),
+        });
+    }
+
+    if items.is_empty() {
+        anyhow::bail!(
+            "mapping file {} did not produce any usable rows",
+            mapping_path.display()
+        );
+    }
+
+    info!(
+        "Loaded {} mapping row(s) from {}",
+        items.len(),
+        mapping_path.display()
+    );
+
+    Ok(items)
+}
+
+fn parse_mapping_format_token(token: &str) -> Result<MappingFormat> {
+    match token.to_ascii_lowercase().as_str() {
+        "csv" | "delimited" | "text" => Ok(MappingFormat::Csv),
+        "excel" | "xlsx" | "xls" => Ok(MappingFormat::Excel),
+        "parquet" | "pq" => Ok(MappingFormat::Parquet),
+        "sqlite" | "sql" | "db" => Ok(MappingFormat::Sqlite),
+        other => anyhow::bail!(
+            "unknown mapping format '{other}' (supported: csv, excel, parquet, sqlite)"
+        ),
+    }
+}
+
+fn resolve_override_output_path(
+    output_dir: &Path,
+    override_target: &Path,
+    ext: &str,
+    face_index: usize,
+    multi_face: bool,
+) -> PathBuf {
+    let cleaned_ext = ext.trim_start_matches('.').to_string();
+    let parent = if override_target.is_absolute() {
+        override_target
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default()
+    } else {
+        let rel_parent = override_target.parent().unwrap_or_else(|| Path::new(""));
+        output_dir.join(rel_parent)
+    };
+    let base_name = override_target
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "output".to_string());
+    let final_base = if multi_face {
+        format!("{base_name}_face{}", face_index + 1)
+    } else {
+        base_name
+    };
+    let mut final_path = parent;
+    final_path.push(final_base);
+    final_path.set_extension(cleaned_ext);
+    final_path
 }
 
 /// Draw detections on an image and save it to a directory.

@@ -10,14 +10,15 @@ use std::{
     sync::{Arc, mpsc},
 };
 
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::{Context as AnyhowContext, Result, anyhow};
 use eframe::{App, CreationContext, Frame, NativeOptions, egui};
 use egui::{
-    Align, Button, CentralPanel, Color32, Context as EguiContext, CornerRadius, DragValue, Key,
-    Layout, Margin, ProgressBar, Rect, Response, Rgba, RichText, ScrollArea, Sense, SidePanel,
-    Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, Ui, UiBuilder, pos2,
-    vec2,
+    Align, Button, CentralPanel, Color32, ComboBox, Context as EguiContext, CornerRadius,
+    DragValue, Key, Layout, Margin, ProgressBar, Rect, Response, Rgba, RichText, ScrollArea, Sense,
+    SidePanel, Slider, Spinner, Stroke, TextureHandle, TextureOptions, TopBottomPanel, Ui,
+    UiBuilder, pos2, vec2,
 };
+use egui_extras::{Column as TableColumn, TableBuilder};
 use ico::IconDir;
 use image::DynamicImage;
 use log::{LevelFilter, error, info, warn};
@@ -35,7 +36,13 @@ use yunet_utils::{
     },
     configure_telemetry,
     enhance::{EnhancementSettings, apply_enhancements},
-    init_logging, load_image, outline_points_for_rect,
+    init_logging, load_image,
+    mapping::{
+        ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
+        MappingReadOptions, detect_format as detect_mapping_format_utils, inspect_mapping_sources,
+        load_mapping_entries, load_mapping_preview,
+    },
+    outline_points_for_rect,
     quality::{Quality, estimate_sharpness},
     save_dynamic_image,
 };
@@ -114,6 +121,7 @@ enum BatchFileStatus {
 struct BatchFile {
     path: PathBuf,
     status: BatchFileStatus,
+    output_override: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -222,6 +230,8 @@ struct YuNetApp {
     batch_files: Vec<BatchFile>,
     /// Current index in batch processing.
     batch_current_index: Option<usize>,
+    /// Mapping import workflow state.
+    mapping: MappingUiState,
     /// Normalized anchor (0-1) describing the HUD offset inside the preview image.
     preview_hud_anchor: egui::Vec2,
     /// Whether the preview HUD content is collapsed.
@@ -350,6 +360,198 @@ struct PreviewState {
     source_image: Option<Arc<DynamicImage>>,
 }
 
+struct MappingUiState {
+    file_path: Option<PathBuf>,
+    base_dir: Option<PathBuf>,
+    detected_format: Option<MappingFormat>,
+    format_override: Option<MappingFormat>,
+    has_headers: bool,
+    delimiter_input: String,
+    sheet_name: String,
+    sql_table: String,
+    sql_query: String,
+    catalog: MappingCatalog,
+    preview: Option<MappingPreview>,
+    preview_error: Option<String>,
+    source_column_idx: Option<usize>,
+    output_column_idx: Option<usize>,
+    entries: Vec<MappingEntry>,
+}
+
+impl MappingUiState {
+    fn new() -> Self {
+        Self {
+            file_path: None,
+            base_dir: None,
+            detected_format: None,
+            format_override: None,
+            has_headers: true,
+            delimiter_input: ",".to_string(),
+            sheet_name: String::new(),
+            sql_table: String::new(),
+            sql_query: String::new(),
+            catalog: MappingCatalog::default(),
+            preview: None,
+            preview_error: None,
+            source_column_idx: None,
+            output_column_idx: None,
+            entries: Vec::new(),
+        }
+    }
+
+    fn set_file(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
+        self.base_dir = self
+            .file_path
+            .as_ref()
+            .and_then(|p| p.parent().map(|parent| parent.to_path_buf()));
+        self.detected_format = self
+            .file_path
+            .as_ref()
+            .map(|p| detect_mapping_format_utils(p));
+        self.preview = None;
+        self.preview_error = None;
+        self.source_column_idx = None;
+        self.output_column_idx = None;
+        self.entries.clear();
+        self.sheet_name.clear();
+        self.sql_table.clear();
+        self.sql_query.clear();
+        self.delimiter_input = ",".to_string();
+        self.refresh_catalog();
+    }
+
+    fn effective_format(&self) -> Option<MappingFormat> {
+        self.format_override.or(self.detected_format)
+    }
+
+    fn refresh_catalog(&mut self) {
+        if let Some(path) = &self.file_path {
+            match inspect_mapping_sources(path, &self.read_options()) {
+                Ok(catalog) => {
+                    self.catalog = catalog;
+                    if self.sheet_name.is_empty()
+                        && let Some(first) = self.catalog.sheets.first()
+                    {
+                        self.sheet_name = first.clone();
+                    }
+                    if self.sql_table.is_empty()
+                        && let Some(first) = self.catalog.sql_tables.first()
+                    {
+                        self.sql_table = first.clone();
+                    }
+                }
+                Err(err) => {
+                    self.preview_error = Some(err.to_string());
+                }
+            }
+        } else {
+            self.catalog = MappingCatalog::default();
+        }
+    }
+
+    fn read_options(&self) -> MappingReadOptions {
+        let mut options = MappingReadOptions {
+            format: self.effective_format(),
+            has_headers: Some(self.has_headers),
+            delimiter: self.delimiter_input.chars().next().map(|c| c as u8),
+            ..Default::default()
+        };
+        if !self.sheet_name.trim().is_empty() {
+            options.sheet_name = Some(self.sheet_name.trim().to_string());
+        }
+        if !self.sql_table.trim().is_empty() {
+            options.sql_table = Some(self.sql_table.trim().to_string());
+        }
+        if !self.sql_query.trim().is_empty() {
+            options.sql_query = Some(self.sql_query.trim().to_string());
+        }
+        options
+    }
+
+    fn selected_column_name(&self, idx: Option<usize>) -> String {
+        if let (Some(preview), Some(index)) = (self.preview.as_ref(), idx) {
+            preview
+                .columns
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| format!("Column {}", index + 1))
+        } else {
+            "Select column".to_string()
+        }
+    }
+
+    fn source_selector(&self) -> Option<ColumnSelector> {
+        self.source_column_idx.map(ColumnSelector::Index)
+    }
+
+    fn output_selector(&self) -> Option<ColumnSelector> {
+        self.output_column_idx.map(ColumnSelector::Index)
+    }
+
+    fn reload_preview(&mut self) -> Result<()> {
+        let path = self
+            .file_path
+            .clone()
+            .ok_or_else(|| anyhow!("Select a mapping file first"))?;
+        match load_mapping_preview(&path, &self.read_options()) {
+            Ok(preview) => {
+                if self.source_column_idx.is_none() && !preview.columns.is_empty() {
+                    self.source_column_idx = Some(0);
+                }
+                if self.output_column_idx.is_none() && preview.columns.len() > 1 {
+                    self.output_column_idx = Some(1);
+                }
+                if self
+                    .source_column_idx
+                    .is_some_and(|idx| idx >= preview.columns.len())
+                {
+                    self.source_column_idx = None;
+                }
+                if self
+                    .output_column_idx
+                    .is_some_and(|idx| idx >= preview.columns.len())
+                {
+                    self.output_column_idx = None;
+                }
+                self.preview = Some(preview);
+                self.preview_error = None;
+                self.entries.clear();
+                Ok(())
+            }
+            Err(err) => {
+                self.preview_error = Some(err.to_string());
+                self.preview = None;
+                Err(err)
+            }
+        }
+    }
+
+    fn load_entries(&mut self) -> Result<()> {
+        let path = self
+            .file_path
+            .clone()
+            .ok_or_else(|| anyhow!("Select a mapping file first"))?;
+        let source = self
+            .source_selector()
+            .ok_or_else(|| anyhow!("Select a source column"))?;
+        let output = self
+            .output_selector()
+            .ok_or_else(|| anyhow!("Select an output column"))?;
+        match load_mapping_entries(&path, &self.read_options(), &source, &output) {
+            Ok(entries) => {
+                self.entries = entries;
+                self.preview_error = None;
+                Ok(())
+            }
+            Err(err) => {
+                self.preview_error = Some(err.to_string());
+                Err(err)
+            }
+        }
+    }
+}
+
 impl PreviewState {
     /// Resets the preview state to a loading state for a new image.
     fn begin_loading(&mut self, path: PathBuf) {
@@ -475,6 +677,7 @@ impl YuNetApp {
             metadata_tags_input,
             batch_files: Vec::new(),
             batch_current_index: None,
+            mapping: MappingUiState::new(),
             preview_hud_anchor: vec2(0.02, 0.02),
             preview_hud_minimized: true,
             preview_hud_drag_origin: None,
@@ -1044,6 +1247,12 @@ impl YuNetApp {
                                         ui.horizontal(|ui| {
                                             ui.label(format!("{}.", idx + 1));
                                             ui.label(filename);
+                                            if batch_file.output_override.is_some() {
+                                                ui.label(
+                                                    RichText::new("Mapping")
+                                                        .color(palette.accent),
+                                                );
+                                            }
                                             let status_resp =
                                                 ui.colored_label(status_color, status_text);
                                             if let Some(tip) = tooltip.as_deref() {
@@ -1816,8 +2025,419 @@ impl YuNetApp {
                         if enhance_changed_now && !enhancement_changed {
                             self.clear_crop_preview_cache();
                         }
+
+                        ui.separator();
+                        ui.heading("Mapping Import");
+                        self.show_mapping_panel(ui, palette);
                     });
             });
+    }
+
+    fn show_mapping_panel(&mut self, ui: &mut Ui, palette: theme::Palette) {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Select mapping file…").clicked()
+                    && let Some(path) = FileDialog::new()
+                        .add_filter(
+                            "Data files",
+                            &[
+                                "csv", "tsv", "txt", "xlsx", "xls", "parquet", "db", "sqlite",
+                            ],
+                        )
+                        .pick_file()
+                {
+                    self.mapping.set_file(path.clone());
+                    match self.mapping.reload_preview() {
+                        Ok(_) => {
+                            self.show_success(format!(
+                                "Loaded mapping preview from {}",
+                                path.display()
+                            ));
+                        }
+                        Err(err) => {
+                            self.show_error("Failed to load mapping preview", err.to_string());
+                        }
+                    }
+                }
+                if let Some(path) = &self.mapping.file_path {
+                    ui.monospace(path.display().to_string());
+                } else {
+                    ui.label(RichText::new("No mapping file selected").color(palette.subtle_text));
+                }
+            });
+
+            if self.mapping.file_path.is_none() {
+                ui.label(
+                    RichText::new("Import CSV, Excel, Parquet, or SQLite files to drive cropping.")
+                        .color(palette.subtle_text),
+                );
+                return;
+            }
+
+            self.mapping_options_ui(ui, palette);
+
+            if ui.button("Reload preview").clicked() {
+                match self.mapping.reload_preview() {
+                    Ok(_) => self.show_success("Mapping preview updated"),
+                    Err(err) => {
+                        self.show_error("Failed to load mapping preview", err.to_string());
+                    }
+                }
+            }
+
+            if let Some(err) = &self.mapping.preview_error {
+                ui.colored_label(palette.danger, err);
+            }
+
+            if let Some(preview) = self.mapping.preview.clone() {
+                self.mapping_preview_table(ui, palette, &preview);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let ready = self.mapping.source_selector().is_some()
+                        && self.mapping.output_selector().is_some();
+                    if ui
+                        .add_enabled(ready, Button::new("Load mapping entries"))
+                        .clicked()
+                    {
+                        match self.mapping.load_entries() {
+                            Ok(_) => self.show_success(format!(
+                                "Loaded {} mapping entries",
+                                self.mapping.entries.len()
+                            )),
+                            Err(err) => {
+                                self.show_error("Failed to load mapping entries", err.to_string());
+                            }
+                        }
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.mapping.entries.is_empty(),
+                            Button::new("Replace batch queue"),
+                        )
+                        .clicked()
+                    {
+                        self.push_mapping_to_batch();
+                    }
+                });
+
+                if !self.mapping.entries.is_empty() {
+                    ui.label(format!(
+                        "{} mapping row(s) ready for batch export",
+                        self.mapping.entries.len()
+                    ));
+                    for entry in self.mapping.entries.iter().take(3) {
+                        ui.monospace(format!("{} → {}", entry.source_path, entry.output_name));
+                    }
+                    if self.mapping.entries.len() > 3 {
+                        ui.label(RichText::new("…").color(palette.subtle_text));
+                    }
+                }
+            } else {
+                ui.label(
+                    RichText::new("Preview will appear here after loading.")
+                        .color(palette.subtle_text),
+                );
+            }
+        });
+    }
+
+    fn mapping_options_ui(&mut self, ui: &mut Ui, palette: theme::Palette) {
+        let prev_format = self.mapping.effective_format();
+        egui::ComboBox::from_label("Format")
+            .selected_text(
+                self.mapping
+                    .format_override
+                    .map(|f| f.display_name().to_string())
+                    .or_else(|| {
+                        self.mapping
+                            .detected_format
+                            .map(|f| format!("Auto ({})", f.display_name()))
+                    })
+                    .unwrap_or_else(|| "Auto".to_string()),
+            )
+            .show_ui(ui, |ui| {
+                let auto_label = self
+                    .mapping
+                    .detected_format
+                    .map(|f| format!("Auto ({})", f.display_name()))
+                    .unwrap_or_else(|| "Auto".to_string());
+                if ui
+                    .selectable_label(self.mapping.format_override.is_none(), auto_label)
+                    .clicked()
+                {
+                    self.mapping.format_override = None;
+                }
+                for format in [
+                    MappingFormat::Csv,
+                    MappingFormat::Excel,
+                    MappingFormat::Parquet,
+                    MappingFormat::Sqlite,
+                ] {
+                    if ui
+                        .selectable_label(
+                            self.mapping.format_override == Some(format),
+                            format.display_name(),
+                        )
+                        .clicked()
+                    {
+                        self.mapping.format_override = Some(format);
+                    }
+                }
+            });
+
+        let new_format = self.mapping.effective_format();
+        if new_format != prev_format {
+            self.mapping.refresh_catalog();
+        }
+
+        ui.checkbox(&mut self.mapping.has_headers, "First row contains headers");
+
+        if matches!(new_format, Some(MappingFormat::Csv)) || new_format.is_none() {
+            ui.horizontal(|ui| {
+                ui.label("Delimiter");
+                let response = ui.text_edit_singleline(&mut self.mapping.delimiter_input);
+                if response.changed() {
+                    if self.mapping.delimiter_input.is_empty() {
+                        self.mapping.delimiter_input.push(',');
+                    } else {
+                        let first = self.mapping.delimiter_input.chars().next().unwrap();
+                        self.mapping.delimiter_input = first.to_string();
+                    }
+                }
+                ui.label(
+                    RichText::new("Only the first character is used.").color(palette.subtle_text),
+                );
+            });
+        }
+
+        if matches!(new_format, Some(MappingFormat::Excel)) {
+            if self.mapping.catalog.sheets.is_empty() {
+                ui.label(
+                    RichText::new("Reload preview to discover sheet names.")
+                        .color(palette.subtle_text),
+                );
+            } else {
+                ComboBox::from_label("Sheet")
+                    .selected_text(if self.mapping.sheet_name.is_empty() {
+                        self.mapping
+                            .catalog
+                            .sheets
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "Sheet1".to_string())
+                    } else {
+                        self.mapping.sheet_name.clone()
+                    })
+                    .show_ui(ui, |ui| {
+                        for sheet in &self.mapping.catalog.sheets {
+                            if ui
+                                .selectable_label(self.mapping.sheet_name == *sheet, sheet.clone())
+                                .clicked()
+                            {
+                                self.mapping.sheet_name = sheet.clone();
+                            }
+                        }
+                    });
+            }
+        }
+
+        if matches!(new_format, Some(MappingFormat::Sqlite)) {
+            if self.mapping.catalog.sql_tables.is_empty() {
+                ui.label(
+                    RichText::new("Reload preview to discover tables.").color(palette.subtle_text),
+                );
+            } else {
+                ComboBox::from_label("Table")
+                    .selected_text(if self.mapping.sql_table.is_empty() {
+                        self.mapping
+                            .catalog
+                            .sql_tables
+                            .first()
+                            .cloned()
+                            .unwrap_or_else(|| "main".to_string())
+                    } else {
+                        self.mapping.sql_table.clone()
+                    })
+                    .show_ui(ui, |ui| {
+                        for table in &self.mapping.catalog.sql_tables {
+                            if ui
+                                .selectable_label(self.mapping.sql_table == *table, table.clone())
+                                .clicked()
+                            {
+                                self.mapping.sql_table = table.clone();
+                            }
+                        }
+                    });
+            }
+            ui.label("Custom SQL query (optional):");
+            ui.text_edit_multiline(&mut self.mapping.sql_query);
+        }
+    }
+
+    fn mapping_preview_table(
+        &mut self,
+        ui: &mut Ui,
+        palette: theme::Palette,
+        preview: &MappingPreview,
+    ) {
+        ui.add_space(8.0);
+        let truncated_note = if preview.truncated {
+            " (truncated)"
+        } else {
+            ""
+        };
+        ui.label(format!(
+            "Previewing {} of {} rows{}",
+            preview.rows.len(),
+            preview.total_rows,
+            truncated_note
+        ));
+
+        if preview.columns.is_empty() {
+            ui.label(
+                RichText::new("No columns detected in the mapping file.").color(palette.danger),
+            );
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            ComboBox::from_label("Source column")
+                .selected_text(
+                    self.mapping
+                        .selected_column_name(self.mapping.source_column_idx),
+                )
+                .show_ui(ui, |ui| {
+                    for (idx, name) in preview.columns.iter().enumerate() {
+                        if ui
+                            .selectable_label(self.mapping.source_column_idx == Some(idx), name)
+                            .clicked()
+                        {
+                            self.mapping.source_column_idx = Some(idx);
+                        }
+                    }
+                });
+
+            ComboBox::from_label("Output column")
+                .selected_text(
+                    self.mapping
+                        .selected_column_name(self.mapping.output_column_idx),
+                )
+                .show_ui(ui, |ui| {
+                    for (idx, name) in preview.columns.iter().enumerate() {
+                        if ui
+                            .selectable_label(self.mapping.output_column_idx == Some(idx), name)
+                            .clicked()
+                        {
+                            self.mapping.output_column_idx = Some(idx);
+                        }
+                    }
+                });
+        });
+
+        let mut table = TableBuilder::new(ui)
+            .striped(true)
+            .auto_shrink([false, false]);
+        for _ in &preview.columns {
+            table = table.column(TableColumn::auto().resizable(true));
+        }
+
+        table
+            .header(24.0, |mut header| {
+                for (idx, name) in preview.columns.iter().enumerate() {
+                    header.col(|ui| {
+                        let mut text = RichText::new(name.clone()).strong();
+                        if self.mapping.source_column_idx == Some(idx) {
+                            text = text.color(palette.accent);
+                        }
+                        if self.mapping.output_column_idx == Some(idx) {
+                            text = text.color(palette.success);
+                        }
+                        ui.label(text);
+                    });
+                }
+            })
+            .body(|body| {
+                body.rows(20.0, preview.rows.len(), |mut row| {
+                    let row_idx = row.index();
+                    if let Some(values) = preview.rows.get(row_idx) {
+                        for value in values {
+                            row.col(|ui| {
+                                ui.label(value);
+                            });
+                        }
+                    }
+                });
+            });
+
+        if let (Some(src_idx), Some(out_idx)) = (
+            self.mapping.source_column_idx,
+            self.mapping.output_column_idx,
+        ) {
+            ui.add_space(6.0);
+            ui.label("Preview mappings:");
+            for sample in preview.rows.iter().take(3) {
+                if let (Some(src), Some(dest)) = (sample.get(src_idx), sample.get(out_idx)) {
+                    let display = Self::display_with_output_ext(
+                        dest,
+                        self.settings.crop.output_format.as_str(),
+                    );
+                    ui.monospace(format!("{src} → {display}"));
+                }
+            }
+        }
+    }
+
+    fn push_mapping_to_batch(&mut self) {
+        if self.mapping.entries.is_empty() {
+            self.show_error(
+                "No mapping entries loaded",
+                "Load entries before queuing batch exports.",
+            );
+            return;
+        }
+
+        let mut files = Vec::with_capacity(self.mapping.entries.len());
+        for entry in &self.mapping.entries {
+            let raw = PathBuf::from(&entry.source_path);
+            let path = if raw.is_absolute() {
+                raw
+            } else if let Some(base) = &self.mapping.base_dir {
+                base.join(raw)
+            } else {
+                raw
+            };
+            if !path.exists() {
+                warn!(
+                    "Mapping entry skipped—source {} not found",
+                    entry.source_path
+                );
+                continue;
+            }
+            files.push(BatchFile {
+                path,
+                status: BatchFileStatus::Pending,
+                output_override: Some(PathBuf::from(&entry.output_name)),
+            });
+        }
+
+        if files.is_empty() {
+            self.show_error(
+                "Mapping entries invalid",
+                "All mapping rows referenced missing files.",
+            );
+            return;
+        }
+
+        self.batch_files = files;
+        self.batch_current_index = None;
+        self.show_success(format!(
+            "Queued {} mapping row(s) for batch export",
+            self.batch_files.len()
+        ));
+        info!(
+            "Loaded {} mapping rows into batch processing queue",
+            self.batch_files.len()
+        );
     }
 
     /// Renders the main image preview panel.
@@ -2649,6 +3269,16 @@ impl YuNetApp {
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    fn display_with_output_ext(raw: &str, ext: &str) -> String {
+        let mut path = PathBuf::from(raw);
+        let trimmed = ext.trim().trim_start_matches('.');
+        if trimmed.is_empty() {
+            return path.display().to_string();
+        }
+        path.set_extension(trimmed);
+        path.display().to_string()
     }
 
     fn parse_metadata_tags(text: &str) -> BTreeMap<String, String> {
@@ -3710,6 +4340,7 @@ impl YuNetApp {
                 .map(|path| BatchFile {
                     path,
                     status: BatchFileStatus::Pending,
+                    output_override: None,
                 })
                 .collect();
 
@@ -3767,11 +4398,17 @@ impl YuNetApp {
             batch_file.status = BatchFileStatus::Processing;
         }
 
-        let tasks: Vec<(usize, PathBuf)> = self
+        let tasks: Vec<(usize, PathBuf, Option<PathBuf>)> = self
             .batch_files
             .iter()
             .enumerate()
-            .map(|(idx, batch_file)| (idx, batch_file.path.clone()))
+            .map(|(idx, batch_file)| {
+                (
+                    idx,
+                    batch_file.path.clone(),
+                    batch_file.output_override.clone(),
+                )
+            })
             .collect();
 
         let job_config = Arc::new(BatchJobConfig {
@@ -3786,9 +4423,13 @@ impl YuNetApp {
         let detector_for_jobs = detector.clone();
         let results: Vec<(usize, BatchFileStatus)> = tasks
             .into_par_iter()
-            .map(|(idx, path)| {
-                let status =
-                    Self::run_batch_job(detector_for_jobs.clone(), path, job_config.clone());
+            .map(|(idx, path, override_path)| {
+                let status = Self::run_batch_job(
+                    detector_for_jobs.clone(),
+                    path,
+                    job_config.clone(),
+                    override_path,
+                );
                 (idx, status)
             })
             .collect();
@@ -3880,6 +4521,7 @@ impl YuNetApp {
         detector: Arc<YuNetDetector>,
         path: PathBuf,
         config: Arc<BatchJobConfig>,
+        output_override: Option<PathBuf>,
     ) -> BatchFileStatus {
         let source_image = match load_image(&path) {
             Ok(img) => img,
@@ -3986,6 +4628,8 @@ impl YuNetApp {
             exports.retain(|c| c.index == best_index);
         }
 
+        let multi_face = exports.len() > 1;
+
         let mut faces_exported = 0;
         for candidate in exports.into_iter() {
             let should_skip = if let Some(min) = quality_rules.min_quality {
@@ -4041,19 +4685,38 @@ impl YuNetApp {
             }
             let ext = ext.to_ascii_lowercase();
 
-            let mut output_filename =
-                format!("{}_face_{:02}.{}", source_stem, candidate.index + 1, ext);
-            if quality_rules.quality_suffix {
-                let suffix = match candidate.quality {
-                    Quality::High => Some("_highq"),
-                    Quality::Medium => Some("_medq"),
-                    Quality::Low => Some("_lowq"),
-                };
-                if let Some(suffix) = suffix {
-                    output_filename = append_suffix_to_filename(&output_filename, suffix);
+            let output_path = if let Some(custom) = output_override.as_ref() {
+                resolve_mapping_override_path(
+                    &config.output_dir,
+                    custom,
+                    &ext,
+                    candidate.index,
+                    multi_face,
+                )
+            } else {
+                let mut output_filename =
+                    format!("{}_face_{:02}.{}", source_stem, candidate.index + 1, ext);
+                if quality_rules.quality_suffix {
+                    let suffix = match candidate.quality {
+                        Quality::High => Some("_highq"),
+                        Quality::Medium => Some("_medq"),
+                        Quality::Low => Some("_lowq"),
+                    };
+                    if let Some(suffix) = suffix {
+                        output_filename = append_suffix_to_filename(&output_filename, suffix);
+                    }
                 }
+                config.output_dir.join(output_filename)
+            };
+
+            if let Some(parent) = output_path.parent()
+                && let Err(err) = std::fs::create_dir_all(parent)
+            {
+                warn!(
+                    "Failed to create output directory {}: {err}",
+                    parent.display()
+                );
             }
-            let output_path = config.output_dir.join(output_filename);
 
             let metadata_ctx = MetadataContext {
                 source_path: Some(path.as_path()),
@@ -4317,6 +4980,39 @@ impl YuNetApp {
         }
         self.job_counter
     }
+}
+
+fn resolve_mapping_override_path(
+    output_dir: &Path,
+    override_target: &Path,
+    ext: &str,
+    face_index: usize,
+    multi_face: bool,
+) -> PathBuf {
+    let cleaned_ext = ext.trim_start_matches('.').to_string();
+    let parent = if override_target.is_absolute() {
+        override_target
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_default()
+    } else {
+        let rel_parent = override_target.parent().unwrap_or_else(|| Path::new(""));
+        output_dir.join(rel_parent)
+    };
+    let base_name = override_target
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "output".to_string());
+    let final_base = if multi_face {
+        format!("{base_name}_face{}", face_index + 1)
+    } else {
+        base_name
+    };
+    let mut final_path = parent;
+    final_path.push(final_base);
+    final_path.set_extension(cleaned_ext);
+    final_path
 }
 
 impl App for YuNetApp {

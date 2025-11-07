@@ -21,6 +21,10 @@ base64.workspace = true
 crc32fast.workspace = true
 wide.workspace = true
 tiny-skia.workspace = true
+csv.workspace = true
+calamine.workspace = true
+parquet.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

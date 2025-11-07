@@ -8,6 +8,8 @@ pub mod enhance;
 pub mod fixtures;
 /// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
+/// Data-driven mapping utilities (CSV/Excel/Parquet/SQLite ingestion).
+pub mod mapping;
 /// Image output helpers (encoding, metadata preservation).
 pub mod output;
 /// Image quality analysis (Laplacian variance blur detection).
@@ -28,6 +30,11 @@ pub use fixtures::{
 };
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
+};
+pub use mapping::{
+    ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
+    MappingReadOptions, detect_format as detect_mapping_format, inspect_mapping_sources,
+    list_sqlite_tables, load_mapping_entries, load_mapping_preview,
 };
 pub use output::{
     ImageFormatHint, MetadataContext, OutputOptions, append_suffix_to_filename, save_dynamic_image,
