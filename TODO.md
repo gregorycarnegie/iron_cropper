@@ -394,25 +394,25 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing (configurable via `InputDimensions.resize_quality`)
     - [x] Add config option for quality vs speed trade-off
     - [ ] Target: additional 20-40ms savings
-  - [ ] Consider SIMD-accelerated libraries
-    - [ ] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing
-    - [ ] Benchmark performance improvement on typical inputs
+  - [x] Consider SIMD-accelerated libraries
+    - [x] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing (used for `ResizeQuality::Speed`)
+    - [x] Benchmark performance improvement on typical inputs (~65-150ms vs 140-240ms per preprocess run depending on source)
 
 - [ ] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
   - [x] Remove tensor clone (line 58)
-    - [ ] Investigate if tract accepts borrowed tensors via `run(&[input])`
+    - [x] Investigate if tract accepts borrowed tensors via `run(&[input])`
     - [x] Replace `input.clone().into()` with zero-copy alternative
     - [ ] Target: 5-10ms savings
-  - [ ] Verify optimized model loading path
-    - [ ] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
-    - [ ] Document decluttered fallback performance penalty (~2x slower)
-    - [ ] Investigate tract optimization failures and workarounds
+  - [x] Verify optimized model loading path
+    - [x] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
+    - [x] Document decluttered fallback performance penalty (~2x slower)
+    - [x] Investigate tract optimization failures and workarounds (root cause: upstream `face_detection_yunet_2023mar.onnx` encodes conflicting `Conv_0` shapes; workaround is to use the sanitized `_640` export with consistent spatial dims)
   - [ ] Explore batch inference
     - [ ] Implement multi-image batching (reshape to `[B, 3, H, W]`)
     - [ ] Add batch size parameter to model loading
     - [ ] Benchmark throughput improvement for batch operations
   - [ ] Investigate alternative ONNX runtimes
-    - [ ] Evaluate `ort` (ONNX Runtime bindings) for better optimization
+    - [x] Evaluate `ort` (ONNX Runtime bindings) for better optimization (see `docs/ONNX_RUNTIME_OPTIONS.md`)
     - [ ] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
     - [ ] Compare inference latency and memory usage
 
@@ -424,14 +424,14 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [ ] Consider `mimalloc` or `jemalloc` for better allocation performance
     - [ ] Benchmark impact on batch processing throughput
 
-- [ ] **Quantization & model optimization**
+<!-- - [ ] **Quantization & model optimization**
   - [ ] Test INT8 quantized YuNet model (vs current FP32)
     - [ ] Benchmark inference speedup (typically 2-4x)
     - [ ] Validate detection accuracy degradation (should be <2%)
     - [ ] Document accuracy/speed trade-off
   - [ ] Explore model pruning and distillation
     - [ ] Evaluate smaller YuNet variants (320x320 vs 640x640)
-    - [ ] Test mixed precision inference (FP16 where supported)
+    - [ ] Test mixed precision inference (FP16 where supported) -->
 
 - [ ] **Performance targets**
   - [ ] Current baseline: ~548ms per image (102ms preprocess + 444ms inference + 0.05ms postprocess)

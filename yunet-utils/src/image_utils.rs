@@ -3,9 +3,10 @@
 //! This module centralizes routines for reading files, resizing RGB buffers, and converting to
 //! tensor-friendly layouts while preserving compatibility with OpenCV glue code.
 
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 use anyhow::{Context, Result};
+use fast_image_resize::{self as fir, images::Image as FirImage, images::ImageRef as FirImageRef};
 use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 use rayon::prelude::*;
@@ -29,7 +30,34 @@ pub fn load_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage> {
 /// * `height` - The target height.
 /// * `filter` - The sampling filter to use for resizing.
 pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: FilterType) -> RgbImage {
+    if filter == FilterType::Nearest {
+        if let Some(fast) = resize_image_fast(image, width, height) {
+            return fast;
+        }
+    }
     image.resize_exact(width, height, filter).to_rgb8()
+}
+
+fn resize_image_fast(image: &DynamicImage, width: u32, height: u32) -> Option<RgbImage> {
+    let rgb: Cow<'_, RgbImage> = match image.as_rgb8() {
+        Some(rgb) => Cow::Borrowed(rgb),
+        None => Cow::Owned(image.to_rgb8()),
+    };
+
+    let src = FirImageRef::new(
+        rgb.width(),
+        rgb.height(),
+        rgb.as_raw(),
+        fir::PixelType::U8x3,
+    )
+    .ok()?;
+
+    let mut dst = FirImage::new(width, height, fir::PixelType::U8x3);
+    let mut resizer = fir::Resizer::new();
+    let options = fir::ResizeOptions::new().resize_alg(fir::ResizeAlg::Nearest);
+    resizer.resize(&src, &mut dst, &options).ok()?;
+
+    RgbImage::from_raw(width, height, dst.into_vec())
 }
 
 /// Convert an RGB image into a BGR CHW array with values matching OpenCV's `blobFromImage`.
@@ -110,6 +138,7 @@ pub fn compute_resize_scales(original: (u32, u32), target: (u32, u32)) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{ImageBuffer, Rgb};
 
     #[test]
     fn rgb_to_bgr_chw_converts_correctly() {
@@ -138,5 +167,22 @@ mod tests {
     fn compute_resize_scales_rejects_zero() {
         assert!(compute_resize_scales((0, 480), (320, 240)).is_err());
         assert!(compute_resize_scales((640, 480), (0, 240)).is_err());
+    }
+
+    #[test]
+    fn fast_resize_matches_reference_nearest() {
+        let mut image = ImageBuffer::<Rgb<u8>, _>::new(5, 3);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            let r = (x * 50 + y * 30) as u8;
+            let g = (x * 20 + y * 60) as u8;
+            let b = (x * 90 + y * 10) as u8;
+            *pixel = Rgb([r, g, b]);
+        }
+        let dynamic = DynamicImage::ImageRgb8(image.clone());
+
+        let expected = dynamic.resize_exact(7, 4, FilterType::Nearest).to_rgb8();
+        let fast = resize_image(&dynamic, 7, 4, FilterType::Nearest);
+
+        assert_eq!(fast.as_raw(), expected.as_raw());
     }
 }

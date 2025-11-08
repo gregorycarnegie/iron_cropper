@@ -11,7 +11,7 @@ use image::DynamicImage;
 use yunet_core::{BoundingBox, CropSettings as CoreCropSettings, Detection};
 use yunet_utils::{
     OutputOptions,
-    config::{AppSettings, CropSettings as ConfigCropSettings},
+    config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
     enhance::EnhancementSettings,
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
@@ -537,6 +537,7 @@ pub struct CacheKey {
     pub model_path: Option<String>,
     pub input_width: u32,
     pub input_height: u32,
+    pub resize_quality: ResizeQuality,
     pub score_bits: u32,
     pub nms_bits: u32,
     pub top_k: usize,

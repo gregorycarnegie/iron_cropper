@@ -256,7 +256,8 @@ fn show_model_settings(
     requires_detector_reset: &mut bool,
     requires_cache_refresh: &mut bool,
 ) {
-    use egui::{DragValue, Key, RichText, Slider};
+    use egui::{ComboBox, DragValue, Key, RichText, Slider};
+    use yunet_utils::config::ResizeQuality;
 
     ui.separator();
     ui.heading("Model Settings");
@@ -304,6 +305,35 @@ fn show_model_settings(
             *requires_detector_reset = true;
         }
     });
+
+    let describe_quality = |mode: ResizeQuality| -> &'static str {
+        match mode {
+            ResizeQuality::Quality => "Quality (Triangle)",
+            ResizeQuality::Speed => "Speed (Nearest)",
+        }
+    };
+
+    ui.horizontal(|ui| {
+        ui.label("Resize mode");
+        let mut selected = app.settings.input.resize_quality;
+        ComboBox::from_id_salt("resize_quality_combo")
+            .selected_text(describe_quality(selected))
+            .show_ui(ui, |ui| {
+                for option in [ResizeQuality::Quality, ResizeQuality::Speed] {
+                    let label = describe_quality(option);
+                    if ui.selectable_label(selected == option, label).clicked() {
+                        selected = option;
+                    }
+                }
+            });
+        if selected != app.settings.input.resize_quality {
+            app.settings.input.resize_quality = selected;
+            *settings_changed = true;
+            *requires_detector_reset = true;
+            *requires_cache_refresh = true;
+        }
+    });
+    ui.small("Speed mode prioritizes throughput; quality preserves smoother resampling.");
 
     ui.add_space(6.0);
     ui.label("Detection thresholds");

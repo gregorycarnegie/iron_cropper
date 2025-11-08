@@ -180,6 +180,7 @@ pub fn cache_key_for_path(path: &Path, settings: &AppSettings) -> CacheKey {
         model_path: settings.model_path.clone(),
         input_width: settings.input.width,
         input_height: settings.input.height,
+        resize_quality: settings.input.resize_quality,
         score_bits: settings.detection.score_threshold.to_bits(),
         nms_bits: settings.detection.nms_threshold.to_bits(),
         top_k: settings.detection.top_k,

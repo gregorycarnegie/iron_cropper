@@ -25,6 +25,7 @@ csv.workspace = true
 calamine.workspace = true
 parquet.workspace = true
 rusqlite.workspace = true
+fast_image_resize.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

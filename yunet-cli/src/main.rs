@@ -22,7 +22,7 @@ use yunet_utils::{
     append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
-        default_settings_path,
+        ResizeQuality, default_settings_path,
     },
     configure_telemetry, estimate_sharpness, init_logging,
     mapping::ColumnSelector,
@@ -38,7 +38,7 @@ use yunet_utils::{
 #[command(author, version, about)]
 struct DetectArgs {
     /// Path to an image file or a directory containing images.
-    #[arg(short, long, required_unless_present = "mapping-file")]
+    #[arg(short, long, required_unless_present = "mapping_file")]
     input: Option<PathBuf>,
 
     /// Path to the YuNet ONNX model.
@@ -68,6 +68,10 @@ struct DetectArgs {
     /// Override input height (pixels).
     #[arg(long)]
     height: Option<u32>,
+
+    /// Resize quality mode: `quality` (Triangle) or `speed` (fast Nearest).
+    #[arg(long, value_name = "MODE")]
+    resize_quality: Option<ResizeQuality>,
 
     /// Override score threshold.
     #[arg(long)]
@@ -883,6 +887,7 @@ mod tests {
             telemetry_level: None,
             width: None,
             height: None,
+            resize_quality: None,
             score_threshold: None,
             nms_threshold: None,
             top_k: None,
@@ -954,6 +959,7 @@ mod tests {
             telemetry_level: None,
             width: None,
             height: None,
+            resize_quality: None,
             score_threshold: None,
             nms_threshold: None,
             top_k: None,
@@ -1067,6 +1073,7 @@ mod tests {
             telemetry_level: None,
             width: None,
             height: None,
+            resize_quality: None,
             score_threshold: None,
             nms_threshold: None,
             top_k: None,
@@ -1190,6 +1197,9 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     }
     if let Some(height) = args.height {
         settings.input.height = height;
+    }
+    if let Some(mode) = args.resize_quality {
+        settings.input.resize_quality = mode;
     }
     if let Some(score) = args.score_threshold {
         settings.detection.score_threshold = score;

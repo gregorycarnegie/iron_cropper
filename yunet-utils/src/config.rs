@@ -5,8 +5,9 @@
 
 use std::{
     collections::BTreeMap,
-    env, fs,
+    env, fmt, fs,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use anyhow::{Context, Result};
@@ -43,7 +44,7 @@ impl Default for DetectionSettings {
 /// Inference input resolution in pixels (width x height).
 ///
 /// The input image will be resized to these dimensions before being passed to the model.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ResizeQuality {
     /// Preserve visual quality when resizing (default, Triangle filter).
@@ -55,6 +56,42 @@ pub enum ResizeQuality {
 impl Default for ResizeQuality {
     fn default() -> Self {
         ResizeQuality::Quality
+    }
+}
+
+impl ResizeQuality {
+    pub fn as_label(self) -> &'static str {
+        match self {
+            ResizeQuality::Quality => "Quality",
+            ResizeQuality::Speed => "Speed",
+        }
+    }
+}
+
+impl fmt::Display for ResizeQuality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ResizeQuality::Quality => "quality",
+                ResizeQuality::Speed => "speed",
+            }
+        )
+    }
+}
+
+impl FromStr for ResizeQuality {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "quality" => Ok(ResizeQuality::Quality),
+            "speed" => Ok(ResizeQuality::Speed),
+            other => Err(format!(
+                "invalid resize quality '{other}'; expected 'quality' or 'speed'"
+            )),
+        }
     }
 }
 

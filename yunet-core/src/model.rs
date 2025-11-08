@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::{fmt::Write, path::Path};
 
 use anyhow::{Context, Result};
+use log::{debug, warn};
 use rayon::prelude::*;
 use tract_onnx::prelude::{
     Framework, Graph, InferenceModelExt, IntoTensor, SimplePlan, Tensor, TypedFact, TypedOp, tvec,
@@ -30,14 +31,40 @@ impl YuNetModel {
         anyhow::ensure!(path.exists(), "model file not found: {}", path.display());
 
         let runnable = match load_runnable_model(path, input_size, true) {
-            Ok(model) => model,
+            Ok(model) => {
+                debug!(
+                    "YuNet model {} optimized successfully ({}x{})",
+                    path.display(),
+                    input_size.width,
+                    input_size.height
+                );
+                model
+            }
             Err(opt_err) => {
                 let optimize_msg = format!("{opt_err}");
-                load_runnable_model(path, input_size, false).with_context(|| {
+                let mut chain_msg = String::new();
+                for cause in opt_err.chain() {
+                    let _ = writeln!(&mut chain_msg, "  • {cause}");
+                }
+                warn!(
+                    "YuNet model {} failed optimized load ({}); falling back to decluttered graph (~2x slower).\nError chain:\n{}",
+                    path.display(),
+                    optimize_msg,
+                    chain_msg.trim_end()
+                );
+                let decluttered =
+                    load_runnable_model(path, input_size, false).with_context(|| {
                     format!(
                         "fallback to decluttered YuNet graph failed after optimize error: {optimize_msg}"
                     )
-                })?
+                })?;
+                debug!(
+                    "YuNet model {} running in decluttered mode ({}x{})",
+                    path.display(),
+                    input_size.width,
+                    input_size.height
+                );
+                decluttered
             }
         };
 
