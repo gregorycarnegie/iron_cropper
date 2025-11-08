@@ -132,7 +132,12 @@ impl YuNetApp {
             return;
         }
 
-        let detector = match detection::ensure_detector(&mut self.detector, &self.settings) {
+        let (gpu_status_update, detector_result) =
+            detection::ensure_detector(&mut self.detector, &self.settings);
+        if let Some(status) = gpu_status_update {
+            self.gpu_status = status;
+        }
+        let detector = match detector_result {
             Ok(detector) => detector,
             Err(err) => {
                 self.show_error(

@@ -15,65 +15,92 @@ use yunet_utils::{
     quality::estimate_sharpness,
 };
 
-use crate::{CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, JobMessage};
+use crate::{
+    CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, GpuStatusIndicator,
+    JobMessage,
+};
 
-/// Builds a `YuNetDetector` from the given application settings.
-pub fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
-    let model_path = settings
-        .model_path
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("no model path configured"))?;
+/// Builds a `YuNetDetector` from the given application settings, returning the resolved GPU status.
+pub fn build_detector(settings: &AppSettings) -> (GpuStatusIndicator, Result<YuNetDetector>) {
+    let (preprocessor, gpu_status) = maybe_build_gpu_preprocessor(settings);
+
+    let Some(model_path) = settings.model_path.as_deref() else {
+        return (gpu_status, Err(anyhow::anyhow!("no model path configured")));
+    };
 
     let preprocess: PreprocessConfig = settings.input.into();
 
     let postprocess: PostprocessConfig = (&settings.detection).into();
-
-    if let Some(preprocessor) = maybe_build_gpu_preprocessor(settings)? {
-        return YuNetDetector::with_preprocessor(model_path, preprocess, postprocess, preprocessor)
+    let detector_result = if let Some(preprocessor) = preprocessor {
+        YuNetDetector::with_preprocessor(model_path, preprocess, postprocess, preprocessor)
             .with_context(|| {
                 format!(
                     "failed to load YuNet model with GPU preprocessing from {}",
                     model_path
                 )
-            });
-    }
+            })
+    } else {
+        YuNetDetector::new(model_path, preprocess, postprocess).with_context(|| {
+            format!(
+                "failed to load YuNet model from configured path {}",
+                model_path
+            )
+        })
+    };
 
-    YuNetDetector::new(model_path, preprocess, postprocess).with_context(|| {
-        format!(
-            "failed to load YuNet model from configured path {}",
-            model_path
-        )
-    })
+    (gpu_status, detector_result)
 }
 
-fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> Result<Option<Arc<dyn Preprocessor>>> {
+fn maybe_build_gpu_preprocessor(
+    settings: &AppSettings,
+) -> (Option<Arc<dyn Preprocessor>>, GpuStatusIndicator) {
     let options: GpuContextOptions = (&settings.gpu).into();
     let availability = GpuContext::init_with_fallback(&options);
 
     match availability {
-        GpuAvailability::Available(context) => match WgpuPreprocessor::new(context.clone()) {
-            Ok(preprocessor) => {
-                info!(
-                    "GUI using GPU preprocessing on '{}' ({:?})",
-                    context.adapter_info().name,
-                    context.adapter_info().backend
-                );
-                Ok(Some(Arc::new(preprocessor)))
+        GpuAvailability::Available(context) => {
+            let info = context.adapter_info();
+            match WgpuPreprocessor::new(context.clone()) {
+                Ok(preprocessor) => {
+                    info!(
+                        "GUI using GPU preprocessing on '{}' ({:?})",
+                        info.name, info.backend
+                    );
+                    let status = GpuStatusIndicator::available(
+                        info.name.clone(),
+                        format!("{:?}", info.backend),
+                        Some(info.driver.clone()),
+                        Some(info.vendor),
+                        Some(info.device),
+                    );
+                    status.emit_telemetry(None, None);
+                    (Some(Arc::new(preprocessor)), status)
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
+                    );
+                    let status = GpuStatusIndicator::fallback(
+                        format!("Failed to compile GPU shader: {err}"),
+                        Some(info.name.clone()),
+                        Some(format!("{:?}", info.backend)),
+                    );
+                    status.emit_telemetry(None, None);
+                    (None, status)
+                }
             }
-            Err(err) => {
-                warn!(
-                    "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
-                );
-                Ok(None)
-            }
-        },
+        }
         GpuAvailability::Disabled { reason } => {
             info!("GPU preprocessing disabled in GUI: {reason}");
-            Ok(None)
+            let status = GpuStatusIndicator::disabled(reason);
+            status.emit_telemetry(None, None);
+            (None, status)
         }
         GpuAvailability::Unavailable { error } => {
             warn!("GUI GPU context unavailable: {error}");
-            Ok(None)
+            let status = GpuStatusIndicator::error(error.to_string());
+            status.emit_telemetry(None, None);
+            (None, status)
         }
     }
 }
@@ -210,14 +237,20 @@ pub fn start_detection(
 pub fn ensure_detector(
     detector: &mut Option<Arc<YuNetDetector>>,
     settings: &AppSettings,
-) -> Result<Arc<YuNetDetector>> {
-    if let Some(detector) = detector {
-        return Ok(detector.clone());
+) -> (Option<GpuStatusIndicator>, Result<Arc<YuNetDetector>>) {
+    if let Some(existing) = detector {
+        return (None, Ok(existing.clone()));
     }
 
-    let new_detector = Arc::new(build_detector(settings)?);
-    *detector = Some(new_detector.clone());
-    Ok(new_detector)
+    let (gpu_status, detector_result) = build_detector(settings);
+    match detector_result {
+        Ok(built) => {
+            let arc = Arc::new(built);
+            *detector = Some(arc.clone());
+            (Some(gpu_status), Ok(arc))
+        }
+        Err(err) => (Some(gpu_status), Err(err)),
+    }
 }
 
 /// Creates a cache key for the given image path and current settings.

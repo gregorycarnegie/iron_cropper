@@ -22,6 +22,7 @@ pub use types::{
     DetectionWithQuality, DragHandle, EnhancementSignature, JobMessage, ManualBoxDraft,
     MappingUiState, PointerSnapshot, PreviewSpace, PreviewState, ShapeSignature, YuNetApp,
 };
+pub use yunet_utils::gpu::{GpuStatusIndicator, GpuStatusMode};
 
 use yunet_utils::{config::default_settings_path, init_logging, quality::Quality};
 
@@ -110,7 +111,8 @@ impl YuNetApp {
         }
         let (job_tx, job_rx) = mpsc::channel();
 
-        let detector = match build_detector(&settings) {
+        let (initial_gpu_status, detector_result) = build_detector(&settings);
+        let detector = match detector_result {
             Ok(detector) => {
                 info!("Loaded YuNet model from configuration");
                 Some(Arc::new(detector))
@@ -139,6 +141,7 @@ impl YuNetApp {
             settings_path,
             status_line,
             last_error: None,
+            gpu_status: initial_gpu_status,
             detector,
             job_tx,
             job_rx,

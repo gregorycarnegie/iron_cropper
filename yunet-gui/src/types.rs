@@ -13,6 +13,7 @@ use yunet_utils::{
     OutputOptions,
     config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
     enhance::EnhancementSettings,
+    gpu::GpuStatusIndicator,
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
         MappingReadOptions,
@@ -116,6 +117,8 @@ pub struct YuNetApp {
     pub status_line: String,
     /// The last error message, if any.
     pub last_error: Option<String>,
+    /// Snapshot of GPU availability/fallback status.
+    pub gpu_status: GpuStatusIndicator,
     /// The face detector instance.
     pub detector: Option<Arc<yunet_core::YuNetDetector>>,
     /// Sender for submitting detection jobs to a background thread.

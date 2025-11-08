@@ -9,9 +9,11 @@ pub const PREPROCESS_WGSL: &str = include_str!("preprocess.wgsl");
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
+use crate::telemetry::telemetry_allows;
 use async_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
-use log::{debug, info, warn};
+use log::{Level, debug, info, warn};
 use pollster::block_on;
+use serde::Serialize;
 use thiserror::Error;
 use wgpu::{
     Adapter, AdapterInfo, Backends, Device, DeviceDescriptor, Dx12Compiler, ExperimentalFeatures,
@@ -99,6 +101,194 @@ impl GpuAvailability {
         match self {
             Self::Available(ctx) => Some(ctx),
             _ => None,
+        }
+    }
+}
+
+/// High-level GPU availability categories mirrored in UI/CLI messaging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum GpuStatusMode {
+    /// GPU status has not been resolved yet.
+    Pending,
+    /// GPU preprocessing is active.
+    Available,
+    /// GPU has been explicitly disabled by configuration.
+    Disabled,
+    /// GPU initialization failed and the app fell back to CPU.
+    Fallback,
+    /// GPU resources are unavailable due to driver/runtime errors.
+    Error,
+}
+
+impl GpuStatusMode {
+    /// Returns a stable identifier for telemetry output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GpuStatusMode::Pending => "pending",
+            GpuStatusMode::Available => "available",
+            GpuStatusMode::Disabled => "disabled",
+            GpuStatusMode::Fallback => "fallback",
+            GpuStatusMode::Error => "error",
+        }
+    }
+}
+
+/// User-facing snapshot of GPU availability and adapter metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct GpuStatusIndicator {
+    /// Mode used for coloring/status badges.
+    pub mode: GpuStatusMode,
+    /// Short summary string.
+    pub summary: String,
+    /// Optional detail/failure reason.
+    pub detail: Option<String>,
+    /// Adapter name when available.
+    pub adapter_name: Option<String>,
+    /// Backend label (Vulkan, Metal, Dx12, etc.).
+    pub backend: Option<String>,
+    /// Driver description string.
+    pub driver: Option<String>,
+    /// Vendor ID reported by wgpu.
+    pub vendor_id: Option<u32>,
+    /// Device ID reported by wgpu.
+    pub device_id: Option<u32>,
+}
+
+impl Default for GpuStatusIndicator {
+    fn default() -> Self {
+        Self::pending()
+    }
+}
+
+impl GpuStatusIndicator {
+    /// Pending/unknown status used during initialization.
+    pub fn pending() -> Self {
+        Self {
+            mode: GpuStatusMode::Pending,
+            summary: "Awaiting GPU check".to_string(),
+            detail: None,
+            adapter_name: None,
+            backend: None,
+            driver: None,
+            vendor_id: None,
+            device_id: None,
+        }
+    }
+
+    /// Successful GPU activation with adapter metadata.
+    pub fn available(
+        adapter_name: impl Into<String>,
+        backend: impl Into<String>,
+        driver: Option<String>,
+        vendor_id: Option<u32>,
+        device_id: Option<u32>,
+    ) -> Self {
+        let adapter_name = adapter_name.into();
+        Self {
+            mode: GpuStatusMode::Available,
+            summary: format!("Using {}", adapter_name),
+            detail: None,
+            adapter_name: Some(adapter_name),
+            backend: Some(backend.into()),
+            driver,
+            vendor_id,
+            device_id,
+        }
+    }
+
+    /// GPU explicitly disabled.
+    pub fn disabled(reason: impl Into<String>) -> Self {
+        Self {
+            mode: GpuStatusMode::Disabled,
+            summary: "GPU disabled".to_string(),
+            detail: Some(reason.into()),
+            ..Self::pending()
+        }
+    }
+
+    /// GPU fallback to CPU path due to runtime failure.
+    pub fn fallback(
+        reason: impl Into<String>,
+        adapter_name: Option<String>,
+        backend: Option<String>,
+    ) -> Self {
+        Self {
+            mode: GpuStatusMode::Fallback,
+            summary: "GPU fallback to CPU".to_string(),
+            detail: Some(reason.into()),
+            adapter_name,
+            backend,
+            driver: None,
+            vendor_id: None,
+            device_id: None,
+        }
+    }
+
+    /// GPU entirely unavailable.
+    pub fn error(reason: impl Into<String>) -> Self {
+        Self {
+            mode: GpuStatusMode::Error,
+            summary: "GPU unavailable".to_string(),
+            detail: Some(reason.into()),
+            ..Self::pending()
+        }
+    }
+
+    /// Emit a telemetry payload describing this status when runtime telemetry is enabled.
+    pub fn emit_telemetry(&self, pool_capacity: Option<usize>, pool_available: Option<usize>) {
+        emit_gpu_status_event(self, pool_capacity, pool_available);
+    }
+}
+
+#[derive(Serialize)]
+struct GpuStatusTelemetryPayload {
+    event: &'static str,
+    mode: &'static str,
+    summary: String,
+    detail: Option<String>,
+    adapter_name: Option<String>,
+    backend: Option<String>,
+    driver: Option<String>,
+    vendor_id: Option<u32>,
+    device_id: Option<u32>,
+    pool_capacity: Option<usize>,
+    pool_available: Option<usize>,
+}
+
+fn emit_gpu_status_event(
+    status: &GpuStatusIndicator,
+    pool_capacity: Option<usize>,
+    pool_available: Option<usize>,
+) {
+    use log::log;
+
+    if !telemetry_allows(Level::Info) {
+        return;
+    }
+
+    let payload = GpuStatusTelemetryPayload {
+        event: "gpu_status",
+        mode: status.mode.as_str(),
+        summary: status.summary.clone(),
+        detail: status.detail.clone(),
+        adapter_name: status.adapter_name.clone(),
+        backend: status.backend.clone(),
+        driver: status.driver.clone(),
+        vendor_id: status.vendor_id,
+        device_id: status.device_id,
+        pool_capacity,
+        pool_available,
+    };
+
+    match serde_json::to_string(&payload) {
+        Ok(json) => {
+            log!(target: "yunet::telemetry", Level::Info, "{json}");
+        }
+        Err(err) => {
+            warn!(
+                target: "yunet::telemetry",
+                "failed to serialize GPU telemetry payload: {err}"
+            );
         }
     }
 }

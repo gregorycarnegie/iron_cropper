@@ -16,7 +16,7 @@ use yunet_utils::{
 
 use crate::{
     CropPreviewCacheEntry, CropPreviewKey, DetectionWithQuality, EnhancementSignature,
-    ShapeSignature, YuNetApp,
+    GpuStatusIndicator, ShapeSignature, YuNetApp,
 };
 
 /// Shared parameters required to build or fetch a crop preview entry.
@@ -257,6 +257,7 @@ impl YuNetApp {
         self.detector = None;
         self.cache.clear();
         self.crop_preview_cache.clear();
+        self.gpu_status = GpuStatusIndicator::pending();
         self.show_success("Model settings changed. Detector will reload on next detection.");
     }
 

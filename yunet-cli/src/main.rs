@@ -30,7 +30,9 @@ use yunet_utils::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         ResizeQuality, default_settings_path,
     },
-    configure_telemetry, estimate_sharpness, init_logging, load_image,
+    configure_telemetry, estimate_sharpness,
+    gpu::{GpuStatusIndicator, GpuStatusMode},
+    init_logging, load_image,
     mapping::ColumnSelector,
     mapping::MappingFormat,
     mapping::MappingReadOptions,
@@ -340,6 +342,7 @@ struct ProcessingItem {
 struct CliGpuRuntime {
     context: Option<Arc<GpuContext>>,
     pool: Option<GpuContextPool>,
+    status: GpuStatusIndicator,
 }
 
 impl CliGpuRuntime {
@@ -356,13 +359,74 @@ impl CliGpuRuntime {
             );
         }
     }
+
+    fn log_status(&self) {
+        log_gpu_status(&self.status, self.pool.as_ref());
+    }
+}
+
+fn log_gpu_status(status: &GpuStatusIndicator, pool: Option<&GpuContextPool>) {
+    let detail = status.detail.as_deref();
+    let pool_capacity = pool.map(|p| p.capacity());
+    let pool_available = pool.map(|p| p.available());
+    match status.mode {
+        GpuStatusMode::Available => {
+            let adapter = status.adapter_name.as_deref().unwrap_or("GPU adapter");
+            let backend = status.backend.as_deref().unwrap_or("wgpu");
+            let driver = status.driver.as_deref().unwrap_or("driver n/a");
+            let vendor = status
+                .vendor_id
+                .map(|v| format!("{v:#06x}"))
+                .unwrap_or_else(|| "n/a".to_string());
+            let device = status
+                .device_id
+                .map(|d| format!("{d:#06x}"))
+                .unwrap_or_else(|| "n/a".to_string());
+            if let Some(pool) = pool {
+                info!(
+                    "GPU ready: {adapter} via {backend} (driver: {driver}, vendor={vendor}, device={device}). Pool capacity {} ({} idle).",
+                    pool.capacity(),
+                    pool.available()
+                );
+            } else {
+                info!(
+                    "GPU ready: {adapter} via {backend} (driver: {driver}, vendor={vendor}, device={device})."
+                );
+            }
+        }
+        GpuStatusMode::Disabled => {
+            if let Some(reason) = detail {
+                info!("GPU disabled: {reason}");
+            } else {
+                info!("GPU disabled.");
+            }
+        }
+        GpuStatusMode::Fallback => {
+            if let Some(reason) = detail {
+                warn!("GPU fallback to CPU: {reason}");
+            } else {
+                warn!("GPU fallback to CPU.");
+            }
+        }
+        GpuStatusMode::Error => {
+            if let Some(reason) = detail {
+                warn!("GPU unavailable: {reason}");
+            } else {
+                warn!("GPU unavailable.");
+            }
+        }
+        GpuStatusMode::Pending => {
+            debug!("GPU status pending...");
+        }
+    }
+    status.emit_telemetry(pool_capacity, pool_available);
 }
 
 fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
     let options: GpuContextOptions = (&settings.gpu).into();
     let availability = GpuContext::init_with_fallback(&options);
 
-    let (context, pool) = match &availability {
+    let (context, pool, status) = match &availability {
         GpuAvailability::Available(context) => {
             let pool_size = NonZeroUsize::new(rayon::current_num_threads())
                 .unwrap_or_else(|| NonZeroUsize::new(1).expect("non-zero pool size fallback"));
@@ -372,26 +436,29 @@ fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
                 })?;
 
             let info = context.adapter_info();
-            info!(
-                "GPU acceleration enabled using '{}' ({:?}, {:?}) with pool capacity {}",
-                info.name,
-                info.backend,
-                info.device_type,
-                pool.capacity()
+            let status = GpuStatusIndicator::available(
+                info.name.clone(),
+                format!("{:?}", info.backend),
+                Some(info.driver.clone()),
+                Some(info.vendor),
+                Some(info.device),
             );
-            (Some(context.clone()), Some(pool))
+            (Some(context.clone()), Some(pool), status)
         }
         GpuAvailability::Disabled { reason } => {
-            info!("GPU acceleration disabled: {reason}");
-            (None, None)
+            (None, None, GpuStatusIndicator::disabled(reason.clone()))
         }
         GpuAvailability::Unavailable { error } => {
-            warn!("GPU unavailable, falling back to CPU: {error}");
-            (None, None)
+            (None, None, GpuStatusIndicator::error(error.to_string()))
         }
     };
 
-    let runtime = CliGpuRuntime { context, pool };
+    let runtime = CliGpuRuntime {
+        context,
+        pool,
+        status,
+    };
+    runtime.log_status();
     runtime.log_pool_state();
     Ok(runtime)
 }
@@ -541,7 +608,13 @@ fn build_cli_detector(
                 )
             }
             Err(err) => {
-                warn!("Failed to initialize GPU preprocessor ({err}); using CPU path.");
+                let info = gpu_ctx.adapter_info();
+                let status = GpuStatusIndicator::fallback(
+                    format!("Failed to initialize GPU preprocessor: {err}"),
+                    Some(info.name.clone()),
+                    Some(format!("{:?}", info.backend)),
+                );
+                log_gpu_status(&status, None);
                 YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone())
             }
         }

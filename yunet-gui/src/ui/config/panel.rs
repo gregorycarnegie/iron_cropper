@@ -43,6 +43,16 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                     );
 
                     ui.separator();
+                    ui.heading("GPU Acceleration");
+                    show_gpu_section(
+                        app,
+                        ui,
+                        palette,
+                        &mut settings_changed,
+                        &mut requires_detector_reset,
+                    );
+
+                    ui.separator();
                     ui.heading("Diagnostics");
                     show_diagnostics_section(app, ui, &mut settings_changed);
 
@@ -142,6 +152,85 @@ fn show_image_section(app: &mut YuNetApp, ui: &mut Ui) {
     }
 
     ui.separator();
+}
+
+fn show_gpu_section(
+    app: &mut YuNetApp,
+    ui: &mut Ui,
+    palette: theme::Palette,
+    settings_changed: &mut bool,
+    requires_detector_reset: &mut bool,
+) {
+    use crate::GpuStatusMode;
+
+    let mut enabled = app.settings.gpu.enabled;
+    if ui
+        .checkbox(&mut enabled, "Enable GPU preprocessing")
+        .changed()
+    {
+        app.settings.gpu.enabled = enabled;
+        *settings_changed = true;
+        *requires_detector_reset = true;
+    }
+
+    let mut respect_env = app.settings.gpu.respect_env;
+    ui.add_enabled_ui(enabled, |ui| {
+        if ui
+            .checkbox(
+                &mut respect_env,
+                "Respect WGPU_* environment overrides (advanced)",
+            )
+            .changed()
+        {
+            app.settings.gpu.respect_env = respect_env;
+            *settings_changed = true;
+            *requires_detector_reset = true;
+        }
+    });
+    ui.small("Disable overrides to force the default backend if diagnostics require it.");
+
+    let status = &app.gpu_status;
+    let headline_color = match status.mode {
+        GpuStatusMode::Available => palette.success,
+        GpuStatusMode::Pending => palette.subtle_text,
+        GpuStatusMode::Disabled => palette.subtle_text,
+        GpuStatusMode::Fallback => palette.warning,
+        GpuStatusMode::Error => palette.danger,
+    };
+
+    ui.add_space(6.0);
+    ui.colored_label(
+        headline_color,
+        RichText::new(status.summary.clone()).strong(),
+    );
+    if let Some(detail) = &status.detail {
+        ui.label(RichText::new(detail).color(palette.subtle_text));
+    }
+
+    ui.add_space(4.0);
+    if let Some(adapter) = &status.adapter_name {
+        ui.label(format!("Adapter: {}", adapter));
+    }
+    if let Some(backend) = &status.backend {
+        ui.label(format!("Backend: {backend}"));
+    }
+    if let Some(driver) = &status.driver {
+        ui.label(format!("Driver: {driver}"));
+    }
+    if let (Some(vendor), Some(device)) = (status.vendor_id, status.device_id) {
+        ui.label(format!("PCI IDs: {vendor:#06x}:{device:#06x}"));
+    }
+
+    if matches!(status.mode, GpuStatusMode::Fallback | GpuStatusMode::Error) {
+        ui.label(
+            RichText::new(
+                "The application fell back to CPU preprocessing. Detection still works, \
+                 but throughput matches the CPU baseline.",
+            )
+            .italics()
+            .color(palette.warning),
+        );
+    }
 }
 
 /// Shows the batch processing section.

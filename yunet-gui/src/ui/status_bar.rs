@@ -5,7 +5,7 @@ use egui::{
     TopBottomPanel, Ui, vec2,
 };
 
-use crate::{YuNetApp, theme};
+use crate::{GpuStatusMode, YuNetApp, theme};
 
 impl YuNetApp {
     /// Renders the top status bar with quick stats and actions.
@@ -100,6 +100,8 @@ impl YuNetApp {
                     palette.warning
                 },
             );
+            let (gpu_text, gpu_color) = self.gpu_status_chip(palette);
+            self.status_chip(ui, palette, gpu_text, gpu_color);
         });
     }
 
@@ -175,6 +177,47 @@ impl YuNetApp {
         accent: Color32,
     ) {
         status_chip_helper(self, ui, palette, text, accent);
+    }
+
+    fn gpu_status_chip(&self, palette: theme::Palette) -> (String, Color32) {
+        use GpuStatusMode::*;
+
+        let mode = self.gpu_status.mode;
+        let color = match mode {
+            Available => palette.success,
+            Disabled => palette.subtle_text,
+            Pending => palette.subtle_text,
+            Fallback => palette.warning,
+            Error => palette.danger,
+        };
+
+        let text = match mode {
+            Available => {
+                let adapter = self
+                    .gpu_status
+                    .adapter_name
+                    .as_deref()
+                    .unwrap_or("GPU ready");
+                let backend = self.gpu_status.backend.as_deref().unwrap_or("wgpu");
+                format!("GPU {adapter} ({backend})")
+            }
+            Disabled => "GPU disabled".to_string(),
+            Pending => "GPU probing…".to_string(),
+            Fallback => self
+                .gpu_status
+                .detail
+                .as_deref()
+                .map(|reason| format!("GPU fallback ({reason})"))
+                .unwrap_or_else(|| "GPU fallback".to_string()),
+            Error => self
+                .gpu_status
+                .detail
+                .as_deref()
+                .map(|detail| format!("GPU error ({detail})"))
+                .unwrap_or_else(|| "GPU error".to_string()),
+        };
+
+        (text, color)
     }
 }
 
