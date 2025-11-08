@@ -5,7 +5,7 @@ use std::{
     fs::{self, File},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -627,8 +627,8 @@ fn main() -> Result<()> {
 
     info!("Processing {} target(s)...", processing_items.len());
 
-    // Wrap detector in Arc<Mutex<>> for thread-safe shared access
-    let detector = Arc::new(Mutex::new(detector));
+    // Wrap detector in Arc for thread-safe shared access
+    let detector = Arc::new(detector);
     let annotate_dir = Arc::new(annotate_dir);
 
     // Prepare crop output directory if requested
@@ -672,8 +672,7 @@ fn main() -> Result<()> {
                 debug!("Mapping row {} -> {}", row, image_path.display());
             }
 
-            // Lock the detector for this thread
-            let output = match detector.lock().unwrap().detect_path(image_path) {
+            let output = match detector.detect_path(image_path) {
                 Ok(out) => out,
                 Err(err) => {
                     warn!("Failed to process {}: {err}", image_path.display());
