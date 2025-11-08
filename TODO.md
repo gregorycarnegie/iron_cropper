@@ -375,3 +375,195 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - [ ] Write release notes documenting all features
   - [ ] Update README with installation instructions
   - [ ] Add screenshots/GIFs demonstrating crop features
+
+---
+
+## PERFORMANCE OPTIMIZATION PHASE
+
+### Phase 12: Inference Pipeline Optimization
+
+Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, inference: 444ms, postprocessing: 0.05ms):
+
+- [ ] **Preprocessing optimizations** (`yunet-utils/src/image_utils.rs`)
+  - [ ] Optimize `rgb_to_bgr_chw()` function (currently line 45-74)
+    - [ ] Replace nested `flat_map` iterators with row-by-row processing for better cache locality
+    - [ ] Pre-allocate full buffer instead of collecting per-channel intermediates
+    - [ ] Use `par_chunks_exact_mut()` for parallel row processing
+    - [ ] Target: reduce from ~102ms to 30-50ms (2-4x speedup)
+  - [ ] Optimize image resize filter (`yunet-core/src/preprocess.rs` line 109)
+    - [ ] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing
+    - [ ] Add config option for quality vs speed trade-off
+    - [ ] Target: additional 20-40ms savings
+  - [ ] Consider SIMD-accelerated libraries
+    - [ ] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing
+    - [ ] Benchmark performance improvement on typical inputs
+
+- [ ] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
+  - [ ] Remove tensor clone (line 58)
+    - [ ] Investigate if tract accepts borrowed tensors via `run(&[input])`
+    - [ ] Replace `input.clone().into()` with zero-copy alternative
+    - [ ] Target: 5-10ms savings
+  - [ ] Verify optimized model loading path
+    - [ ] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
+    - [ ] Document decluttered fallback performance penalty (~2x slower)
+    - [ ] Investigate tract optimization failures and workarounds
+  - [ ] Explore batch inference
+    - [ ] Implement multi-image batching (reshape to `[B, 3, H, W]`)
+    - [ ] Add batch size parameter to model loading
+    - [ ] Benchmark throughput improvement for batch operations
+  - [ ] Investigate alternative ONNX runtimes
+    - [ ] Evaluate `ort` (ONNX Runtime bindings) for better optimization
+    - [ ] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
+    - [ ] Compare inference latency and memory usage
+
+- [ ] **Memory allocation optimizations**
+  - [ ] Reuse preprocessing buffers across batch operations
+    - [ ] Pre-allocate CHW tensor buffer pool
+    - [ ] Avoid repeated Vec allocations in hot paths
+  - [ ] Profile memory allocator overhead
+    - [ ] Consider `mimalloc` or `jemalloc` for better allocation performance
+    - [ ] Benchmark impact on batch processing throughput
+
+- [ ] **Quantization & model optimization**
+  - [ ] Test INT8 quantized YuNet model (vs current FP32)
+    - [ ] Benchmark inference speedup (typically 2-4x)
+    - [ ] Validate detection accuracy degradation (should be <2%)
+    - [ ] Document accuracy/speed trade-off
+  - [ ] Explore model pruning and distillation
+    - [ ] Evaluate smaller YuNet variants (320x320 vs 640x640)
+    - [ ] Test mixed precision inference (FP16 where supported)
+
+- [ ] **Performance targets**
+  - [ ] Current baseline: ~548ms per image (102ms preprocess + 444ms inference + 0.05ms postprocess)
+  - [ ] Phase 12 target: ~460-480ms per image (15-20% improvement)
+    - [ ] Preprocessing: 30-50ms (60-70% reduction)
+    - [ ] Inference: 420-430ms (5% reduction from clone removal)
+  - [ ] Stretch goal (with hardware acceleration): <200ms per image (2.5x+ speedup)
+
+- [ ] **Benchmarking & validation**
+  - [ ] Create criterion benchmarks for preprocessing pipeline
+  - [ ] Create criterion benchmarks for full inference pipeline
+  - [ ] Add regression tests to catch performance degradation
+  - [ ] Document optimization impact in ARCHITECTURE.md
+  - [ ] Update CLAUDE.md with optimization findings
+
+### Phase 13: GPU Acceleration with WGPU
+
+Leverage GPU compute for massive performance gains in image processing operations:
+
+- [ ] **WGPU infrastructure setup**
+  - [ ] Add `wgpu = "0.19"` and `pollster = "0.3"` dependencies to yunet-utils
+  - [ ] Create `yunet-utils/src/gpu/mod.rs` module with GPU context management
+  - [ ] Implement GPU device initialization with fallback to CPU
+  - [ ] Add async GPU context pooling for CLI batch operations
+  - [ ] Share GPU context with egui in GUI application (already uses wgpu internally)
+  - [ ] Handle GPU init errors gracefully (missing drivers, old hardware)
+
+- [ ] **Phase 13.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
+  - [ ] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader
+    - [ ] Implement RGB→BGR channel swap kernel
+    - [ ] Implement HWC→CHW memory layout transpose
+    - [ ] Add image resize via texture sampling (bilinear/trilinear)
+    - [ ] Single-pass combined resize+convert+transpose operation
+  - [ ] Implement `WgpuPreprocessor` in `yunet-core/src/preprocess.rs`
+    - [ ] Upload source image to GPU texture
+    - [ ] Execute compute shader dispatch
+    - [ ] Download CHW tensor result
+    - [ ] Integrate with existing `PreprocessConfig`
+  - [ ] Add CPU fallback via trait abstraction
+
+    ```rust
+    trait Preprocessor {
+        fn preprocess(&self, img: &DynamicImage, cfg: &PreprocessConfig) -> Result<PreprocessOutput>;
+    }
+    ```
+
+  - [ ] Benchmark GPU vs CPU preprocessing
+  - [ ] **Target: 102ms → 5-10ms (10-20x speedup)**
+
+- [ ] **Phase 13.2: GPU enhancement pipeline** (~50-180ms savings)
+  - [ ] Create WGSL compute shaders for each filter
+    - [ ] `histogram_equalization.wgsl` - parallel histogram + scan/reduce kernels
+    - [ ] `gaussian_blur.wgsl` - separable 2-pass convolution (horizontal + vertical)
+    - [ ] `bilateral_filter.wgsl` - skin smoothing with spatial+color kernels
+    - [ ] `unsharp_mask.wgsl` - blur + subtract composite
+    - [ ] `pixel_adjust.wgsl` - exposure, brightness, contrast, saturation (single kernel)
+    - [ ] `background_blur.wgsl` - elliptical mask + selective blur
+    - [ ] `red_eye_removal.wgsl` - red dominance detection + color replacement
+  - [ ] Implement `WgpuEnhancer` in `yunet-utils/src/enhance.rs`
+    - [ ] Pipeline state management (reuse bind groups)
+    - [ ] Minimize CPU↔GPU transfers (keep intermediate results on GPU)
+    - [ ] Async compute queue for overlapping operations
+  - [ ] Add feature flag `gpu-enhance` with CPU fallback
+  - [ ] Benchmark each filter GPU vs CPU
+  - [ ] **Target: 50-200ms → 10-20ms (5-10x speedup per filter)**
+
+- [ ] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
+  - [ ] **Option A: DirectML via ort crate** (Recommended for Windows)
+    - [ ] Add `ort = { version = "2.0", features = ["load-dynamic"] }` dependency
+    - [ ] Add `ort = { version = "2.0", features = ["directml"] }` for Windows builds
+    - [ ] Create `yunet-core/src/ort_model.rs` as alternative to tract
+    - [ ] Implement YuNet model loading with DirectML execution provider
+    - [ ] Benchmark tract CPU vs ort DirectML on Windows
+    - [ ] Add fallback to CPU execution provider if DirectML unavailable
+    - [ ] **Target: 444ms → 100-150ms (3-4x speedup on GPU)**
+  - [ ] **Option B: Metal Performance Shaders** (macOS)
+    - [ ] Use ort with CoreML execution provider
+    - [ ] Benchmark on Apple Silicon vs Intel Macs
+  - [ ] **Option C: Custom WGPU YuNet implementation** (Future work)
+    - [ ] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
+    - [ ] Port YuNet architecture to WGSL
+    - [ ] Validate outputs against ONNX reference
+    - [ ] Most flexibility but significant development effort
+
+- [ ] **Phase 13.4: GPU batch face cropping** (~10-30ms savings for multi-face)
+  - [ ] Implement parallel crop extraction via GPU texture operations
+  - [ ] Upload source image once, execute multiple crop regions as draw calls
+  - [ ] Batch resize operations for all detected faces
+  - [ ] Single download of all cropped faces
+  - [ ] Integrate with GUI thumbnail generation
+  - [ ] **Target: 3-10x speedup for images with multiple faces**
+
+- [ ] **GPU memory management**
+  - [ ] Implement texture/buffer pooling to avoid repeated allocations
+  - [ ] Add memory usage monitoring and limits
+  - [ ] Handle out-of-memory scenarios gracefully
+  - [ ] Optimize CPU→GPU transfer patterns (use staging buffers)
+  - [ ] Profile GPU memory bandwidth utilization
+
+- [ ] **Cross-platform validation**
+  - [ ] Test on Windows (DirectX 12 via wgpu)
+  - [ ] Test on macOS (Metal via wgpu)
+  - [ ] Test on Linux (Vulkan via wgpu)
+  - [ ] Validate fallback behavior when GPU unavailable
+  - [ ] Document minimum GPU requirements (Shader Model 5.0+)
+
+- [ ] **Performance targets - GPU-accelerated pipeline**
+  - [ ] Phase 13.1 only (GPU preprocessing): ~450ms total (18% faster)
+    - [ ] Preprocessing: 5-10ms (was 102ms, **~95ms saved**)
+    - [ ] Inference: 444ms (unchanged, CPU tract)
+    - [ ] Postprocessing: 0.05ms (unchanged)
+  - [ ] Phase 13.1 + 13.2 (GPU preprocess + enhance): ~280-350ms total (2x faster)
+    - [ ] Preprocessing: 5-10ms (was 102ms)
+    - [ ] Inference: 444ms (unchanged)
+    - [ ] Enhancement: 10-20ms (was 50-200ms, **~100ms saved**)
+  - [ ] Phase 13.1 + 13.2 + 13.3 (Full GPU pipeline): ~115-180ms total (3-5x faster)
+    - [ ] Preprocessing: 5-10ms (was 102ms, **95ms saved**)
+    - [ ] Inference: 100-150ms (was 444ms, **~300ms saved**)
+    - [ ] Enhancement: 10-20ms (was 50-200ms, **~100ms saved**)
+    - [ ] **Total savings: ~495ms → Target: <200ms achieved**
+
+- [ ] **CLI/GUI integration**
+  - [ ] Add `--gpu/--no-gpu` CLI flag with auto-detection default
+  - [ ] Add GPU status indicator in GUI (available/in-use/fallback)
+  - [ ] Display GPU model/vendor in GUI settings panel
+  - [ ] Show GPU memory usage in GUI (optional debug mode)
+  - [ ] Add telemetry for GPU operation timing vs CPU baseline
+
+- [ ] **Documentation & examples**
+  - [ ] Document GPU requirements and setup in README
+  - [ ] Add WGSL shader documentation with algorithm explanations
+  - [ ] Create benchmark comparison table (CPU vs GPU for each operation)
+  - [ ] Document fallback behavior and troubleshooting
+  - [ ] Add architecture diagram showing GPU pipeline flow
+  - [ ] Update CLAUDE.md with GPU implementation notes
