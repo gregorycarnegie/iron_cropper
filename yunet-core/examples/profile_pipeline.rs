@@ -2,7 +2,7 @@ use std::time::Instant;
 use yunet_core::{
     YuNetModel,
     postprocess::{PostprocessConfig, apply_postprocess},
-    preprocess::{InputSize, PreprocessConfig, preprocess_image},
+    preprocess::{InputSize, PreprocessConfig, PreprocessOutput, preprocess_image},
 };
 
 fn main() -> anyhow::Result<()> {
@@ -23,25 +23,30 @@ fn main() -> anyhow::Result<()> {
     );
 
     // 2. Preprocessing
-    let preprocess_config = PreprocessConfig { input_size };
+    let preprocess_config = PreprocessConfig {
+        input_size,
+        ..Default::default()
+    };
     let start = Instant::now();
     let preprocessed = preprocess_image(image_path, &preprocess_config)?;
     let preprocess_time = start.elapsed();
 
+    let PreprocessOutput {
+        tensor,
+        scale_x,
+        scale_y,
+        original_size: _,
+    } = preprocessed;
+
     // 3. Model Inference
     let start = Instant::now();
-    let output = model.run(&preprocessed.tensor)?;
+    let output = model.run(tensor)?;
     let inference_time = start.elapsed();
 
     // 4. Postprocessing
     let postprocess_config = PostprocessConfig::default();
     let start = Instant::now();
-    let detections = apply_postprocess(
-        &output,
-        preprocessed.scale_x,
-        preprocessed.scale_y,
-        &postprocess_config,
-    )?;
+    let detections = apply_postprocess(&output, scale_x, scale_y, &postprocess_config)?;
     let postprocess_time = start.elapsed();
 
     let total = load_time + preprocess_time + inference_time + postprocess_time;

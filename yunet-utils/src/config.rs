@@ -44,10 +44,27 @@ impl Default for DetectionSettings {
 ///
 /// The input image will be resized to these dimensions before being passed to the model.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResizeQuality {
+    /// Preserve visual quality when resizing (default, Triangle filter).
+    Quality,
+    /// Prioritize throughput for batch inference (Nearest filter).
+    Speed,
+}
+
+impl Default for ResizeQuality {
+    fn default() -> Self {
+        ResizeQuality::Quality
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct InputDimensions {
     pub width: u32,
     pub height: u32,
+    /// Choose between quality-focused or speed-focused resizing.
+    pub resize_quality: ResizeQuality,
 }
 
 impl Default for InputDimensions {
@@ -55,6 +72,7 @@ impl Default for InputDimensions {
         Self {
             width: 640,
             height: 640,
+            resize_quality: ResizeQuality::Quality,
         }
     }
 }
@@ -389,7 +407,8 @@ mod tests {
             loaded.input,
             InputDimensions {
                 width: 640,
-                height: 640
+                height: 640,
+                resize_quality: ResizeQuality::Quality,
             }
         );
         assert_eq!(loaded.detection.top_k, 123);

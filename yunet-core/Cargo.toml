@@ -27,5 +27,9 @@ name = "preprocessing"
 harness = false
 
 [[bench]]
+name = "inference_pipeline"
+harness = false
+
+[[bench]]
 name = "crop_enhance"
 harness = false

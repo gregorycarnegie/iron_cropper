@@ -46,29 +46,29 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let (width, height) = image.dimensions();
     let w = width as usize;
     let h = height as usize;
+    let channel_len = w * h;
+    let row_stride = w * 3;
     let pixels = image.as_raw();
+    let mut data = vec![0f32; 3 * channel_len];
 
-    // Process all three channels in parallel
-    let data: Vec<f32> = (0..3)
-        .into_par_iter()
-        .flat_map(|channel| {
+    data.par_chunks_mut(channel_len)
+        .enumerate()
+        .for_each(|(channel, channel_buf)| {
             // BGR ordering: channel 0 = Blue (RGB index 2), 1 = Green (1), 2 = Red (0)
             let rgb_index = match channel {
-                0 => 2, // Blue
-                1 => 1, // Green
-                2 => 0, // Red
+                0 => 2,
+                1 => 1,
+                2 => 0,
                 _ => unreachable!(),
             };
 
-            // Extract this channel's plane
-            (0..h)
-                .flat_map(|y| {
-                    let row_start = y * w * 3;
-                    (0..w).map(move |x| pixels[row_start + x * 3 + rgb_index] as f32)
-                })
-                .collect::<Vec<f32>>()
-        })
-        .collect();
+            for (row_idx, dst_row) in channel_buf.chunks_mut(w).enumerate() {
+                let src_row = &pixels[row_idx * row_stride..(row_idx + 1) * row_stride];
+                for x in 0..w {
+                    dst_row[x] = src_row[x * 3 + rgb_index] as f32;
+                }
+            }
+        });
 
     Array3::from_shape_vec((3, h, w), data).expect("shape matches data length")
 }

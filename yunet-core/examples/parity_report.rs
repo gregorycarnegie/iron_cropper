@@ -367,6 +367,7 @@ fn get_detector(
 
     let preprocess = PreprocessConfig {
         input_size: InputSize::new(key.input_w, key.input_h),
+        ..Default::default()
     };
     let postprocess = PostprocessConfig {
         score_threshold: f32::from_bits(key.score_threshold),

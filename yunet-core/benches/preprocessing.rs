@@ -1,43 +1,67 @@
+use std::hint::black_box;
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use image::DynamicImage;
-use image::{ImageBuffer, Rgb};
-use std::hint::black_box;
-use yunet_core::preprocess::{InputSize, PreprocessConfig, preprocess_dynamic_image};
+use yunet_core::preprocess::{
+    InputSize, PreprocessConfig, preprocess_dynamic_image, preprocess_image,
+};
+use yunet_utils::{config::ResizeQuality, fixture_path, load_fixture_image};
 
-fn create_test_image(width: u32, height: u32) -> DynamicImage {
-    let mut img = ImageBuffer::<Rgb<u8>, _>::new(width, height);
-    for (x, y, pixel) in img.enumerate_pixels_mut() {
-        let r = ((x + y) % 256) as u8;
-        let g = ((x * 2 + y) % 256) as u8;
-        let b = ((x + y * 2) % 256) as u8;
-        *pixel = Rgb([r, g, b]);
-    }
-    DynamicImage::ImageRgb8(img)
+const FIXTURE_IMAGE: &str = "images/006.jpg";
+const INPUT_SIZE: InputSize = InputSize::new(640, 640);
+
+fn load_benchmark_image() -> DynamicImage {
+    load_fixture_image(FIXTURE_IMAGE).expect("fixture image is required for preprocessing bench")
+}
+
+fn preprocess_configs() -> Vec<(&'static str, PreprocessConfig)> {
+    vec![
+        (
+            "quality",
+            PreprocessConfig {
+                input_size: INPUT_SIZE,
+                resize_quality: ResizeQuality::Quality,
+            },
+        ),
+        (
+            "speed",
+            PreprocessConfig {
+                input_size: INPUT_SIZE,
+                resize_quality: ResizeQuality::Speed,
+            },
+        ),
+    ]
 }
 
 fn benchmark_preprocessing(c: &mut Criterion) {
-    let mut group = c.benchmark_group("preprocessing");
+    let image = load_benchmark_image();
+    let image_path_buf =
+        fixture_path(FIXTURE_IMAGE).expect("fixture path must exist for preprocessing bench");
+    let image_path = image_path_buf.as_path();
 
-    // Test different image sizes
-    for &size in &[320, 640, 1280] {
-        let image = create_test_image(size, size);
-        let config = PreprocessConfig {
-            input_size: InputSize::new(640, 640),
-        };
+    let configs = preprocess_configs();
 
-        group.bench_with_input(
-            BenchmarkId::new("preprocess", size),
-            &(&image, &config),
-            |b, (img, cfg)| {
-                b.iter(|| {
-                    preprocess_dynamic_image(black_box(*img), black_box(*cfg))
-                        .expect("preprocessing should succeed")
-                });
-            },
-        );
+    let mut dyn_group = c.benchmark_group("preprocess_dynamic_image");
+    for (label, config) in configs.iter() {
+        dyn_group.bench_with_input(BenchmarkId::new("dynamic", label), config, |b, cfg| {
+            b.iter(|| {
+                preprocess_dynamic_image(black_box(&image), cfg)
+                    .expect("dynamic preprocessing should succeed");
+            });
+        });
     }
+    dyn_group.finish();
 
-    group.finish();
+    let mut file_group = c.benchmark_group("preprocess_image");
+    for (label, config) in configs.iter() {
+        file_group.bench_with_input(BenchmarkId::new("from_disk", label), config, |b, cfg| {
+            b.iter(|| {
+                preprocess_image(black_box(image_path), cfg)
+                    .expect("file preprocessing should succeed");
+            });
+        });
+    }
+    file_group.finish();
 }
 
 criterion_group!(benches, benchmark_preprocessing);

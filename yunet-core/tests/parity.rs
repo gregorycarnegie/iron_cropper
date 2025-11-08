@@ -21,7 +21,10 @@ fn yunet_core_matches_opencv_parity() -> anyhow::Result<()> {
     let input_size = InputSize::new(320, 320);
 
     for (image_path, fixture) in cases {
-        let preprocess = PreprocessConfig { input_size };
+        let preprocess = PreprocessConfig {
+            input_size,
+            ..Default::default()
+        };
         let postprocess = PostprocessConfig {
             score_threshold: fixture
                 .score_threshold

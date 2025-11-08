@@ -385,23 +385,23 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, inference: 444ms, postprocessing: 0.05ms):
 
 - [ ] **Preprocessing optimizations** (`yunet-utils/src/image_utils.rs`)
-  - [ ] Optimize `rgb_to_bgr_chw()` function (currently line 45-74)
-    - [ ] Replace nested `flat_map` iterators with row-by-row processing for better cache locality
-    - [ ] Pre-allocate full buffer instead of collecting per-channel intermediates
-    - [ ] Use `par_chunks_exact_mut()` for parallel row processing
+  - [x] Optimize `rgb_to_bgr_chw()` function (currently line 45-74)
+    - [x] Replace nested `flat_map` iterators with row-by-row processing for better cache locality
+    - [x] Pre-allocate full buffer instead of collecting per-channel intermediates
+    - [x] Use `par_chunks_exact_mut()` for parallel row processing
     - [ ] Target: reduce from ~102ms to 30-50ms (2-4x speedup)
-  - [ ] Optimize image resize filter (`yunet-core/src/preprocess.rs` line 109)
-    - [ ] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing
-    - [ ] Add config option for quality vs speed trade-off
+  - [x] Optimize image resize filter (`yunet-core/src/preprocess.rs` line 109)
+    - [x] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing (configurable via `InputDimensions.resize_quality`)
+    - [x] Add config option for quality vs speed trade-off
     - [ ] Target: additional 20-40ms savings
   - [ ] Consider SIMD-accelerated libraries
     - [ ] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing
     - [ ] Benchmark performance improvement on typical inputs
 
 - [ ] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
-  - [ ] Remove tensor clone (line 58)
+  - [x] Remove tensor clone (line 58)
     - [ ] Investigate if tract accepts borrowed tensors via `run(&[input])`
-    - [ ] Replace `input.clone().into()` with zero-copy alternative
+    - [x] Replace `input.clone().into()` with zero-copy alternative
     - [ ] Target: 5-10ms savings
   - [ ] Verify optimized model loading path
     - [ ] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
@@ -441,8 +441,8 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
   - [ ] Stretch goal (with hardware acceleration): <200ms per image (2.5x+ speedup)
 
 - [ ] **Benchmarking & validation**
-  - [ ] Create criterion benchmarks for preprocessing pipeline
-  - [ ] Create criterion benchmarks for full inference pipeline
+  - [x] Create criterion benchmarks for preprocessing pipeline
+  - [x] Create criterion benchmarks for full inference pipeline
   - [ ] Add regression tests to catch performance degradation
   - [ ] Document optimization impact in ARCHITECTURE.md
   - [ ] Update CLAUDE.md with optimization findings

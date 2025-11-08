@@ -98,21 +98,28 @@ impl YuNetDetector {
     fn run_preprocessed(&self, prep: PreprocessOutput) -> Result<DetectionOutput> {
         let _guard = timing_guard("yunet_core::run_preprocessed", log::Level::Trace);
 
+        let PreprocessOutput {
+            tensor,
+            scale_x,
+            scale_y,
+            original_size,
+        } = prep;
+
         let raw = {
             let _guard = timing_guard("yunet_core::onnx_inference", log::Level::Debug);
-            self.model.run(&prep.tensor)?
+            self.model.run(tensor)?
         };
 
         let detections = {
             let _guard = timing_guard("yunet_core::postprocess", log::Level::Debug);
-            apply_postprocess(&raw, prep.scale_x, prep.scale_y, &self.postprocess)?
+            apply_postprocess(&raw, scale_x, scale_y, &self.postprocess)?
         };
 
         Ok(DetectionOutput {
             detections,
-            scale_x: prep.scale_x,
-            scale_y: prep.scale_y,
-            original_size: prep.original_size,
+            scale_x,
+            scale_y,
+            original_size,
         })
     }
 }

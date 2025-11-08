@@ -10,7 +10,9 @@ use image::{DynamicImage, GenericImageView, RgbImage, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
 use yunet_utils::telemetry::timing_guard;
 use yunet_utils::{
-    compute_resize_scales, config::InputDimensions, load_image, resize_image, rgb_to_bgr_chw,
+    compute_resize_scales,
+    config::{InputDimensions, ResizeQuality},
+    load_image, resize_image, rgb_to_bgr_chw,
 };
 
 /// Desired input resolution for YuNet.
@@ -43,6 +45,17 @@ impl Default for InputSize {
 pub struct PreprocessConfig {
     /// The target input size for the model.
     pub input_size: InputSize,
+    /// Resize filter preference controlling the quality vs speed trade-off.
+    pub resize_quality: ResizeQuality,
+}
+
+impl PreprocessConfig {
+    fn resize_filter(&self) -> FilterType {
+        match self.resize_quality {
+            ResizeQuality::Quality => FilterType::Triangle,
+            ResizeQuality::Speed => FilterType::Nearest,
+        }
+    }
 }
 
 /// Output of preprocessing: tensor plus metadata for rescaling detections.
@@ -106,7 +119,12 @@ pub fn preprocess_dynamic_image(
             None => Cow::Owned(image.to_rgb8()),
         }
     } else {
-        Cow::Owned(resize_image(image, input_w, input_h, FilterType::Triangle))
+        Cow::Owned(resize_image(
+            image,
+            input_w,
+            input_h,
+            config.resize_filter(),
+        ))
     };
     let chw = rgb_to_bgr_chw(&resized_rgb);
 
@@ -141,15 +159,24 @@ impl From<&InputDimensions> for InputSize {
 
 impl From<InputDimensions> for PreprocessConfig {
     fn from(dimensions: InputDimensions) -> Self {
+        let InputDimensions {
+            width,
+            height,
+            resize_quality,
+        } = dimensions;
         PreprocessConfig {
-            input_size: dimensions.into(),
+            input_size: InputSize::new(width, height),
+            resize_quality,
         }
     }
 }
 
 impl From<&InputDimensions> for PreprocessConfig {
     fn from(dimensions: &InputDimensions) -> Self {
-        (*dimensions).into()
+        PreprocessConfig {
+            input_size: (*dimensions).into(),
+            resize_quality: dimensions.resize_quality,
+        }
     }
 }
 
@@ -157,7 +184,7 @@ impl From<&InputDimensions> for PreprocessConfig {
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgb};
-    use yunet_utils::config::InputDimensions;
+    use yunet_utils::config::{InputDimensions, ResizeQuality};
 
     #[test]
     fn preprocess_generates_bgr_tensor() {
@@ -170,6 +197,7 @@ mod tests {
         let dynamic = DynamicImage::ImageRgb8(img);
         let config = PreprocessConfig {
             input_size: InputSize::new(2, 2),
+            ..Default::default()
         };
 
         let output =
@@ -189,6 +217,7 @@ mod tests {
         let dims = InputDimensions {
             width: 320,
             height: 240,
+            resize_quality: ResizeQuality::Quality,
         };
 
         let size: InputSize = dims.into();

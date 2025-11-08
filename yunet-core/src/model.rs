@@ -52,10 +52,10 @@ impl YuNetModel {
     /// The resulting tensor has shape `[N, 15]` where each row is
     /// `[x, y, w, h, re_x, re_y, le_x, le_y, nt_x, nt_y, rcm_x, rcm_y, lcm_x, lcm_y, score]`
     /// in the resized input coordinate space.
-    pub fn run(&self, input: &Tensor) -> Result<Tensor> {
+    pub fn run(&self, input: Tensor) -> Result<Tensor> {
         let outputs = self
             .runnable
-            .run(tvec![input.clone().into()])
+            .run(tvec![input.into()])
             .map_err(|e| anyhow::anyhow!("YuNet execution failed: {e}"))?;
 
         let mut tensors: Vec<Tensor> = outputs
