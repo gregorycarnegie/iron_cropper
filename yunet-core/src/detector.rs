@@ -3,16 +3,15 @@
 //! This module exposes [`YuNetDetector`], the primary interface used by both the CLI and GUI
 //! front-ends to run YuNet against images.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use image::DynamicImage;
 
 use crate::model::YuNetModel;
 use crate::postprocess::{Detection, PostprocessConfig, apply_postprocess};
-use crate::preprocess::{
-    PreprocessConfig, PreprocessOutput, preprocess_dynamic_image, preprocess_image,
-};
+use crate::preprocess::{CpuPreprocessor, PreprocessConfig, PreprocessOutput, Preprocessor};
+use yunet_utils::load_image;
 use yunet_utils::timing_guard;
 
 /// Result of running YuNet on an image.
@@ -39,6 +38,7 @@ pub struct YuNetDetector {
     model: YuNetModel,
     preprocess: PreprocessConfig,
     postprocess: PostprocessConfig,
+    preprocessor: Arc<dyn Preprocessor>,
 }
 
 impl YuNetDetector {
@@ -54,11 +54,23 @@ impl YuNetDetector {
         preprocess: PreprocessConfig,
         postprocess: PostprocessConfig,
     ) -> Result<Self> {
+        let cpu = Arc::new(CpuPreprocessor::default());
+        Self::with_preprocessor(model_path, preprocess, postprocess, cpu)
+    }
+
+    /// Construct a detector with a custom preprocessor implementation.
+    pub fn with_preprocessor<P: AsRef<Path>>(
+        model_path: P,
+        preprocess: PreprocessConfig,
+        postprocess: PostprocessConfig,
+        preprocessor: Arc<dyn Preprocessor>,
+    ) -> Result<Self> {
         let model = YuNetModel::load(model_path, preprocess.input_size)?;
         Ok(Self {
             model,
             preprocess,
             postprocess,
+            preprocessor,
         })
     }
 
@@ -69,7 +81,15 @@ impl YuNetDetector {
     /// * `path` - The path to the image file.
     pub fn detect_path<P: AsRef<Path>>(&self, path: P) -> Result<DetectionOutput> {
         let _guard = timing_guard("yunet_core::detect_path", log::Level::Debug);
-        let prep = preprocess_image(path, &self.preprocess)?;
+        let path_ref = path.as_ref();
+        anyhow::ensure!(
+            path_ref.exists(),
+            "input image does not exist: {}",
+            path_ref.display()
+        );
+        let image = load_image(path_ref)
+            .with_context(|| format!("failed to load image from {}", path_ref.display()))?;
+        let prep = self.preprocessor.preprocess(&image, &self.preprocess)?;
         self.run_preprocessed(prep)
     }
 
@@ -80,7 +100,7 @@ impl YuNetDetector {
     /// * `image` - The dynamic image to process.
     pub fn detect_image(&self, image: &DynamicImage) -> Result<DetectionOutput> {
         let _guard = timing_guard("yunet_core::detect_image", log::Level::Debug);
-        let prep = preprocess_dynamic_image(image, &self.preprocess)?;
+        let prep = self.preprocessor.preprocess(image, &self.preprocess)?;
         self.run_preprocessed(prep)
     }
 

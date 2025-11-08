@@ -3,28 +3,34 @@
 use std::{
     collections::BTreeMap,
     fs::{self, File},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
 use anyhow::{Context, Result, anyhow};
-use clap::{ArgAction, Parser};
-use image::GenericImageView;
+use clap::{ArgAction, Parser, ValueEnum};
+use image::{DynamicImage, GenericImageView};
 use log::{debug, info, warn};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 use walkdir::WalkDir;
-use yunet_core::{BoundingBox, Detection, PostprocessConfig, PreprocessConfig, YuNetDetector};
+use yunet_core::{
+    BoundingBox, CpuPreprocessor, Detection, PostprocessConfig, PreprocessConfig, Preprocessor,
+    WgpuPreprocessor, YuNetDetector,
+};
 use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
 use yunet_utils::{
-    EnhancementSettings, MetadataContext, OutputOptions, Quality, QualityFilter,
+    EnhancementSettings, GpuAvailability, GpuContext, GpuContextOptions, GpuContextPool,
+    GpuPoolError, MetadataContext, OutputOptions, Quality, QualityFilter,
     append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         ResizeQuality, default_settings_path,
     },
-    configure_telemetry, estimate_sharpness, init_logging,
+    configure_telemetry, estimate_sharpness, init_logging, load_image,
     mapping::ColumnSelector,
     mapping::MappingFormat,
     mapping::MappingReadOptions,
@@ -60,6 +66,22 @@ struct DetectArgs {
     /// Override telemetry logging level (error, warn, info, debug, trace).
     #[arg(long, value_name = "LEVEL")]
     telemetry_level: Option<String>,
+
+    /// Force GPU acceleration (auto-detect by default).
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "no_gpu")]
+    gpu: bool,
+
+    /// Disable GPU acceleration entirely, even if supported.
+    #[arg(long = "no-gpu", action = ArgAction::SetTrue)]
+    no_gpu: bool,
+
+    /// Control whether `WGPU_*` env vars influence GPU selection (`auto` or `ignore`).
+    #[arg(long = "gpu-env", value_enum)]
+    gpu_env: Option<GpuEnvMode>,
+
+    /// Measure preprocessing latency (CPU vs GPU) for the resolved input set and exit.
+    #[arg(long = "benchmark-preprocess", action = ArgAction::SetTrue)]
+    benchmark_preprocess: bool,
 
     /// Override input width (pixels).
     #[arg(long)]
@@ -273,6 +295,20 @@ struct DetectArgs {
     mapping_sql_query: Option<String>,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum GpuEnvMode {
+    /// Respect environment overrides such as `WGPU_BACKEND`.
+    Auto,
+    /// Ignore environment overrides and rely solely on CLI/config.
+    Ignore,
+}
+
+impl GpuEnvMode {
+    fn respects_env(self) -> bool {
+        matches!(self, GpuEnvMode::Auto)
+    }
+}
+
 /// A serializable representation of a single detection.
 #[derive(Debug, Serialize)]
 struct DetectionRecord {
@@ -299,6 +335,219 @@ struct ProcessingItem {
     source: PathBuf,
     output_override: Option<PathBuf>,
     mapping_row: Option<usize>,
+}
+
+struct CliGpuRuntime {
+    context: Option<Arc<GpuContext>>,
+    pool: Option<GpuContextPool>,
+}
+
+impl CliGpuRuntime {
+    fn context(&self) -> Option<&Arc<GpuContext>> {
+        self.context.as_ref()
+    }
+
+    fn log_pool_state(&self) {
+        if let Some(pool) = self.pool.as_ref() {
+            debug!(
+                "GPU context pool ready (available {} of {})",
+                pool.available(),
+                pool.capacity()
+            );
+        }
+    }
+}
+
+fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
+    let options: GpuContextOptions = (&settings.gpu).into();
+    let availability = GpuContext::init_with_fallback(&options);
+
+    let (context, pool) = match &availability {
+        GpuAvailability::Available(context) => {
+            let pool_size = NonZeroUsize::new(rayon::current_num_threads())
+                .unwrap_or_else(|| NonZeroUsize::new(1).expect("non-zero pool size fallback"));
+            let pool =
+                GpuContextPool::new(context.clone(), pool_size).map_err(|err| match err {
+                    GpuPoolError::Closed => anyhow!("failed to initialize GPU pool: {err}"),
+                })?;
+
+            let info = context.adapter_info();
+            info!(
+                "GPU acceleration enabled using '{}' ({:?}, {:?}) with pool capacity {}",
+                info.name,
+                info.backend,
+                info.device_type,
+                pool.capacity()
+            );
+            (Some(context.clone()), Some(pool))
+        }
+        GpuAvailability::Disabled { reason } => {
+            info!("GPU acceleration disabled: {reason}");
+            (None, None)
+        }
+        GpuAvailability::Unavailable { error } => {
+            warn!("GPU unavailable, falling back to CPU: {error}");
+            (None, None)
+        }
+    };
+
+    let runtime = CliGpuRuntime { context, pool };
+    runtime.log_pool_state();
+    Ok(runtime)
+}
+
+#[derive(Serialize)]
+struct PreprocessBenchmarkSummary {
+    label: String,
+    samples: usize,
+    iterations_per_sample: usize,
+    total_ms: f64,
+    avg_ms: f64,
+    min_ms: f64,
+    max_ms: f64,
+}
+
+fn run_preprocess_benchmark(
+    items: &[ProcessingItem],
+    config: &PreprocessConfig,
+    gpu_context: Option<&Arc<GpuContext>>,
+) -> Result<()> {
+    anyhow::ensure!(
+        !items.is_empty(),
+        "preprocess benchmark requires at least one input image"
+    );
+
+    info!(
+        "Running preprocessing benchmark across {} image(s)...",
+        items.len()
+    );
+
+    let images = load_benchmark_images(items)?;
+    let iterations = 3;
+
+    let cpu = CpuPreprocessor::default();
+    let cpu_summary =
+        benchmark_preprocessor("cpu", &cpu, &images, config, iterations)?.with_label("cpu");
+    info!(
+        "preprocess_benchmark {}",
+        serde_json::to_string(&cpu_summary)?
+    );
+
+    if let Some(ctx) = gpu_context {
+        match WgpuPreprocessor::new(ctx.clone()) {
+            Ok(gpu) => {
+                let summary = benchmark_preprocessor("gpu", &gpu, &images, config, iterations)?
+                    .with_label(&format!(
+                        "gpu:{}:{:?}",
+                        ctx.adapter_info().name,
+                        ctx.adapter_info().backend
+                    ));
+                info!("preprocess_benchmark {}", serde_json::to_string(&summary)?);
+            }
+            Err(err) => warn!("Skipping GPU benchmark (initialization failed: {err})"),
+        }
+    } else {
+        info!("GPU context unavailable; skipping GPU preprocessing benchmark.");
+    }
+
+    Ok(())
+}
+
+fn load_benchmark_images(items: &[ProcessingItem]) -> Result<Vec<DynamicImage>> {
+    let mut images = Vec::with_capacity(items.len());
+    for item in items {
+        let img = load_image(&item.source)
+            .with_context(|| format!("failed to load benchmark image {}", item.source.display()))?;
+        images.push(img);
+    }
+    Ok(images)
+}
+
+fn benchmark_preprocessor<T: Preprocessor + ?Sized>(
+    label: &str,
+    preprocessor: &T,
+    images: &[DynamicImage],
+    config: &PreprocessConfig,
+    iterations: usize,
+) -> Result<PreprocessBenchmarkSummary> {
+    let mut timings = Vec::with_capacity(images.len() * iterations);
+    for image in images {
+        for _ in 0..iterations {
+            let start = Instant::now();
+            preprocessor.preprocess(image, config)?;
+            timings.push(start.elapsed());
+        }
+    }
+    Ok(PreprocessBenchmarkSummary {
+        label: label.to_string(),
+        samples: images.len(),
+        iterations_per_sample: iterations,
+        total_ms: sum_durations_ms(&timings),
+        avg_ms: avg_duration_ms(&timings),
+        min_ms: timings
+            .iter()
+            .map(|d| duration_to_ms(*d))
+            .fold(f64::MAX, f64::min),
+        max_ms: timings
+            .iter()
+            .map(|d| duration_to_ms(*d))
+            .fold(0.0, f64::max),
+    })
+}
+
+impl PreprocessBenchmarkSummary {
+    fn with_label(mut self, label: &str) -> Self {
+        self.label = label.to_string();
+        self
+    }
+}
+
+fn sum_durations_ms(samples: &[std::time::Duration]) -> f64 {
+    samples.iter().map(|d| duration_to_ms(*d)).sum()
+}
+
+fn avg_duration_ms(samples: &[std::time::Duration]) -> f64 {
+    if samples.is_empty() {
+        0.0
+    } else {
+        sum_durations_ms(samples) / samples.len() as f64
+    }
+}
+
+fn duration_to_ms(duration: std::time::Duration) -> f64 {
+    duration.as_secs_f64() * 1_000.0
+}
+
+fn build_cli_detector(
+    model_path: &Path,
+    preprocess: &PreprocessConfig,
+    postprocess: &PostprocessConfig,
+    gpu_runtime: &CliGpuRuntime,
+) -> Result<YuNetDetector> {
+    if let Some(gpu_ctx) = gpu_runtime.context() {
+        match WgpuPreprocessor::new(gpu_ctx.clone()) {
+            Ok(pre) => {
+                info!(
+                    "Using GPU preprocessing on {} ({:?})",
+                    gpu_ctx.adapter_info().name,
+                    gpu_ctx.adapter_info().backend
+                );
+                let preprocessor: Arc<dyn Preprocessor> = Arc::new(pre);
+                YuNetDetector::with_preprocessor(
+                    model_path,
+                    preprocess.clone(),
+                    postprocess.clone(),
+                    preprocessor,
+                )
+            }
+            Err(err) => {
+                warn!("Failed to initialize GPU preprocessor ({err}); using CPU path.");
+                YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone())
+            }
+        }
+    } else {
+        YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone())
+    }
 }
 
 fn main() -> Result<()> {
@@ -332,18 +581,11 @@ fn main() -> Result<()> {
     // Build a centralized quality filter using resolved automation settings so the same
     // policy is used for cropping, batch export, and future GUI wiring.
     let quality_filter = build_quality_filter(&settings.crop.quality_rules);
+    let gpu_runtime = init_cli_gpu_runtime(&settings)?;
 
     let preprocess_config: PreprocessConfig = settings.input.into();
     let postprocess_config: PostprocessConfig = (&settings.detection).into();
     let input_size = preprocess_config.input_size;
-
-    info!(
-        "Loading YuNet model from {} at resolution {}x{}",
-        model_path.display(),
-        input_size.width,
-        input_size.height
-    );
-    let detector = YuNetDetector::new(&model_path, preprocess_config, postprocess_config)?;
 
     let processing_items = if let Some(mapping_file) = args.mapping_file.as_ref() {
         collect_mapping_targets(mapping_file, &args)?
@@ -358,6 +600,24 @@ fn main() -> Result<()> {
     if processing_items.is_empty() {
         anyhow::bail!("no images were queued for processing");
     }
+
+    if args.benchmark_preprocess {
+        run_preprocess_benchmark(&processing_items, &preprocess_config, gpu_runtime.context())?;
+        return Ok(());
+    }
+
+    info!(
+        "Loading YuNet model from {} at resolution {}x{}",
+        model_path.display(),
+        input_size.width,
+        input_size.height
+    );
+    let detector = build_cli_detector(
+        &model_path,
+        &preprocess_config,
+        &postprocess_config,
+        &gpu_runtime,
+    )?;
 
     if args.mapping_file.is_some() && !args.crop {
         info!(
@@ -1178,6 +1438,16 @@ fn load_settings(config_path: Option<&PathBuf>) -> Result<AppSettings> {
 
 /// Apply command-line arguments to override loaded or default settings.
 fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
+    if args.gpu {
+        settings.gpu.enabled = true;
+    }
+    if args.no_gpu {
+        settings.gpu.enabled = false;
+    }
+    if let Some(mode) = args.gpu_env {
+        settings.gpu.respect_env = mode.respects_env();
+    }
+
     if args.telemetry {
         settings.telemetry.enabled = true;
     }

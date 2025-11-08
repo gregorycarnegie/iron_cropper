@@ -86,8 +86,11 @@
 ### Running Benchmarks
 
 ```bash
-# Preprocessing benchmarks
-cargo bench -p yunet-core
+# CPU vs GPU preprocessing benchmarks (criterion)
+cargo bench -p yunet-core --bench preprocessing
+
+# Lightweight CLI benchmark over your current --input set
+cargo run -p yunet-cli -- --input fixtures/images --benchmark-preprocess
 
 # Model loading profile
 cargo run --release --example benchmark_model_load -p yunet-core
@@ -95,6 +98,21 @@ cargo run --release --example benchmark_model_load -p yunet-core
 # Full pipeline profile
 cargo run --release --example profile_pipeline -p yunet-core
 ```
+
+The CLI benchmark flag prints JSON summaries for both CPU and GPU (when available), making it easy to capture telemetry in CI dashboards.
+
+### Sample Results (Windows + GTX 1080 Ti, Vulkan backend)
+
+| Scenario | Median Time |
+| --- | --- |
+| `preprocess_dynamic_image` CPU (quality) | ~162 ms |
+| `preprocess_dynamic_image` GPU (quality) | **~51 ms** |
+| `preprocess_image` CPU (quality) | ~244 ms |
+| `preprocess_image` GPU (quality) | **~126 ms** |
+| CLI `--benchmark-preprocess` CPU avg | 43.99 ms per image |
+| CLI `--benchmark-preprocess` GPU avg | 2.43 s per image* |
+
+\*The CLI GPU path still serializes uploads/downloads per image; the current pooling work removes allocation overhead, but we’ll keep iterating to reduce the remaining map/poll latency.
 
 ---
 

@@ -16,6 +16,8 @@ rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tract-onnx.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
 yunet-utils = { path = "../yunet-utils" }
 
 [dev-dependencies]

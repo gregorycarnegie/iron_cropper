@@ -6,6 +6,8 @@ pub mod config;
 pub mod enhance;
 /// Test fixture loading and path resolution.
 pub mod fixtures;
+/// Shared GPU context initialization and pooling helpers.
+pub mod gpu;
 /// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
 /// Data-driven mapping utilities (CSV/Excel/Parquet/SQLite ingestion).
@@ -27,6 +29,10 @@ use log::LevelFilter;
 pub use enhance::{EnhancementSettings, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
+};
+pub use gpu::{
+    GpuAvailability, GpuContext, GpuContextGuard, GpuContextOptions, GpuContextPool, GpuInitError,
+    GpuPoolError,
 };
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,

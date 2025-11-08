@@ -452,25 +452,25 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
 Leverage GPU compute for massive performance gains in image processing operations:
 
 - [ ] **WGPU infrastructure setup**
-  - [ ] Add `wgpu = "0.19"` and `pollster = "0.3"` dependencies to yunet-utils
+  - [ ] Add `wgpu = "27.0.1"` and `pollster = "0.4.0"` dependencies to yunet-utils
   - [ ] Create `yunet-utils/src/gpu/mod.rs` module with GPU context management
   - [ ] Implement GPU device initialization with fallback to CPU
-  - [ ] Add async GPU context pooling for CLI batch operations
+  - [x] Add async GPU context pooling for CLI batch operations
   - [ ] Share GPU context with egui in GUI application (already uses wgpu internally)
   - [ ] Handle GPU init errors gracefully (missing drivers, old hardware)
 
 - [ ] **Phase 13.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
-  - [ ] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader
-    - [ ] Implement RGB→BGR channel swap kernel
-    - [ ] Implement HWC→CHW memory layout transpose
-    - [ ] Add image resize via texture sampling (bilinear/trilinear)
-    - [ ] Single-pass combined resize+convert+transpose operation
-  - [ ] Implement `WgpuPreprocessor` in `yunet-core/src/preprocess.rs`
-    - [ ] Upload source image to GPU texture
-    - [ ] Execute compute shader dispatch
-    - [ ] Download CHW tensor result
-    - [ ] Integrate with existing `PreprocessConfig`
-  - [ ] Add CPU fallback via trait abstraction
+  - [x] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader
+    - [x] Implement RGB→BGR channel swap kernel
+    - [x] Implement HWC→CHW memory layout transpose
+    - [x] Add image resize via texture sampling (bilinear/trilinear)
+    - [x] Single-pass combined resize+convert+transpose operation
+  - [x] Implement `WgpuPreprocessor` in `yunet-core/src/preprocess.rs`
+    - [x] Upload source image to GPU texture
+    - [x] Execute compute shader dispatch
+    - [x] Download CHW tensor result
+    - [x] Integrate with existing `PreprocessConfig`
+  - [x] Add CPU fallback via trait abstraction
 
     ```rust
     trait Preprocessor {
@@ -478,7 +478,9 @@ Leverage GPU compute for massive performance gains in image processing operation
     }
     ```
 
-  - [ ] Benchmark GPU vs CPU preprocessing
+  - [x] Benchmark GPU vs CPU preprocessing
+    - Criterion (GTX 1080 Ti, Vulkan): CPU quality ≈162 ms → GPU quality ≈51 ms; disk-bound GPU ≈126 ms.
+    - CLI `--release --benchmark-preprocess`: CPU avg 7.13 ms/image vs GPU avg 35.48 ms/image (still limited by synchronous map/poll).
   - [ ] **Target: 102ms → 5-10ms (10-20x speedup)**
 
 - [ ] **Phase 13.2: GPU enhancement pipeline** (~50-180ms savings)
@@ -554,7 +556,7 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [ ] **Total savings: ~495ms → Target: <200ms achieved**
 
 - [ ] **CLI/GUI integration**
-  - [ ] Add `--gpu/--no-gpu` CLI flag with auto-detection default
+  - [x] Add `--gpu/--no-gpu` CLI flag with auto-detection default
   - [ ] Add GPU status indicator in GUI (available/in-use/fallback)
   - [ ] Display GPU model/vendor in GUI settings panel
   - [ ] Show GPU memory usage in GUI (optional debug mode)

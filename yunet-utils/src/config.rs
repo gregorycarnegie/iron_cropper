@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::{quality::Quality, shape::CropShape};
+use crate::{gpu::GpuContextOptions, quality::Quality, shape::CropShape};
 
 /// Shared detection parameters that should mirror YuNet defaults.
 ///
@@ -353,6 +353,8 @@ pub struct AppSettings {
     pub enhance: EnhanceSettings,
     /// Telemetry and diagnostics preferences.
     pub telemetry: TelemetrySettings,
+    /// GPU runtime preferences shared across CLI and GUI.
+    pub gpu: GpuSettings,
 }
 
 impl Default for AppSettings {
@@ -364,6 +366,7 @@ impl Default for AppSettings {
             crop: CropSettings::default(),
             enhance: EnhanceSettings::default(),
             telemetry: TelemetrySettings::default(),
+            gpu: GpuSettings::default(),
         };
         settings.crop.sanitize();
         settings
@@ -411,6 +414,40 @@ pub fn default_settings_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("config/gui_settings.json"))
 }
 
+/// GPU-specific runtime preferences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GpuSettings {
+    /// Whether GPU acceleration should be attempted (auto-detect by default).
+    pub enabled: bool,
+    /// Respect `WGPU_*` environment overrides when initializing the backend.
+    pub respect_env: bool,
+}
+
+impl Default for GpuSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            respect_env: true,
+        }
+    }
+}
+
+impl From<GpuSettings> for GpuContextOptions {
+    fn from(settings: GpuSettings) -> Self {
+        let mut options = GpuContextOptions::default();
+        options.enabled = settings.enabled;
+        options.respect_env = settings.respect_env;
+        options
+    }
+}
+
+impl From<&GpuSettings> for GpuContextOptions {
+    fn from(settings: &GpuSettings) -> Self {
+        settings.clone().into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +465,8 @@ mod tests {
         assert_eq!(loaded.model_path, settings.model_path);
         assert_eq!(loaded.telemetry.enabled, settings.telemetry.enabled);
         assert_eq!(loaded.telemetry.level, settings.telemetry.level);
+        assert_eq!(loaded.gpu.enabled, settings.gpu.enabled);
+        assert_eq!(loaded.gpu.respect_env, settings.gpu.respect_env);
     }
 
     #[test]
@@ -452,6 +491,8 @@ mod tests {
         assert!(loaded.model_path.is_some());
         assert!(!loaded.telemetry.enabled);
         assert_eq!(loaded.telemetry.level_filter(), LevelFilter::Debug);
+        assert!(loaded.gpu.enabled);
+        assert!(loaded.gpu.respect_env);
     }
 
     #[test]

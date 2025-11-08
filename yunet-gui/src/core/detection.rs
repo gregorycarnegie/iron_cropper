@@ -6,9 +6,14 @@ use std::sync::{Arc, mpsc};
 use anyhow::{Context as AnyhowContext, Result};
 use egui::{Context as EguiContext, TextureOptions};
 use image::DynamicImage;
-use log::{error, info};
-use yunet_core::{PostprocessConfig, PreprocessConfig, YuNetDetector};
-use yunet_utils::{config::AppSettings, load_image, quality::estimate_sharpness};
+use log::{error, info, warn};
+use yunet_core::{
+    PostprocessConfig, PreprocessConfig, Preprocessor, WgpuPreprocessor, YuNetDetector,
+};
+use yunet_utils::{
+    GpuAvailability, GpuContext, GpuContextOptions, config::AppSettings, load_image,
+    quality::estimate_sharpness,
+};
 
 use crate::{CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, JobMessage};
 
@@ -23,12 +28,54 @@ pub fn build_detector(settings: &AppSettings) -> Result<YuNetDetector> {
 
     let postprocess: PostprocessConfig = (&settings.detection).into();
 
+    if let Some(preprocessor) = maybe_build_gpu_preprocessor(settings)? {
+        return YuNetDetector::with_preprocessor(model_path, preprocess, postprocess, preprocessor)
+            .with_context(|| {
+                format!(
+                    "failed to load YuNet model with GPU preprocessing from {}",
+                    model_path
+                )
+            });
+    }
+
     YuNetDetector::new(model_path, preprocess, postprocess).with_context(|| {
         format!(
             "failed to load YuNet model from configured path {}",
             model_path
         )
     })
+}
+
+fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> Result<Option<Arc<dyn Preprocessor>>> {
+    let options: GpuContextOptions = (&settings.gpu).into();
+    let availability = GpuContext::init_with_fallback(&options);
+
+    match availability {
+        GpuAvailability::Available(context) => match WgpuPreprocessor::new(context.clone()) {
+            Ok(preprocessor) => {
+                info!(
+                    "GUI using GPU preprocessing on '{}' ({:?})",
+                    context.adapter_info().name,
+                    context.adapter_info().backend
+                );
+                Ok(Some(Arc::new(preprocessor)))
+            }
+            Err(err) => {
+                warn!(
+                    "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
+                );
+                Ok(None)
+            }
+        },
+        GpuAvailability::Disabled { reason } => {
+            info!("GPU preprocessing disabled in GUI: {reason}");
+            Ok(None)
+        }
+        GpuAvailability::Unavailable { error } => {
+            warn!("GUI GPU context unavailable: {error}");
+            Ok(None)
+        }
+    }
 }
 
 /// Performs face detection on an image and returns the results.

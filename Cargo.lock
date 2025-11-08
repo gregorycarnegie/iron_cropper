@@ -6467,6 +6467,7 @@ name = "yunet-core"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "criterion",
  "image",
  "log",
@@ -6475,6 +6476,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tract-onnx",
+ "wgpu",
  "yunet-utils",
 ]
 
@@ -6505,6 +6507,7 @@ name = "yunet-utils"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "base64",
  "calamine",
  "crc32fast",
@@ -6515,12 +6518,15 @@ dependencies = [
  "log",
  "ndarray 0.17.1",
  "parquet",
+ "pollster",
  "rayon",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.17",
  "tiny-skia",
+ "wgpu",
  "wide 0.8.2",
 ]
 

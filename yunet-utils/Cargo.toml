@@ -26,6 +26,10 @@ calamine.workspace = true
 parquet.workspace = true
 rusqlite.workspace = true
 fast_image_resize.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+async-channel.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

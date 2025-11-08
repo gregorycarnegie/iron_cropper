@@ -1,0 +1,462 @@
+//! GPU context management helpers built on top of `wgpu`.
+//!
+//! This module keeps GPU initialization code in one place so the CLI and GUI
+//! can share the same device/queue plumbing while still offering a CPU
+//! fallback when no compatible adapter is present.
+
+/// Combined resize + RGB→BGR + HWC→CHW WGSL compute shader.
+pub const PREPROCESS_WGSL: &str = include_str!("preprocess.wgsl");
+
+use std::{fmt, num::NonZeroUsize, sync::Arc};
+
+use async_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
+use log::{debug, info, warn};
+use pollster::block_on;
+use thiserror::Error;
+use wgpu::{
+    Adapter, AdapterInfo, Backends, Device, DeviceDescriptor, Dx12Compiler, ExperimentalFeatures,
+    Features, Instance, InstanceDescriptor, InstanceFlags, Limits, MemoryHints, PowerPreference,
+    Queue, RequestAdapterError, RequestAdapterOptions, RequestDeviceError, Trace,
+};
+
+/// High-level configuration for creating a [`GpuContext`].
+#[derive(Clone, Debug)]
+pub struct GpuContextOptions {
+    /// Whether GPU support is enabled.
+    pub enabled: bool,
+    /// Allow environment variables (e.g. `WGPU_BACKEND`) to override defaults.
+    pub respect_env: bool,
+    /// Which backends should be considered.
+    pub backends: Backends,
+    /// Instance flags (debug/validation toggles).
+    pub flags: InstanceFlags,
+    /// Adapter preference (high-performance vs low-power).
+    pub power_preference: PowerPreference,
+    /// Force wgpu to pick its fallback adapter implementation.
+    pub force_fallback_adapter: bool,
+    /// Features that must be present on the selected adapter.
+    pub required_features: Features,
+    /// Optional features that will be enabled when supported.
+    pub optional_features: Features,
+    /// Limits that must be available. Defaults to the adapter limits.
+    pub required_limits: Option<Limits>,
+    /// DX12 shader compiler selection for Windows targets.
+    pub dx12_shader_compiler: Dx12Compiler,
+    /// Optional debug label for the logical device.
+    pub label: Option<String>,
+    /// Memory allocation hints forwarded to `wgpu`.
+    pub memory_hints: Option<MemoryHints>,
+}
+
+impl Default for GpuContextOptions {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            respect_env: true,
+            backends: Backends::PRIMARY,
+            flags: InstanceFlags::from_build_config(),
+            power_preference: PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            required_features: Features::empty(),
+            optional_features: Features::empty(),
+            required_limits: None,
+            dx12_shader_compiler: Dx12Compiler::default(),
+            label: Some("YuNet GPU context".to_string()),
+            memory_hints: None,
+        }
+    }
+}
+
+impl GpuContextOptions {
+    /// Convenience helper for explicitly disabling GPU usage.
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            ..Self::default()
+        }
+    }
+}
+
+/// Result of attempting to initialize a GPU context while supporting CPU fallback.
+#[derive(Debug)]
+pub enum GpuAvailability {
+    /// GPU resources are ready to use.
+    Available(Arc<GpuContext>),
+    /// GPU code path has been disabled by configuration (CLI flag, user choice, etc.).
+    Disabled { reason: String },
+    /// GPU initialization failed; callers should fall back to CPU.
+    Unavailable { error: GpuInitError },
+}
+
+impl GpuAvailability {
+    /// Returns `true` when a GPU context was created successfully.
+    pub fn is_available(&self) -> bool {
+        matches!(self, Self::Available(_))
+    }
+
+    /// Returns a reference to the underlying GPU context when it exists.
+    pub fn context(&self) -> Option<&Arc<GpuContext>> {
+        match self {
+            Self::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+}
+
+/// Shared GPU device/queue wrapper with a little bit of metadata.
+#[derive(Debug)]
+pub struct GpuContext {
+    instance: Option<Instance>,
+    adapter: Option<Adapter>,
+    device: Device,
+    queue: Queue,
+    info: AdapterInfo,
+    features: Features,
+    limits: Limits,
+}
+
+impl GpuContext {
+    /// Initialize a new GPU context with the provided options.
+    pub fn initialize(options: &GpuContextOptions) -> Result<Self, GpuInitError> {
+        if !options.enabled {
+            return Err(GpuInitError::Disabled);
+        }
+
+        let mut instance_desc = if options.respect_env {
+            InstanceDescriptor::from_env_or_default()
+        } else {
+            InstanceDescriptor::default()
+        };
+
+        let backends = if options.respect_env {
+            options.backends.with_env()
+        } else {
+            options.backends
+        };
+
+        instance_desc.backends = backends;
+        instance_desc.flags = if options.respect_env {
+            options.flags.with_env()
+        } else {
+            options.flags
+        };
+        instance_desc.backend_options.dx12.shader_compiler = options.dx12_shader_compiler.clone();
+
+        let instance = Instance::new(&instance_desc);
+        let adapter = block_on(instance.request_adapter(&RequestAdapterOptions {
+            power_preference: options.power_preference,
+            force_fallback_adapter: options.force_fallback_adapter,
+            compatible_surface: None,
+        }))
+        .map_err(|source| GpuInitError::Adapter { backends, source })?;
+
+        let info = adapter.get_info();
+        let supported_features = adapter.features();
+
+        if !supported_features.contains(options.required_features) {
+            return Err(GpuInitError::MissingFeatures {
+                requested: options.required_features,
+                supported: supported_features,
+            });
+        }
+
+        let mut features = options.required_features;
+        let optional = options.optional_features & supported_features;
+        if !optional.is_empty() {
+            debug!(
+                target: "yunet::gpu",
+                "Enabling optional GPU features: {:?}", optional
+            );
+            features |= optional;
+        }
+
+        let missing_optional = options.optional_features & !supported_features;
+        if !missing_optional.is_empty() {
+            debug!(
+                target: "yunet::gpu",
+                "Skipping unsupported optional GPU features: {:?}", missing_optional
+            );
+        }
+
+        let limits = options
+            .required_limits
+            .clone()
+            .unwrap_or_else(|| adapter.limits());
+
+        let device_desc = DeviceDescriptor {
+            label: options.label.as_deref(),
+            required_features: features,
+            required_limits: limits.clone(),
+            experimental_features: ExperimentalFeatures::default(),
+            memory_hints: options.memory_hints.clone().unwrap_or_default(),
+            trace: Trace::default(),
+        };
+
+        let (device, queue) =
+            block_on(adapter.request_device(&device_desc)).map_err(GpuInitError::from)?;
+
+        info!(
+            target: "yunet::gpu",
+            "Using GPU adapter '{}' ({:?}/{:?}) with features {:?}",
+            info.name, info.backend, info.device_type, features
+        );
+
+        Ok(Self {
+            instance: Some(instance),
+            adapter: Some(adapter),
+            device,
+            queue,
+            info,
+            features,
+            limits,
+        })
+    }
+
+    /// Attempt to create a GPU context and gracefully fall back to CPU if that fails.
+    pub fn init_with_fallback(options: &GpuContextOptions) -> GpuAvailability {
+        if !options.enabled {
+            return GpuAvailability::Disabled {
+                reason: "GPU acceleration disabled via configuration".to_string(),
+            };
+        }
+
+        match Self::initialize(options) {
+            Ok(ctx) => GpuAvailability::Available(Arc::new(ctx)),
+            Err(GpuInitError::Disabled) => GpuAvailability::Disabled {
+                reason: "GPU acceleration disabled via configuration".to_string(),
+            },
+            Err(err) => {
+                warn!(
+                    target: "yunet::gpu",
+                    "GPU initialization failed ({err}); falling back to CPU."
+                );
+                GpuAvailability::Unavailable { error: err }
+            }
+        }
+    }
+
+    /// Wrap an existing device/queue pair created by an external renderer (e.g. egui/eframe).
+    pub fn from_existing(
+        instance: Option<Instance>,
+        adapter: Option<Adapter>,
+        device: Device,
+        queue: Queue,
+        info: AdapterInfo,
+    ) -> Self {
+        let features = device.features();
+        let limits = device.limits();
+        Self {
+            instance,
+            adapter,
+            device,
+            queue,
+            info,
+            features,
+            limits,
+        }
+    }
+
+    /// Returns the shared `wgpu::Device`.
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    /// Returns the shared `wgpu::Queue`.
+    pub fn queue(&self) -> &Queue {
+        &self.queue
+    }
+
+    /// Adapter metadata handy for GUI display/logging.
+    pub fn adapter_info(&self) -> &AdapterInfo {
+        &self.info
+    }
+
+    /// `wgpu::Features` enabled on this context.
+    pub fn features(&self) -> Features {
+        self.features
+    }
+
+    /// `wgpu::Limits` negotiated for this context.
+    pub fn limits(&self) -> &Limits {
+        &self.limits
+    }
+
+    /// Returns the underlying `wgpu::Instance` if this context owns one.
+    pub fn instance(&self) -> Option<&Instance> {
+        self.instance.as_ref()
+    }
+
+    /// Returns the underlying adapter when available.
+    pub fn adapter(&self) -> Option<&Adapter> {
+        self.adapter.as_ref()
+    }
+}
+
+/// Tracks GPU initialization failures and reasons for CPU fallback.
+#[derive(Debug, Error)]
+pub enum GpuInitError {
+    #[error("GPU adapter request failed for {backends:?}: {source}")]
+    Adapter {
+        backends: Backends,
+        #[source]
+        source: RequestAdapterError,
+    },
+    #[error(
+        "GPU adapter missing required features (requested={requested:?}, supported={supported:?})"
+    )]
+    MissingFeatures {
+        requested: Features,
+        supported: Features,
+    },
+    #[error("GPU device creation failed: {0}")]
+    Device(#[from] RequestDeviceError),
+    #[error("GPU acceleration disabled")]
+    Disabled,
+}
+
+/// Concurrency guard that keeps GPU contexts balanced across worker threads.
+#[derive(Clone)]
+pub struct GpuContextPool {
+    size: NonZeroUsize,
+    sender: Sender<Arc<GpuContext>>,
+    receiver: Receiver<Arc<GpuContext>>,
+}
+
+impl GpuContextPool {
+    /// Create a bounded pool backed by the provided GPU context.
+    pub fn new(context: Arc<GpuContext>, size: NonZeroUsize) -> Result<Self, GpuPoolError> {
+        let (sender, receiver) = bounded(size.get());
+        for _ in 0..size.get() {
+            sender
+                .send_blocking(context.clone())
+                .map_err(|_| GpuPoolError::Closed)?;
+        }
+
+        Ok(Self {
+            size,
+            sender,
+            receiver,
+        })
+    }
+
+    /// Acquire a GPU context using a blocking call (handy for rayon/CLI threads).
+    pub fn acquire(&self) -> Result<GpuContextGuard, GpuPoolError> {
+        let ctx = self
+            .receiver
+            .recv_blocking()
+            .map_err(|_| GpuPoolError::Closed)?;
+        Ok(GpuContextGuard::new(ctx, &self.sender))
+    }
+
+    /// Acquire a GPU context asynchronously.
+    pub async fn acquire_async(&self) -> Result<GpuContextGuard, GpuPoolError> {
+        let ctx = self
+            .receiver
+            .recv()
+            .await
+            .map_err(|_| GpuPoolError::Closed)?;
+        Ok(GpuContextGuard::new(ctx, &self.sender))
+    }
+
+    /// Try acquiring without blocking, returning `None` when the pool is currently empty.
+    pub fn try_acquire(&self) -> Result<Option<GpuContextGuard>, GpuPoolError> {
+        match self.receiver.try_recv() {
+            Ok(ctx) => Ok(Some(GpuContextGuard::new(ctx, &self.sender))),
+            Err(TryRecvError::Empty) => Ok(None),
+            Err(TryRecvError::Closed) => Err(GpuPoolError::Closed),
+        }
+    }
+
+    /// Total capacity enforced by this pool.
+    pub fn capacity(&self) -> usize {
+        self.size.get()
+    }
+
+    /// Current number of idle contexts.
+    pub fn available(&self) -> usize {
+        self.receiver.len()
+    }
+}
+
+impl fmt::Debug for GpuContextPool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GpuContextPool")
+            .field("capacity", &self.capacity())
+            .field("available", &self.available())
+            .finish()
+    }
+}
+
+/// RAII guard for a borrowed GPU context from a [`GpuContextPool`].
+pub struct GpuContextGuard {
+    context: Option<Arc<GpuContext>>,
+    sender: Sender<Arc<GpuContext>>,
+}
+
+impl GpuContextGuard {
+    fn new(context: Arc<GpuContext>, sender: &Sender<Arc<GpuContext>>) -> Self {
+        Self {
+            context: Some(context),
+            sender: sender.clone(),
+        }
+    }
+
+    /// Returns a reference to the inner GPU context.
+    pub fn context(&self) -> &GpuContext {
+        self
+    }
+}
+
+impl std::ops::Deref for GpuContextGuard {
+    type Target = GpuContext;
+
+    fn deref(&self) -> &Self::Target {
+        self.context
+            .as_deref()
+            .expect("GPU context guard should always hold a context")
+    }
+}
+
+impl Drop for GpuContextGuard {
+    fn drop(&mut self) {
+        if let Some(ctx) = self.context.take() {
+            if let Err(err) = self.sender.try_send(ctx) {
+                match err {
+                    TrySendError::Full(ctx) => {
+                        if let Err(send_err) = self.sender.send_blocking(ctx) {
+                            debug!(
+                                target: "yunet::gpu",
+                                "GPU pool closed while returning guard: {send_err}"
+                            );
+                        }
+                    }
+                    TrySendError::Closed(_) => debug!(
+                        target: "yunet::gpu",
+                        "GPU pool closed; dropping context guard."
+                    ),
+                }
+            }
+        }
+    }
+}
+
+/// Errors that can occur while interacting with a [`GpuContextPool`].
+#[derive(Debug, Error)]
+pub enum GpuPoolError {
+    #[error("GPU context pool has been closed")]
+    Closed,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_options_skip_gpu_setup() {
+        let options = GpuContextOptions::disabled();
+        match GpuContext::init_with_fallback(&options) {
+            GpuAvailability::Disabled { .. } => {}
+            other => panic!("expected GPU to be disabled, got {other:?}"),
+        }
+    }
+}

@@ -25,7 +25,8 @@ pub use detector::{DetectionOutput, YuNetDetector};
 pub use model::YuNetModel;
 pub use postprocess::{BoundingBox, Detection, Landmark, PostprocessConfig, apply_postprocess};
 pub use preprocess::{
-    InputSize, PreprocessConfig, PreprocessOutput, preprocess_dynamic_image, preprocess_image,
+    CpuPreprocessor, InputSize, PreprocessConfig, PreprocessOutput, Preprocessor, WgpuPreprocessor,
+    preprocess_dynamic_image, preprocess_image, preprocess_image_with,
 };
 
 /// Returns the crate version for diagnostics.
