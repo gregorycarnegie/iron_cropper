@@ -1,27 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo run:*)",
-      "Bash(cargo test:*)",
-      "Bash(cargo doc:*)",
-      "Bash(cargo search:*)",
-      "Bash(cargo build:*)",
-      "Bash(python scripts/inspect_onnx.py:*)",
-      "Bash(.venv/Scripts/python:*)",
+      "Bash(mkdir:*)",
+      "Bash(test:*)",
       "Bash(cat:*)",
-      "Read(//c/tmp/**)",
-      "Bash(powershell -Command \"Measure-Command { cargo run -p yunet-cli -- --input fixtures/images/006.jpg --model models/face_detection_yunet_2023mar_640.onnx 2>&1 | Out-Null } | Select-Object TotalSeconds\")",
-      "Bash(cargo bench:*)",
-      "Bash(powershell -Command:*)",
-      "Bash(cargo fmt:*)",
-      "Bash(for:*)",
-      "Bash(do echo \"=== Run $i ===\")",
-      "Bash(done)",
-      "Read(//c/Users/grego/JavaScriptProjects/opencv-face-crop/**)",
-      "Bash(tree:*)",
-      "Bash(cargo clippy:*)",
       "Bash(cargo check:*)",
-      "Bash(do powershell -Command \"(Get-Content $file) -replace ''        \\.args\\(&\\['', ''        .args(['' | Set-Content $file\")"
+      "Bash(python3 -c:*)",
+      "Bash(python:*)",
+      "Bash(grep:*)",
+      "Bash(git log:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []
