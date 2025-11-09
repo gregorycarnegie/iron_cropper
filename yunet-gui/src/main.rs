@@ -87,11 +87,38 @@ impl YuNetApp {
     /// Creates a new `YuNetApp` instance.
     fn new(cc: &CreationContext<'_>) -> Self {
         let settings_path = default_settings_path();
-        Self::create(&cc.egui_ctx, settings_path)
+
+        // Try to extract the WGPU render state from eframe
+        let shared_gpu_context = cc.wgpu_render_state.as_ref().and_then(|render_state| {
+            info!("Extracting GPU context from eframe WGPU renderer");
+            let device = render_state.device.clone();
+            let queue = render_state.queue.clone();
+            let info = render_state.adapter.get_info();
+
+            Some(Arc::new(GpuContext::from_existing(
+                None,  // eframe doesn't expose the instance
+                None,  // eframe doesn't expose the adapter directly
+                device,
+                queue,
+                info,
+            )))
+        });
+
+        if shared_gpu_context.is_some() {
+            info!("Successfully created shared GPU context from eframe renderer");
+        } else {
+            info!("No WGPU render state available from eframe, will create separate GPU context if needed");
+        }
+
+        Self::create(&cc.egui_ctx, settings_path, shared_gpu_context)
     }
 
     /// Creates a new `YuNetApp` instance with a specific settings path.
-    pub(crate) fn create(ctx: &egui::Context, settings_path: std::path::PathBuf) -> Self {
+    pub(crate) fn create(
+        ctx: &egui::Context,
+        settings_path: std::path::PathBuf,
+        shared_gpu_context: Option<Arc<GpuContext>>,
+    ) -> Self {
         use core::{detection::build_detector, settings::load_settings};
         use std::sync::mpsc;
         use types::MappingUiState;
@@ -113,7 +140,7 @@ impl YuNetApp {
         }
         let (job_tx, job_rx) = mpsc::channel();
 
-        let (initial_gpu_status, initial_gpu_context, detector_result) = build_detector(&settings);
+        let (initial_gpu_status, initial_gpu_context, detector_result) = build_detector(&settings, shared_gpu_context);
         let (gpu_context, gpu_enhancer) = YuNetApp::init_gpu_enhancer(initial_gpu_context);
         let detector = match detector_result {
             Ok(detector) => {
@@ -231,7 +258,7 @@ mod tests {
         let ctx = egui::Context::default();
         let temp = tempdir().expect("tempdir");
         let settings_path = temp.path().join("gui_settings_test.json");
-        let app = YuNetApp::create(&ctx, settings_path);
+        let app = YuNetApp::create(&ctx, settings_path, None);
         (app, temp, ctx)
     }
 
@@ -243,7 +270,7 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let settings_path = temp.path().join("config").join("gui_settings_smoke.json");
 
-        let mut app = YuNetApp::create(&ctx, settings_path.clone());
+        let mut app = YuNetApp::create(&ctx, settings_path.clone(), None);
         assert!(app.detector.is_none());
         assert!(
             app.status_line.contains("Model not loaded")

@@ -133,7 +133,7 @@ impl YuNetApp {
         }
 
         let (gpu_status_update, gpu_context_update, detector_result) =
-            detection::ensure_detector(&mut self.detector, &self.settings);
+            detection::ensure_detector(&mut self.detector, &self.settings, self.gpu_context.clone());
         if let Some(status) = gpu_status_update.as_ref() {
             self.gpu_status = status.clone();
         }

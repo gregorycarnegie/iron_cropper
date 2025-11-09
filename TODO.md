@@ -451,13 +451,13 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
 
 Leverage GPU compute for massive performance gains in image processing operations:
 
-- [ ] **WGPU infrastructure setup**
+- [x] **WGPU infrastructure setup**
   - [x] Add `wgpu = "27.0.1"` and `pollster = "0.4.0"` dependencies to yunet-utils
-  - [ ] Create `yunet-utils/src/gpu/mod.rs` module with GPU context management
-  - [ ] Implement GPU device initialization with fallback to CPU
+  - [x] Create `yunet-utils/src/gpu/mod.rs` module with GPU context management
+  - [x] Implement GPU device initialization with fallback to CPU
   - [x] Add async GPU context pooling for CLI batch operations
-  - [ ] Share GPU context with egui in GUI application (already uses wgpu internally)
-  - [ ] Handle GPU init errors gracefully (missing drivers, old hardware)
+  - [x] Share GPU context with egui in GUI application (already uses wgpu internally)
+  - [x] Handle GPU init errors gracefully (missing drivers, old hardware)
 
 - [ ] **Phase 13.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
   - [x] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader

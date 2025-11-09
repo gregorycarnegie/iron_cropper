@@ -21,14 +21,25 @@ use crate::{
 };
 
 /// Builds a `YuNetDetector` from the given application settings, returning the resolved GPU status.
+///
+/// If `shared_gpu_context` is provided (e.g., from egui's WGPU renderer), it will be used instead
+/// of creating a new GPU context.
 pub fn build_detector(
     settings: &AppSettings,
+    shared_gpu_context: Option<Arc<GpuContext>>,
 ) -> (
     GpuStatusIndicator,
     Option<Arc<GpuContext>>,
     Result<YuNetDetector>,
 ) {
-    let (preprocessor, gpu_context, gpu_status) = maybe_build_gpu_preprocessor(settings);
+    let (preprocessor, gpu_context, gpu_status) = if let Some(shared_ctx) = shared_gpu_context {
+        // Use the shared GPU context from egui's renderer
+        info!("Using shared GPU context from egui renderer");
+        maybe_build_gpu_preprocessor_with_context(settings, shared_ctx)
+    } else {
+        // Create a new GPU context
+        maybe_build_gpu_preprocessor(settings)
+    };
 
     let Some(model_path) = settings.model_path.as_deref() else {
         return (
@@ -73,36 +84,7 @@ fn maybe_build_gpu_preprocessor(
 
     match availability {
         GpuAvailability::Available(context) => {
-            let info = context.adapter_info();
-            match WgpuPreprocessor::new(context.clone()) {
-                Ok(preprocessor) => {
-                    info!(
-                        "GUI using GPU preprocessing on '{}' ({:?})",
-                        info.name, info.backend
-                    );
-                    let status = GpuStatusIndicator::available(
-                        info.name.clone(),
-                        format!("{:?}", info.backend),
-                        Some(info.driver.clone()),
-                        Some(info.vendor),
-                        Some(info.device),
-                    );
-                    status.emit_telemetry(None, None);
-                    (Some(Arc::new(preprocessor)), Some(context.clone()), status)
-                }
-                Err(err) => {
-                    warn!(
-                        "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
-                    );
-                    let status = GpuStatusIndicator::fallback(
-                        format!("Failed to compile GPU shader: {err}"),
-                        Some(info.name.clone()),
-                        Some(format!("{:?}", info.backend)),
-                    );
-                    status.emit_telemetry(None, None);
-                    (None, Some(context.clone()), status)
-                }
-            }
+            build_preprocessor_from_context(context)
         }
         GpuAvailability::Disabled { reason } => {
             info!("GPU preprocessing disabled in GUI: {reason}");
@@ -115,6 +97,64 @@ fn maybe_build_gpu_preprocessor(
             let status = GpuStatusIndicator::error(error.to_string());
             status.emit_telemetry(None, None);
             (None, None, status)
+        }
+    }
+}
+
+fn maybe_build_gpu_preprocessor_with_context(
+    settings: &AppSettings,
+    shared_context: Arc<GpuContext>,
+) -> (
+    Option<Arc<dyn Preprocessor>>,
+    Option<Arc<GpuContext>>,
+    GpuStatusIndicator,
+) {
+    // Check if GPU is disabled in settings
+    if !settings.gpu.enabled {
+        info!("GPU preprocessing disabled by configuration despite shared context available");
+        let status = GpuStatusIndicator::disabled("Disabled by user configuration".to_string());
+        status.emit_telemetry(None, None);
+        return (None, None, status);
+    }
+
+    build_preprocessor_from_context(shared_context)
+}
+
+fn build_preprocessor_from_context(
+    context: Arc<GpuContext>,
+) -> (
+    Option<Arc<dyn Preprocessor>>,
+    Option<Arc<GpuContext>>,
+    GpuStatusIndicator,
+) {
+    let info = context.adapter_info();
+    match WgpuPreprocessor::new(context.clone()) {
+        Ok(preprocessor) => {
+            info!(
+                "GUI using GPU preprocessing on '{}' ({:?})",
+                info.name, info.backend
+            );
+            let status = GpuStatusIndicator::available(
+                info.name.clone(),
+                format!("{:?}", info.backend),
+                Some(info.driver.clone()),
+                Some(info.vendor),
+                Some(info.device),
+            );
+            status.emit_telemetry(None, None);
+            (Some(Arc::new(preprocessor)), Some(context.clone()), status)
+        }
+        Err(err) => {
+            warn!(
+                "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
+            );
+            let status = GpuStatusIndicator::fallback(
+                format!("Failed to compile GPU shader: {err}"),
+                Some(info.name.clone()),
+                Some(format!("{:?}", info.backend)),
+            );
+            status.emit_telemetry(None, None);
+            (None, Some(context.clone()), status)
         }
     }
 }
@@ -251,6 +291,7 @@ pub fn start_detection(
 pub fn ensure_detector(
     detector: &mut Option<Arc<YuNetDetector>>,
     settings: &AppSettings,
+    shared_gpu_context: Option<Arc<GpuContext>>,
 ) -> (
     Option<GpuStatusIndicator>,
     Option<Arc<GpuContext>>,
@@ -260,7 +301,7 @@ pub fn ensure_detector(
         return (None, None, Ok(existing.clone()));
     }
 
-    let (gpu_status, gpu_context, detector_result) = build_detector(settings);
+    let (gpu_status, gpu_context, detector_result) = build_detector(settings, shared_gpu_context);
     match detector_result {
         Ok(built) => {
             let arc = Arc::new(built);

@@ -10,7 +10,8 @@
       "Bash(grep:*)",
       "Bash(git log:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(cargo tree:*)"
     ],
     "deny": [],
     "ask": []

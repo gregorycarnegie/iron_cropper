@@ -11,10 +11,10 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "custom",
-    "output_width": 330,
-    "output_height": 500,
-    "face_height_pct": 37.0,
+    "preset": "passport",
+    "output_width": 413,
+    "output_height": 531,
+    "face_height_pct": 60.0,
     "positioning_mode": "center",
     "vertical_offset": -0.0,
     "horizontal_offset": 0.0,
@@ -36,26 +36,22 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 45.0,
-      "corner_style": {
-        "style": "sharp"
-      }
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.12
     }
   },
   "enhance": {
     "enabled": true,
-    "preset": "professional",
+    "preset": "natural",
     "auto_color": false,
     "exposure_stops": 0.0,
-    "brightness": 0,
-    "contrast": 1.1,
-    "saturation": 1.0,
-    "sharpness": 0.6,
+    "brightness": 5,
+    "contrast": 1.05,
+    "saturation": 1.05,
+    "sharpness": 0.3,
     "skin_smooth": 0.0,
-    "red_eye_removal": true,
-    "background_blur": true
+    "red_eye_removal": false,
+    "background_blur": false
   },
   "telemetry": {
     "enabled": true,
