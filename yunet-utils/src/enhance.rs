@@ -4,8 +4,13 @@
 //! when `--enhance` is requested. The implementations are intentionally
 //! lightweight and pure-Rust using the `image` crate.
 
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use wide::f32x4;
+
+use crate::gpu::{GpuContext, GpuPixelAdjust};
 
 const EPSILON: f32 = 1e-6;
 
@@ -549,6 +554,91 @@ pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) ->
     }
 
     out
+}
+
+/// GPU-accelerated enhancement pipeline that currently offloads pixel adjustments.
+#[derive(Clone)]
+pub struct WgpuEnhancer {
+    context: Arc<GpuContext>,
+    pixel_adjust: GpuPixelAdjust,
+}
+
+impl WgpuEnhancer {
+    /// Create a new GPU-backed enhancer using the shared [`GpuContext`].
+    pub fn new(context: Arc<GpuContext>) -> Result<Self> {
+        let pixel_adjust = GpuPixelAdjust::new(context.clone())
+            .context("failed to create GPU pixel adjust pipeline")?;
+        Ok(Self {
+            context,
+            pixel_adjust,
+        })
+    }
+
+    /// Apply the configured enhancements, using GPU kernels where available.
+    pub fn apply(
+        &self,
+        img: &DynamicImage,
+        settings: &EnhancementSettings,
+    ) -> Result<DynamicImage> {
+        let mut out = img.clone();
+
+        if settings.auto_color {
+            out = apply_histogram_equalization(&out);
+        }
+
+        if settings.red_eye_removal {
+            out = apply_red_eye_removal(&out, settings.red_eye_threshold);
+        }
+
+        if GpuPixelAdjust::needs_adjustment(settings) {
+            out = self
+                .pixel_adjust
+                .apply(&out, settings)
+                .context("gpu pixel adjust failed")?;
+        } else {
+            if settings.exposure_stops.abs() >= EPSILON {
+                out = apply_exposure(&out, settings.exposure_stops);
+            }
+            if settings.brightness != 0 {
+                out = apply_brightness(&out, settings.brightness);
+            }
+            if (settings.contrast - 1.0).abs() >= EPSILON {
+                out = apply_contrast(&out, settings.contrast);
+            }
+            if (settings.saturation - 1.0).abs() >= EPSILON {
+                out = apply_saturation(&out, settings.saturation);
+            }
+        }
+
+        if settings.skin_smooth_amount > 0.0 {
+            out = apply_skin_smoothing(
+                &out,
+                settings.skin_smooth_amount,
+                settings.skin_smooth_sigma_space,
+                settings.skin_smooth_sigma_color,
+            );
+        }
+
+        let combined_sharp = (settings.unsharp_amount + settings.sharpness).clamp(0.0, 2.0);
+        if combined_sharp > 0.0 && settings.unsharp_radius > 0.0 {
+            out = apply_unsharp_mask(&out, combined_sharp, settings.unsharp_radius);
+        }
+
+        if settings.background_blur {
+            out = apply_background_blur(
+                &out,
+                settings.background_blur_radius,
+                settings.background_blur_mask_size,
+            );
+        }
+
+        Ok(out)
+    }
+
+    /// Access the underlying GPU context (handy for logging/tests).
+    pub fn context(&self) -> &Arc<GpuContext> {
+        &self.context
+    }
 }
 
 #[cfg(test)]

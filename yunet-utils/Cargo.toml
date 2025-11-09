@@ -30,6 +30,7 @@ wgpu.workspace = true
 pollster.workspace = true
 async-channel.workspace = true
 thiserror.workspace = true
+bytemuck.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

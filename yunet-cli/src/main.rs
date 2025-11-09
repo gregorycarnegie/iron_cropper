@@ -24,7 +24,7 @@ use yunet_core::{
 use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
 use yunet_utils::{
     EnhancementSettings, GpuAvailability, GpuContext, GpuContextOptions, GpuContextPool,
-    GpuPoolError, MetadataContext, OutputOptions, Quality, QualityFilter,
+    GpuPoolError, MetadataContext, OutputOptions, Quality, QualityFilter, WgpuEnhancer,
     append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
@@ -343,6 +343,7 @@ struct CliGpuRuntime {
     context: Option<Arc<GpuContext>>,
     pool: Option<GpuContextPool>,
     status: GpuStatusIndicator,
+    enhancer: Option<Arc<WgpuEnhancer>>,
 }
 
 impl CliGpuRuntime {
@@ -362,6 +363,18 @@ impl CliGpuRuntime {
 
     fn log_status(&self) {
         log_gpu_status(&self.status, self.pool.as_ref());
+    }
+
+    fn enhance(&self, image: &DynamicImage, settings: &EnhancementSettings) -> DynamicImage {
+        if let Some(enhancer) = &self.enhancer {
+            match enhancer.apply(image, settings) {
+                Ok(output) => return output,
+                Err(err) => {
+                    warn!("GPU enhancement failed: {err}; falling back to CPU pipeline.");
+                }
+            }
+        }
+        apply_enhancements(image, settings)
     }
 }
 
@@ -453,10 +466,29 @@ fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
         }
     };
 
+    let enhancer = match &context {
+        Some(ctx) => match WgpuEnhancer::new(ctx.clone()) {
+            Ok(enhancer) => {
+                info!(
+                    "GPU enhancement pipeline ready on '{}' ({:?})",
+                    ctx.adapter_info().name,
+                    ctx.adapter_info().backend
+                );
+                Some(Arc::new(enhancer))
+            }
+            Err(err) => {
+                warn!("GPU enhancer initialization failed: {err}");
+                None
+            }
+        },
+        None => None,
+    };
+
     let runtime = CliGpuRuntime {
         context,
         pool,
         status,
+        enhancer,
     };
     runtime.log_status();
     runtime.log_pool_state();
@@ -654,7 +686,7 @@ fn main() -> Result<()> {
     // Build a centralized quality filter using resolved automation settings so the same
     // policy is used for cropping, batch export, and future GUI wiring.
     let quality_filter = build_quality_filter(&settings.crop.quality_rules);
-    let gpu_runtime = init_cli_gpu_runtime(&settings)?;
+    let gpu_runtime = Arc::new(init_cli_gpu_runtime(&settings)?);
 
     let preprocess_config: PreprocessConfig = settings.input.into();
     let postprocess_config: PostprocessConfig = (&settings.detection).into();
@@ -689,7 +721,7 @@ fn main() -> Result<()> {
         &model_path,
         &preprocess_config,
         &postprocess_config,
-        &gpu_runtime,
+        gpu_runtime.as_ref(),
     )?;
 
     if args.mapping_file.is_some() && !args.crop {
@@ -739,6 +771,7 @@ fn main() -> Result<()> {
             let settings = Arc::clone(&shared_settings);
             let quality_filter = Arc::clone(&quality_filter);
             let enhancement_settings = Arc::clone(&enhancement_settings);
+            let runtime = Arc::clone(&gpu_runtime);
             let image_path = &target.source;
             let override_target = target.output_override.clone();
             if let Some(row) = target.mapping_row {
@@ -803,7 +836,7 @@ fn main() -> Result<()> {
                     for (idx, det) in output.detections.iter().enumerate() {
                         let mut crop_img = crop_face_from_image(img, det, &core_settings);
                         if let Some(enh) = enhancement_settings.as_ref() {
-                            crop_img = apply_enhancements(&crop_img, enh);
+                            crop_img = runtime.enhance(&crop_img, enh);
                         }
                         let (quality_score, quality) = estimate_sharpness(&crop_img);
                         apply_shape_mask_dynamic(&mut crop_img, &settings.crop.shape);

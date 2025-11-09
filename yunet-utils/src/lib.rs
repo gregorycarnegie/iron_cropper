@@ -26,7 +26,7 @@ use std::path::Path;
 use anyhow::Result;
 use log::LevelFilter;
 
-pub use enhance::{EnhancementSettings, apply_enhancements};
+pub use enhance::{EnhancementSettings, WgpuEnhancer, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
 };

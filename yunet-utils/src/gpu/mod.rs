@@ -6,6 +6,11 @@
 
 /// Combined resize + RGB→BGR + HWC→CHW WGSL compute shader.
 pub const PREPROCESS_WGSL: &str = include_str!("preprocess.wgsl");
+/// Per-pixel exposure/brightness/contrast/saturation adjust shader.
+pub const PIXEL_ADJUST_WGSL: &str = include_str!("pixel_adjust.wgsl");
+
+pub mod pixel_adjust;
+pub use pixel_adjust::GpuPixelAdjust;
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
@@ -14,6 +19,7 @@ use async_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use log::{Level, debug, info, warn};
 use pollster::block_on;
 use serde::Serialize;
+use serde_json;
 use thiserror::Error;
 use wgpu::{
     Adapter, AdapterInfo, Backends, Device, DeviceDescriptor, Dx12Compiler, ExperimentalFeatures,
