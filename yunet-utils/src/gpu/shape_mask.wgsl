@@ -26,7 +26,7 @@ fn point_in_polygon(p : vec2<f32>) -> bool {
         let pj = polygon_points[j];
         let intersects =
             ((pi.y > p.y) != (pj.y > p.y)) &&
-            (p.x < (pj.x - pi.x) * (p.y - pi.y) / max(pj.y - pi.y, 1e-6) + pi.x);
+            (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y) + pi.x);
         if (intersects) {
             inside = !inside;
         }
