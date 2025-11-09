@@ -1,5 +1,9 @@
 # Iron Cropper
 
+![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
+![WGSL](https://img.shields.io/badge/WGSL-GPU%20Compute-blue?logo=webgpu)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 Iron Cropper is a Rust workspace that wraps the YuNet face detector with deterministic cropping, quality analysis, enhancement, and export tooling. The project ships both a command-line workflow and an egui desktop application, backed by shared utilities for image processing, metadata handling, and configuration.
 
 ## Crates
@@ -18,7 +22,6 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - **Enhancement pipeline** – Optional post-crop adjustments (auto color, exposure, brightness, contrast, saturation, sharpening, skin smoothing, red-eye removal, and portrait background blur) implemented in pure Rust.
 - **Metadata & export** – Preserve, strip, or customise metadata. Exports support PNG, JPEG (with quality controls), and WebP.
 - **Batch processing** – Both CLI and GUI support multi-image workflows with status tracking, filenames derived from templates, and quality-aware selection.
-
 
 ## Mapping-driven Workflows
 
@@ -46,7 +49,7 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 
 ## Documentation
 
-- `docs/parity_report.md` � Summary of YuNet vs OpenCV parity metrics.
+- `docs/parity_report.md` – Summary of YuNet vs OpenCV parity metrics.
 - `ARCHITECTURE.md` – End-to-end architecture and crop pipeline notes.
 - `docs/gui_crop_guide.md` – Detailed walkthrough of the GUI crop features.
 - `docs/cli_recipes.md` – Command-line recipes for common automation scenarios.
