@@ -87,7 +87,7 @@ pub fn preprocess_image<P: AsRef<Path>>(
     path: P,
     config: &PreprocessConfig,
 ) -> Result<PreprocessOutput> {
-    let default_cpu = CpuPreprocessor::default();
+    let default_cpu = CpuPreprocessor;
     preprocess_image_with(&default_cpu, path, config)
 }
 
@@ -126,7 +126,7 @@ pub fn preprocess_dynamic_image(
     image: &DynamicImage,
     config: &PreprocessConfig,
 ) -> Result<PreprocessOutput> {
-    let cpu = CpuPreprocessor::default();
+    let cpu = CpuPreprocessor;
     cpu.preprocess(image, config)
 }
 
@@ -620,8 +620,8 @@ fn gpu_preprocess(
         });
         pass.set_pipeline(&pipeline.pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
-        let workgroups_x = div_ceil(input_w, 8);
-        let workgroups_y = div_ceil(input_h, 8);
+        let workgroups_x = input_w.div_ceil(8);
+        let workgroups_y = input_h.div_ceil(8);
         pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
     }
     encoder.copy_buffer_to_buffer(&storage_buffer, 0, &readback_buffer, 0, output_size_bytes);
@@ -671,12 +671,8 @@ fn gpu_preprocess(
     })
 }
 
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
-}
-
 fn align_to(value: usize, alignment: usize) -> usize {
-    if value % alignment == 0 {
+    if value.is_multiple_of(alignment) {
         value
     } else {
         value + (alignment - (value % alignment))
@@ -744,7 +740,7 @@ mod tests {
             ..Default::default()
         };
 
-        let cpu = CpuPreprocessor::default();
+        let cpu = CpuPreprocessor;
         let trait_output = cpu.preprocess(&dynamic, &config).expect("trait preprocess");
         let helper_output =
             preprocess_dynamic_image(&dynamic, &config).expect("function preprocess");

@@ -147,7 +147,7 @@ impl GpuBilateralFilter {
             width,
             height,
             radius,
-            pixel_count: (width as u32) * (height as u32),
+            pixel_count: width * height,
             sigma_space,
             sigma_color,
             amount,
@@ -182,8 +182,8 @@ impl GpuBilateralFilter {
             label: Some("yunet_bilateral_filter_encoder"),
         });
         {
-            let workgroups_x = div_ceil(width, 8);
-            let workgroups_y = div_ceil(height, 8);
+            let workgroups_x = width.div_ceil(8);
+            let workgroups_y = height.div_ceil(8);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_bilateral_filter_pass"),
                 timestamp_writes: None,
@@ -233,8 +233,4 @@ impl GpuBilateralFilter {
             .context("failed to build smoothed image")?;
         Ok(DynamicImage::ImageRgba8(image))
     }
-}
-
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
 }

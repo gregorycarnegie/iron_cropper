@@ -160,8 +160,8 @@ impl GpuBackgroundBlur {
             label: Some("yunet_background_blur_encoder"),
         });
         {
-            let workgroups_x = div_ceil(width, 16);
-            let workgroups_y = div_ceil(height, 16);
+            let workgroups_x = width.div_ceil(16);
+            let workgroups_y = height.div_ceil(16);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_background_blur_pass"),
                 timestamp_writes: None,
@@ -224,8 +224,4 @@ fn buffer_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
         },
         count: None,
     }
-}
-
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
 }

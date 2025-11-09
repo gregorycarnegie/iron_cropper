@@ -139,13 +139,13 @@ impl YuNetApp {
         }
         if let Some(context) = gpu_context_update {
             self.refresh_gpu_enhancer(Some(context));
-        } else if let Some(status) = gpu_status_update {
-            if !matches!(
+        } else if let Some(status) = gpu_status_update
+            && !matches!(
                 status.mode,
                 GpuStatusMode::Available | GpuStatusMode::Pending
-            ) {
-                self.refresh_gpu_enhancer(None);
-            }
+            )
+        {
+            self.refresh_gpu_enhancer(None);
         }
         let detector = match detector_result {
             Ok(detector) => detector,

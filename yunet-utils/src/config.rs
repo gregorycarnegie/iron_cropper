@@ -44,19 +44,14 @@ impl Default for DetectionSettings {
 /// Inference input resolution in pixels (width x height).
 ///
 /// The input image will be resized to these dimensions before being passed to the model.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ResizeQuality {
     /// Preserve visual quality when resizing (default, Triangle filter).
+    #[default]
     Quality,
     /// Prioritize throughput for batch inference (Nearest filter).
     Speed,
-}
-
-impl Default for ResizeQuality {
-    fn default() -> Self {
-        ResizeQuality::Quality
-    }
 }
 
 impl ResizeQuality {
@@ -435,10 +430,11 @@ impl Default for GpuSettings {
 
 impl From<GpuSettings> for GpuContextOptions {
     fn from(settings: GpuSettings) -> Self {
-        let mut options = GpuContextOptions::default();
-        options.enabled = settings.enabled;
-        options.respect_env = settings.respect_env;
-        options
+        GpuContextOptions {
+            enabled: settings.enabled,
+            respect_env: settings.respect_env,
+            ..Default::default()
+        }
     }
 }
 

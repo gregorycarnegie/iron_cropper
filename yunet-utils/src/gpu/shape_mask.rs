@@ -178,8 +178,8 @@ impl GpuShapeMask {
             label: Some("yunet_shape_mask_encoder"),
         });
         {
-            let workgroups_x = div_ceil(width, 16);
-            let workgroups_y = div_ceil(height, 16);
+            let workgroups_x = width.div_ceil(16);
+            let workgroups_y = height.div_ceil(16);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_shape_mask_pass"),
                 timestamp_writes: None,
@@ -228,8 +228,4 @@ impl GpuShapeMask {
             .context("failed to build masked image")?;
         Ok(Some(DynamicImage::ImageRgba8(masked)))
     }
-}
-
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
 }

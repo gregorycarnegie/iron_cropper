@@ -282,8 +282,8 @@ fn dispatch_blur(
     width: u32,
     height: u32,
 ) {
-    let workgroups_x = div_ceil(width, 16);
-    let workgroups_y = div_ceil(height, 16);
+    let workgroups_x = width.div_ceil(16);
+    let workgroups_y = height.div_ceil(16);
     let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
         label: Some("yunet_gaussian_blur_pass"),
         timestamp_writes: None,
@@ -291,10 +291,6 @@ fn dispatch_blur(
     pass.set_pipeline(pipeline);
     pass.set_bind_group(0, bind_group, &[]);
     pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
-}
-
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
 }
 
 fn build_kernel(radius: u32) -> [f32; MAX_KERNEL_SIZE] {
@@ -309,8 +305,8 @@ fn build_kernel(radius: u32) -> [f32; MAX_KERNEL_SIZE] {
         sum += weight;
     }
     if sum > 0.0 {
-        for i in 0..kernel_size as usize {
-            weights[i] /= sum;
+        for weight in weights.iter_mut().take(kernel_size as usize) {
+            *weight /= sum;
         }
     }
     weights

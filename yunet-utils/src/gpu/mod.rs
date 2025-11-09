@@ -639,22 +639,22 @@ impl std::ops::Deref for GpuContextGuard {
 
 impl Drop for GpuContextGuard {
     fn drop(&mut self) {
-        if let Some(ctx) = self.context.take() {
-            if let Err(err) = self.sender.try_send(ctx) {
-                match err {
-                    TrySendError::Full(ctx) => {
-                        if let Err(send_err) = self.sender.send_blocking(ctx) {
-                            debug!(
-                                target: "yunet::gpu",
-                                "GPU pool closed while returning guard: {send_err}"
-                            );
-                        }
+        if let Some(ctx) = self.context.take()
+            && let Err(err) = self.sender.try_send(ctx)
+        {
+            match err {
+                TrySendError::Full(ctx) => {
+                    if let Err(send_err) = self.sender.send_blocking(ctx) {
+                        debug!(
+                            target: "yunet::gpu",
+                            "GPU pool closed while returning guard: {send_err}"
+                        );
                     }
-                    TrySendError::Closed(_) => debug!(
-                        target: "yunet::gpu",
-                        "GPU pool closed; dropping context guard."
-                    ),
                 }
+                TrySendError::Closed(_) => debug!(
+                    target: "yunet::gpu",
+                    "GPU pool closed; dropping context guard."
+                ),
             }
         }
     }

@@ -11,10 +11,7 @@ fn main() -> Result<()> {
     let node_filter = args
         .next()
         .map(|value| value.parse::<usize>().context("invalid node id"));
-    let node_filter = match node_filter.transpose()? {
-        Some(id) => Some(id),
-        None => None,
-    };
+    let node_filter = node_filter.transpose()?;
 
     let model = tract_onnx::onnx()
         .model_for_path(Path::new(&model_path))

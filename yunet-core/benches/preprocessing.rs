@@ -86,7 +86,7 @@ fn benchmark_preprocessing(c: &mut Criterion) {
 
 fn available_preprocessors() -> Vec<(&'static str, Arc<dyn Preprocessor>)> {
     let mut list: Vec<(&'static str, Arc<dyn Preprocessor>)> =
-        vec![("cpu", Arc::new(CpuPreprocessor::default()))];
+        vec![("cpu", Arc::new(CpuPreprocessor))];
 
     if let Some(wgpu_pre) = build_gpu_preprocessor() {
         list.push(("gpu", Arc::new(wgpu_pre)));

@@ -30,10 +30,10 @@ pub fn load_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage> {
 /// * `height` - The target height.
 /// * `filter` - The sampling filter to use for resizing.
 pub fn resize_image(image: &DynamicImage, width: u32, height: u32, filter: FilterType) -> RgbImage {
-    if filter == FilterType::Nearest {
-        if let Some(fast) = resize_image_fast(image, width, height) {
-            return fast;
-        }
+    if filter == FilterType::Nearest
+        && let Some(fast) = resize_image_fast(image, width, height)
+    {
+        return fast;
     }
     image.resize_exact(width, height, filter).to_rgb8()
 }

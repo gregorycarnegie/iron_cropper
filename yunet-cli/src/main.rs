@@ -537,7 +537,7 @@ fn run_preprocess_benchmark(
     let images = load_benchmark_images(items)?;
     let iterations = 3;
 
-    let cpu = CpuPreprocessor::default();
+    let cpu = CpuPreprocessor;
     let cpu_summary =
         benchmark_preprocessor("cpu", &cpu, &images, config, iterations)?.with_label("cpu");
     info!(

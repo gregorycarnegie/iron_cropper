@@ -190,5 +190,5 @@ impl GpuRedEyeRemoval {
 }
 
 fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
+    value.div_ceil(divisor)
 }

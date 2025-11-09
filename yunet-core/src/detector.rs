@@ -54,7 +54,7 @@ impl YuNetDetector {
         preprocess: PreprocessConfig,
         postprocess: PostprocessConfig,
     ) -> Result<Self> {
-        let cpu = Arc::new(CpuPreprocessor::default());
+        let cpu = Arc::new(CpuPreprocessor);
         Self::with_preprocessor(model_path, preprocess, postprocess, cpu)
     }
 

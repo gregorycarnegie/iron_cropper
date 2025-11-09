@@ -252,7 +252,7 @@ impl GpuHistogramEqualizer {
             label: Some("yunet_hist_encoder"),
         });
         {
-            let dispatch = div_ceil(pixel_count, 256);
+            let dispatch = pixel_count.div_ceil(256);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_hist_pass"),
                 timestamp_writes: None,
@@ -324,7 +324,7 @@ impl GpuHistogramEqualizer {
             label: Some("yunet_hist_apply_encoder"),
         });
         {
-            let dispatch = div_ceil(pixel_count, 256);
+            let dispatch = pixel_count.div_ceil(256);
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_hist_apply_pass"),
                 timestamp_writes: None,
@@ -399,8 +399,4 @@ fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
         },
         count: None,
     }
-}
-
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
 }
