@@ -8,9 +8,33 @@
 pub const PREPROCESS_WGSL: &str = include_str!("preprocess.wgsl");
 /// Per-pixel exposure/brightness/contrast/saturation adjust shader.
 pub const PIXEL_ADJUST_WGSL: &str = include_str!("pixel_adjust.wgsl");
+/// Gaussian blur shader (horizontal/vertical).
+pub const GAUSSIAN_BLUR_WGSL: &str = include_str!("gaussian_blur.wgsl");
+/// Bilateral filter shader for skin smoothing.
+pub const BILATERAL_FILTER_WGSL: &str = include_str!("bilateral_filter.wgsl");
+/// Background blur shader for elliptical blending.
+pub const BACKGROUND_BLUR_WGSL: &str = include_str!("background_blur.wgsl");
+/// Red-eye removal shader.
+pub const RED_EYE_WGSL: &str = include_str!("red_eye.wgsl");
+/// Shape mask shader.
+pub const SHAPE_MASK_WGSL: &str = include_str!("shape_mask.wgsl");
+/// Histogram equalization shader module.
+pub const HIST_EQUALIZE_WGSL: &str = include_str!("hist_equalize.wgsl");
 
 pub mod pixel_adjust;
 pub use pixel_adjust::GpuPixelAdjust;
+pub mod gaussian_blur;
+pub use gaussian_blur::GpuGaussianBlur;
+pub mod bilateral_filter;
+pub use bilateral_filter::GpuBilateralFilter;
+pub mod background_blur;
+pub use background_blur::GpuBackgroundBlur;
+pub mod red_eye;
+pub use red_eye::GpuRedEyeRemoval;
+pub mod shape_mask;
+pub use shape_mask::GpuShapeMask;
+pub mod hist_equalize;
+pub use hist_equalize::GpuHistogramEqualizer;
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 

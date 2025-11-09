@@ -10,10 +10,10 @@ use egui::{Context as EguiContext, Rect, TextureHandle};
 use image::DynamicImage;
 use yunet_core::{BoundingBox, CropSettings as CoreCropSettings, Detection};
 use yunet_utils::{
-    OutputOptions,
+    OutputOptions, WgpuEnhancer,
     config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
     enhance::EnhancementSettings,
-    gpu::GpuStatusIndicator,
+    gpu::{GpuContext, GpuStatusIndicator},
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
         MappingReadOptions,
@@ -52,6 +52,7 @@ pub struct BatchJobConfig {
     pub enhancement_settings: EnhancementSettings,
     pub enhance_enabled: bool,
     pub output_options: OutputOptions,
+    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
 }
 
 /// Fingerprint of enhancement settings for cache invalidation.
@@ -119,6 +120,10 @@ pub struct YuNetApp {
     pub last_error: Option<String>,
     /// Snapshot of GPU availability/fallback status.
     pub gpu_status: GpuStatusIndicator,
+    /// Active GPU context, if initialized.
+    pub gpu_context: Option<Arc<GpuContext>>,
+    /// Shared GPU enhancer used for crop previews/exports.
+    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
     /// The face detector instance.
     pub detector: Option<Arc<yunet_core::YuNetDetector>>,
     /// Sender for submitting detection jobs to a background thread.

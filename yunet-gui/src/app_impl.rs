@@ -1,6 +1,6 @@
 //! Additional YuNetApp implementation methods that delegate to module functions.
 
-use crate::YuNetApp;
+use crate::{GpuStatusMode, YuNetApp};
 use egui::Context as EguiContext;
 
 impl YuNetApp {
@@ -132,10 +132,20 @@ impl YuNetApp {
             return;
         }
 
-        let (gpu_status_update, detector_result) =
+        let (gpu_status_update, gpu_context_update, detector_result) =
             detection::ensure_detector(&mut self.detector, &self.settings);
-        if let Some(status) = gpu_status_update {
-            self.gpu_status = status;
+        if let Some(status) = gpu_status_update.as_ref() {
+            self.gpu_status = status.clone();
+        }
+        if let Some(context) = gpu_context_update {
+            self.refresh_gpu_enhancer(Some(context));
+        } else if let Some(status) = gpu_status_update {
+            if !matches!(
+                status.mode,
+                GpuStatusMode::Available | GpuStatusMode::Pending
+            ) {
+                self.refresh_gpu_enhancer(None);
+            }
         }
         let detector = match detector_result {
             Ok(detector) => detector,
@@ -180,6 +190,7 @@ impl YuNetApp {
             crop_config: &self.settings.crop,
             enhancement_settings: &enhancement_settings,
             enhance_enabled: self.settings.enhance.enabled,
+            gpu_enhancer: self.gpu_enhancer.clone(),
         };
 
         cache::crop_preview_texture_for(

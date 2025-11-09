@@ -23,7 +23,7 @@ use yunet_core::{
 };
 use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
 use yunet_utils::{
-    EnhancementSettings, GpuAvailability, GpuContext, GpuContextOptions, GpuContextPool,
+    CropShape, EnhancementSettings, GpuAvailability, GpuContext, GpuContextOptions, GpuContextPool,
     GpuPoolError, MetadataContext, OutputOptions, Quality, QualityFilter, WgpuEnhancer,
     append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
     config::{
@@ -375,6 +375,19 @@ impl CliGpuRuntime {
             }
         }
         apply_enhancements(image, settings)
+    }
+
+    fn apply_shape_mask(&self, image: &DynamicImage, shape: &CropShape) -> DynamicImage {
+        if let Some(enhancer) = &self.enhancer {
+            match enhancer.apply_shape_mask_gpu(image, shape) {
+                Ok(Some(masked)) => return masked,
+                Ok(None) => {}
+                Err(err) => warn!("GPU shape mask failed: {err}; falling back to CPU path."),
+            }
+        }
+        let mut cpu = image.clone();
+        apply_shape_mask_dynamic(&mut cpu, shape);
+        cpu
     }
 }
 
@@ -839,7 +852,7 @@ fn main() -> Result<()> {
                             crop_img = runtime.enhance(&crop_img, enh);
                         }
                         let (quality_score, quality) = estimate_sharpness(&crop_img);
-                        apply_shape_mask_dynamic(&mut crop_img, &settings.crop.shape);
+                        crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
                         processed.push(ProcessedCrop {
                             index: idx,
                             image: crop_img,

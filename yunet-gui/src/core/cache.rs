@@ -8,7 +8,7 @@ use image::DynamicImage;
 use log::warn;
 use yunet_core::{CropSettings as CoreCropSettings, PositioningMode, calculate_crop_region};
 use yunet_utils::{
-    apply_shape_mask,
+    WgpuEnhancer, apply_shape_mask,
     config::CropSettings as ConfigCropSettings,
     enhance::{EnhancementSettings, apply_enhancements},
     load_image,
@@ -29,6 +29,23 @@ pub struct CropPreviewRequest<'a> {
     pub crop_config: &'a ConfigCropSettings,
     pub enhancement_settings: &'a EnhancementSettings,
     pub enhance_enabled: bool,
+    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
+}
+
+pub fn enhance_with_gpu(
+    image: &DynamicImage,
+    settings: &EnhancementSettings,
+    enhancer: Option<&Arc<WgpuEnhancer>>,
+) -> DynamicImage {
+    if let Some(enhancer) = enhancer {
+        match enhancer.apply(image, settings) {
+            Ok(result) => return result,
+            Err(err) => {
+                warn!("GPU enhancement failed: {err}; falling back to CPU pipeline.");
+            }
+        }
+    }
+    apply_enhancements(image, settings)
 }
 
 /// Ensures a crop preview entry exists in the cache, creating it if necessary.
@@ -45,6 +62,7 @@ pub fn ensure_crop_preview_entry(
         crop_config,
         enhancement_settings,
         enhance_enabled,
+        gpu_enhancer,
     } = request;
 
     let signature = enhancement_signature(enhancement_settings);
@@ -101,12 +119,12 @@ pub fn ensure_crop_preview_entry(
         image::imageops::FilterType::Lanczos3,
     );
     let processed = if enhance_enabled {
-        apply_enhancements(&resized, enhancement_settings)
+        enhance_with_gpu(&resized, enhancement_settings, gpu_enhancer.as_ref())
     } else {
         resized
     };
-    let mut rgba = processed.to_rgba8();
-    apply_shape_mask(&mut rgba, &crop_config.shape);
+    let masked = apply_mask_with_gpu(processed, &crop_config.shape, gpu_enhancer.as_ref());
+    let rgba = masked.to_rgba8();
     let final_image = DynamicImage::ImageRgba8(rgba);
     let arc_image = Arc::new(final_image);
     cache.insert(
@@ -173,6 +191,23 @@ fn enhancement_signature(settings: &EnhancementSettings) -> EnhancementSignature
         background_blur_radius_bits: settings.background_blur_radius.to_bits(),
         background_blur_mask_bits: settings.background_blur_mask_size.to_bits(),
     }
+}
+
+pub fn apply_mask_with_gpu(
+    image: DynamicImage,
+    shape: &yunet_utils::CropShape,
+    enhancer: Option<&Arc<WgpuEnhancer>>,
+) -> DynamicImage {
+    if let Some(enhancer) = enhancer {
+        match enhancer.apply_shape_mask_gpu(&image, shape) {
+            Ok(Some(masked)) => return masked,
+            Ok(None) => {}
+            Err(err) => warn!("GPU shape mask failed: {err}; falling back to CPU path."),
+        }
+    }
+    let mut rgba = image.to_rgba8();
+    apply_shape_mask(&mut rgba, shape);
+    DynamicImage::ImageRgba8(rgba)
 }
 
 /// Converts a positioning mode to an ID for cache keying.
@@ -257,6 +292,8 @@ impl YuNetApp {
         self.detector = None;
         self.cache.clear();
         self.crop_preview_cache.clear();
+        self.gpu_context = None;
+        self.gpu_enhancer = None;
         self.gpu_status = GpuStatusIndicator::pending();
         self.show_success("Model settings changed. Detector will reload on next detection.");
     }

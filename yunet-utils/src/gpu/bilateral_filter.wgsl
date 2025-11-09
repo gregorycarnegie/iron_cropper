@@ -1,0 +1,90 @@
+const MAX_RADIUS : u32 = 8u;
+
+struct BilateralUniforms {
+    width : u32,
+    height : u32,
+    radius : u32,
+    pixel_count : u32,
+    sigma_space : f32,
+    sigma_color : f32,
+    amount : f32,
+    _pad : f32,
+}
+
+@group(0) @binding(0)
+var<storage, read> input_pixels : array<u32>;
+
+@group(0) @binding(1)
+var<storage, read_write> output_pixels : array<u32>;
+
+@group(0) @binding(2)
+var<uniform> params : BilateralUniforms;
+
+fn load_pixel(idx : u32) -> vec4<f32> {
+    return vec4<f32>(
+        f32(input_pixels[idx + 0u]),
+        f32(input_pixels[idx + 1u]),
+        f32(input_pixels[idx + 2u]),
+        f32(input_pixels[idx + 3u])
+    );
+}
+
+fn store_pixel(idx : u32, value : vec4<f32>) {
+    output_pixels[idx + 0u] = u32(clamp(round(value.x), 0.0, 255.0));
+    output_pixels[idx + 1u] = u32(clamp(round(value.y), 0.0, 255.0));
+    output_pixels[idx + 2u] = u32(clamp(round(value.z), 0.0, 255.0));
+    output_pixels[idx + 3u] = u32(clamp(round(value.w), 0.0, 255.0));
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
+    let x = gid.x;
+    let y = gid.y;
+    if (x >= params.width || y >= params.height) {
+        return;
+    }
+
+    let dst_index = (y * params.width + x) * 4u;
+    let center = load_pixel(dst_index);
+    var accum = vec3<f32>(0.0);
+    var weight_sum = 0.0;
+    let sigma_space_term = max(1e-4, 2.0 * params.sigma_space * params.sigma_space);
+    let sigma_color_term = max(1e-4, 2.0 * params.sigma_color * params.sigma_color);
+
+    let radius = i32(min(params.radius, MAX_RADIUS));
+    var dy = -radius;
+    loop {
+        if (dy > radius) { break; }
+        var dx = -radius;
+        loop {
+            if (dx > radius) { break; }
+
+            var sample_x = clamp(i32(x) + dx, 0, i32(params.width) - 1);
+            var sample_y = clamp(i32(y) + dy, 0, i32(params.height) - 1);
+            let sample_idx = (u32(sample_y) * params.width + u32(sample_x)) * 4u;
+            let sample = load_pixel(sample_idx);
+
+            let spatial_dist = f32(dx * dx + dy * dy);
+            let spatial_weight = exp(-spatial_dist / sigma_space_term);
+
+            let diff = sample.xyz - center.xyz;
+            let color_weight = exp(-(dot(diff, diff)) / sigma_color_term);
+
+            let weight = spatial_weight * color_weight;
+            accum = accum + sample.xyz * weight;
+            weight_sum = weight_sum + weight;
+
+            dx = dx + 1;
+        }
+        dy = dy + 1;
+    }
+
+    var filtered = center.xyz;
+    if (weight_sum > 1e-5) {
+        filtered = accum / weight_sum;
+    }
+
+    let amount = clamp(params.amount, 0.0, 1.0);
+    let blended = mix(center.xyz, filtered, amount);
+    store_pixel(dst_index, vec4<f32>(blended, center.w));
+}

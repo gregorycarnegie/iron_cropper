@@ -24,7 +24,9 @@ pub use types::{
 };
 pub use yunet_utils::gpu::{GpuStatusIndicator, GpuStatusMode};
 
-use yunet_utils::{config::default_settings_path, init_logging, quality::Quality};
+use yunet_utils::{
+    WgpuEnhancer, config::default_settings_path, gpu::GpuContext, init_logging, quality::Quality,
+};
 
 /// Main entry point for the GUI application.
 fn main() -> eframe::Result<()> {
@@ -111,7 +113,8 @@ impl YuNetApp {
         }
         let (job_tx, job_rx) = mpsc::channel();
 
-        let (initial_gpu_status, detector_result) = build_detector(&settings);
+        let (initial_gpu_status, initial_gpu_context, detector_result) = build_detector(&settings);
+        let (gpu_context, gpu_enhancer) = YuNetApp::init_gpu_enhancer(initial_gpu_context);
         let detector = match detector_result {
             Ok(detector) => {
                 info!("Loaded YuNet model from configuration");
@@ -142,6 +145,8 @@ impl YuNetApp {
             status_line,
             last_error: None,
             gpu_status: initial_gpu_status,
+            gpu_context,
+            gpu_enhancer,
             detector,
             job_tx,
             job_rx,
@@ -169,6 +174,35 @@ impl YuNetApp {
             manual_box_draft: None,
             active_bbox_drag: None,
         }
+    }
+
+    fn init_gpu_enhancer(
+        context: Option<Arc<GpuContext>>,
+    ) -> (Option<Arc<GpuContext>>, Option<Arc<WgpuEnhancer>>) {
+        if let Some(ctx) = context {
+            match WgpuEnhancer::new(ctx.clone()) {
+                Ok(enhancer) => {
+                    info!(
+                        "GPU enhancer ready on '{}' ({:?})",
+                        ctx.adapter_info().name,
+                        ctx.adapter_info().backend
+                    );
+                    (Some(ctx), Some(Arc::new(enhancer)))
+                }
+                Err(err) => {
+                    warn!("Failed to initialize GPU enhancer: {err}");
+                    (Some(ctx), None)
+                }
+            }
+        } else {
+            (None, None)
+        }
+    }
+
+    pub(crate) fn refresh_gpu_enhancer(&mut self, context: Option<Arc<GpuContext>>) {
+        let (ctx, enhancer) = Self::init_gpu_enhancer(context);
+        self.gpu_context = ctx;
+        self.gpu_enhancer = enhancer;
     }
 }
 

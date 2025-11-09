@@ -10,7 +10,13 @@ use anyhow::{Context, Result};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use wide::f32x4;
 
-use crate::gpu::{GpuContext, GpuPixelAdjust};
+use crate::{
+    gpu::{
+        GpuBackgroundBlur, GpuBilateralFilter, GpuContext, GpuGaussianBlur, GpuHistogramEqualizer,
+        GpuPixelAdjust, GpuRedEyeRemoval, GpuShapeMask,
+    },
+    shape::CropShape,
+};
 
 const EPSILON: f32 = 1e-6;
 
@@ -421,13 +427,34 @@ fn apply_red_eye_removal(img: &DynamicImage, threshold: f32) -> DynamicImage {
 /// Blurs the background while keeping a centered elliptical region (the face) sharp.
 /// Creates a professional portrait look similar to smartphone portrait mode.
 fn apply_background_blur(img: &DynamicImage, radius: f32, mask_size: f32) -> DynamicImage {
-    let src = img.to_rgba8();
-    let (w, h) = src.dimensions();
+    if radius <= 0.0 {
+        return img.clone();
+    }
+    let sharp = img.to_rgba8();
+    let blurred = image::imageops::blur(&sharp, radius);
+    background_blur_from_rgba(&sharp, &blurred, mask_size)
+}
 
-    // Blur the entire image
-    let blurred = image::imageops::blur(&src, radius);
+fn apply_background_blur_with_preblur(
+    img: &DynamicImage,
+    blurred: &DynamicImage,
+    mask_size: f32,
+) -> DynamicImage {
+    let sharp = img.to_rgba8();
+    let blurred = blurred.to_rgba8();
+    background_blur_from_rgba(&sharp, &blurred, mask_size)
+}
 
-    // Create an elliptical mask centered on the image
+fn background_blur_from_rgba(
+    sharp: &image::RgbaImage,
+    blurred: &image::RgbaImage,
+    mask_size: f32,
+) -> DynamicImage {
+    let (w, h) = sharp.dimensions();
+    if blurred.dimensions() != (w, h) {
+        return DynamicImage::ImageRgba8(sharp.clone());
+    }
+
     let cx = w as f32 / 2.0;
     let cy = h as f32 / 2.0;
     let mask_size = mask_size.clamp(0.3, 1.0);
@@ -442,21 +469,17 @@ fn apply_background_blur(img: &DynamicImage, radius: f32, mask_size: f32) -> Dyn
             let dy = (y as f32 - cy) / ry;
             let dist = (dx * dx + dy * dy).sqrt();
 
-            // Calculate blend factor (0 = sharp, 1 = blurred)
-            // Use a smooth transition at the edge of the ellipse
             let blend = if dist < 0.9 {
-                0.0 // Inside ellipse - keep sharp
+                0.0
             } else if dist > 1.1 {
-                1.0 // Outside ellipse - fully blurred
+                1.0
             } else {
-                // Smooth transition zone
                 (dist - 0.9) / 0.2
             };
 
-            let sharp_px = src.get_pixel(x, y).0;
+            let sharp_px = sharp.get_pixel(x, y).0;
             let blur_px = blurred.get_pixel(x, y).0;
 
-            // Blend sharp and blurred pixels
             let mut result = [0u8; 4];
             for c in 0..4 {
                 result[c] = ((1.0 - blend) * sharp_px[c] as f32 + blend * blur_px[c] as f32)
@@ -477,9 +500,17 @@ fn apply_unsharp_mask(img: &DynamicImage, amount: f32, radius: f32) -> DynamicIm
         return img.clone();
     }
 
-    let amount = amount.clamp(0.0, 2.0);
     let src = img.to_rgba8();
     let blurred = image::imageops::blur(&src, radius);
+    DynamicImage::ImageRgba8(unsharp_with_preblur_rgba(&src, &blurred, amount))
+}
+
+fn unsharp_with_preblur_rgba(
+    src: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    blurred: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    amount: f32,
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let amount = amount.clamp(0.0, 2.0);
     let (w, h) = src.dimensions();
     let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
 
@@ -500,7 +531,17 @@ fn apply_unsharp_mask(img: &DynamicImage, amount: f32, radius: f32) -> DynamicIm
         }
     }
 
-    DynamicImage::ImageRgba8(out)
+    out
+}
+
+fn apply_unsharp_with_preblur(
+    src: &DynamicImage,
+    blurred: &DynamicImage,
+    amount: f32,
+) -> DynamicImage {
+    let src_rgba = src.to_rgba8();
+    let blur_rgba = blurred.to_rgba8();
+    DynamicImage::ImageRgba8(unsharp_with_preblur_rgba(&src_rgba, &blur_rgba, amount))
 }
 
 /// Apply the configured enhancements to the input image and return the result.
@@ -561,6 +602,12 @@ pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) ->
 pub struct WgpuEnhancer {
     context: Arc<GpuContext>,
     pixel_adjust: GpuPixelAdjust,
+    gaussian_blur: GpuGaussianBlur,
+    bilateral_filter: GpuBilateralFilter,
+    background_blur: GpuBackgroundBlur,
+    red_eye: GpuRedEyeRemoval,
+    shape_mask: GpuShapeMask,
+    histogram_equalizer: GpuHistogramEqualizer,
 }
 
 impl WgpuEnhancer {
@@ -568,9 +615,27 @@ impl WgpuEnhancer {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let pixel_adjust = GpuPixelAdjust::new(context.clone())
             .context("failed to create GPU pixel adjust pipeline")?;
+        let gaussian_blur = GpuGaussianBlur::new(context.clone())
+            .context("failed to create GPU gaussian blur pipeline")?;
+        let bilateral_filter = GpuBilateralFilter::new(context.clone())
+            .context("failed to create GPU bilateral filter pipeline")?;
+        let background_blur = GpuBackgroundBlur::new(context.clone())
+            .context("failed to create GPU background blur pipeline")?;
+        let red_eye = GpuRedEyeRemoval::new(context.clone())
+            .context("failed to create GPU red-eye pipeline")?;
+        let shape_mask = GpuShapeMask::new(context.clone())
+            .context("failed to create GPU shape mask pipeline")?;
+        let histogram_equalizer = GpuHistogramEqualizer::new(context.clone())
+            .context("failed to create GPU histogram equalization pipeline")?;
         Ok(Self {
             context,
             pixel_adjust,
+            gaussian_blur,
+            bilateral_filter,
+            background_blur,
+            red_eye,
+            shape_mask,
+            histogram_equalizer,
         })
     }
 
@@ -583,11 +648,21 @@ impl WgpuEnhancer {
         let mut out = img.clone();
 
         if settings.auto_color {
-            out = apply_histogram_equalization(&out);
+            out = match self.histogram_equalizer.equalize(&out) {
+                Ok(eq) => eq,
+                Err(err) => {
+                    log::warn!("GPU histogram equalization failed: {err}");
+                    apply_histogram_equalization(&out)
+                }
+            };
         }
 
         if settings.red_eye_removal {
-            out = apply_red_eye_removal(&out, settings.red_eye_threshold);
+            if let Some(corrected) = self.try_gpu_red_eye(&out, settings.red_eye_threshold)? {
+                out = corrected;
+            } else {
+                out = apply_red_eye_removal(&out, settings.red_eye_threshold);
+            }
         }
 
         if GpuPixelAdjust::needs_adjustment(settings) {
@@ -611,25 +686,45 @@ impl WgpuEnhancer {
         }
 
         if settings.skin_smooth_amount > 0.0 {
-            out = apply_skin_smoothing(
-                &out,
-                settings.skin_smooth_amount,
-                settings.skin_smooth_sigma_space,
-                settings.skin_smooth_sigma_color,
-            );
+            if let Some(smoothed) = self.try_gpu_skin_smoothing(settings, &out)? {
+                out = smoothed;
+            } else {
+                out = apply_skin_smoothing(
+                    &out,
+                    settings.skin_smooth_amount,
+                    settings.skin_smooth_sigma_space,
+                    settings.skin_smooth_sigma_color,
+                );
+            }
         }
 
         let combined_sharp = (settings.unsharp_amount + settings.sharpness).clamp(0.0, 2.0);
         if combined_sharp > 0.0 && settings.unsharp_radius > 0.0 {
-            out = apply_unsharp_mask(&out, combined_sharp, settings.unsharp_radius);
+            if let Some(blurred) = self.try_gpu_blur(&out, settings.unsharp_radius)? {
+                out = apply_unsharp_with_preblur(&out, &blurred, combined_sharp);
+            } else {
+                out = apply_unsharp_mask(&out, combined_sharp, settings.unsharp_radius);
+            }
         }
 
         if settings.background_blur {
-            out = apply_background_blur(
-                &out,
-                settings.background_blur_radius,
-                settings.background_blur_mask_size,
-            );
+            if let Some(result) = self.try_gpu_background_blur(&out, settings)? {
+                out = result;
+            } else if let Some(blurred) =
+                self.try_gpu_blur(&out, settings.background_blur_radius)?
+            {
+                out = apply_background_blur_with_preblur(
+                    &out,
+                    &blurred,
+                    settings.background_blur_mask_size,
+                );
+            } else {
+                out = apply_background_blur(
+                    &out,
+                    settings.background_blur_radius,
+                    settings.background_blur_mask_size,
+                );
+            }
         }
 
         Ok(out)
@@ -638,6 +733,90 @@ impl WgpuEnhancer {
     /// Access the underlying GPU context (handy for logging/tests).
     pub fn context(&self) -> &Arc<GpuContext> {
         &self.context
+    }
+
+    fn try_gpu_blur(&self, image: &DynamicImage, radius: f32) -> Result<Option<DynamicImage>> {
+        if radius <= 0.0 {
+            return Ok(None);
+        }
+        match self.gaussian_blur.blur(image, radius) {
+            Ok(blurred) => Ok(Some(blurred)),
+            Err(err) => {
+                log::warn!("GPU gaussian blur failed: {err}");
+                Ok(None)
+            }
+        }
+    }
+
+    fn try_gpu_skin_smoothing(
+        &self,
+        settings: &EnhancementSettings,
+        image: &DynamicImage,
+    ) -> Result<Option<DynamicImage>> {
+        if settings.skin_smooth_amount <= 0.0 {
+            return Ok(None);
+        }
+        match self.bilateral_filter.smooth(
+            image,
+            settings.skin_smooth_amount,
+            settings.skin_smooth_sigma_space,
+            settings.skin_smooth_sigma_color,
+        ) {
+            Ok(result) => Ok(Some(result)),
+            Err(err) => {
+                log::warn!("GPU skin smoothing failed: {err}");
+                Ok(None)
+            }
+        }
+    }
+
+    fn try_gpu_background_blur(
+        &self,
+        image: &DynamicImage,
+        settings: &EnhancementSettings,
+    ) -> Result<Option<DynamicImage>> {
+        if !settings.background_blur || settings.background_blur_radius <= 0.0 {
+            return Ok(None);
+        }
+        let blurred = match self.try_gpu_blur(image, settings.background_blur_radius)? {
+            Some(b) => b,
+            None => return Ok(None),
+        };
+        match self
+            .background_blur
+            .blend(image, &blurred, settings.background_blur_mask_size)
+        {
+            Ok(result) => Ok(Some(result)),
+            Err(err) => {
+                log::warn!("GPU background blur failed: {err}");
+                Ok(None)
+            }
+        }
+    }
+
+    fn try_gpu_red_eye(
+        &self,
+        image: &DynamicImage,
+        threshold: f32,
+    ) -> Result<Option<DynamicImage>> {
+        if threshold <= 0.0 {
+            return Ok(None);
+        }
+        match self.red_eye.apply(image, threshold) {
+            Ok(result) => Ok(Some(result)),
+            Err(err) => {
+                log::warn!("GPU red-eye removal failed: {err}");
+                Ok(None)
+            }
+        }
+    }
+
+    pub fn apply_shape_mask_gpu(
+        &self,
+        image: &DynamicImage,
+        shape: &CropShape,
+    ) -> Result<Option<DynamicImage>> {
+        self.shape_mask.apply(image, shape)
     }
 }
 

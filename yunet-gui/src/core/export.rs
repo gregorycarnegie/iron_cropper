@@ -9,15 +9,18 @@ use log::{info, warn};
 use rayon::prelude::*;
 use yunet_core::{CropSettings as CoreCropSettings, YuNetDetector, calculate_crop_region};
 use yunet_utils::{
-    MetadataContext, OutputOptions, append_suffix_to_filename, apply_shape_mask,
+    MetadataContext, OutputOptions, WgpuEnhancer, append_suffix_to_filename,
     config::CropSettings as ConfigCropSettings,
-    enhance::{EnhancementSettings, apply_enhancements},
+    enhance::EnhancementSettings,
     load_image,
     quality::{Quality, estimate_sharpness},
     save_dynamic_image,
 };
 
-use crate::{BatchFileStatus, YuNetApp};
+use crate::{
+    BatchFileStatus, YuNetApp,
+    core::cache::{apply_mask_with_gpu, enhance_with_gpu},
+};
 
 /// Configuration for batch export jobs.
 #[derive(Clone)]
@@ -28,6 +31,7 @@ pub struct BatchJobConfig {
     pub enhancement_settings: EnhancementSettings,
     pub enhance_enabled: bool,
     pub output_options: OutputOptions,
+    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
 }
 
 /// Runs a single batch job for one image file.
@@ -89,12 +93,20 @@ pub fn run_batch_job(
         );
 
         let processed = if config.enhance_enabled {
-            apply_enhancements(&resized, &config.enhancement_settings)
+            enhance_with_gpu(
+                &resized,
+                &config.enhancement_settings,
+                config.gpu_enhancer.as_ref(),
+            )
         } else {
             resized
         };
-        let mut rgba = processed.to_rgba8();
-        apply_shape_mask(&mut rgba, &config.crop_config.shape);
+        let masked = apply_mask_with_gpu(
+            processed,
+            &config.crop_config.shape,
+            config.gpu_enhancer.as_ref(),
+        );
+        let rgba = masked.to_rgba8();
         let final_image = DynamicImage::ImageRgba8(rgba);
 
         let (quality_score, quality) = estimate_sharpness(&final_image);
@@ -187,7 +199,11 @@ pub fn run_batch_job(
         );
 
         let final_image = if config.enhance_enabled {
-            apply_enhancements(&resized, &config.enhancement_settings)
+            enhance_with_gpu(
+                &resized,
+                &config.enhancement_settings,
+                config.gpu_enhancer.as_ref(),
+            )
         } else {
             resized
         };
@@ -383,10 +399,15 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
         );
 
         let final_image = if app.settings.enhance.enabled {
-            apply_enhancements(&resized, &enhancement_settings)
+            enhance_with_gpu(&resized, &enhancement_settings, app.gpu_enhancer.as_ref())
         } else {
             resized
         };
+        let final_image = apply_mask_with_gpu(
+            final_image,
+            &app.settings.crop.shape,
+            app.gpu_enhancer.as_ref(),
+        );
 
         let mut output_filename = format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
         if let Some(suffix) = app.quality_suffix(det.quality) {
@@ -474,6 +495,7 @@ pub fn start_batch_export(app: &mut YuNetApp) {
         enhancement_settings: app.build_enhancement_settings(),
         enhance_enabled: app.settings.enhance.enabled,
         output_options: OutputOptions::from_crop_settings(&app.settings.crop),
+        gpu_enhancer: app.gpu_enhancer.clone(),
     });
 
     let tasks: Vec<_> = app

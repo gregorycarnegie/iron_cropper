@@ -21,11 +21,21 @@ use crate::{
 };
 
 /// Builds a `YuNetDetector` from the given application settings, returning the resolved GPU status.
-pub fn build_detector(settings: &AppSettings) -> (GpuStatusIndicator, Result<YuNetDetector>) {
-    let (preprocessor, gpu_status) = maybe_build_gpu_preprocessor(settings);
+pub fn build_detector(
+    settings: &AppSettings,
+) -> (
+    GpuStatusIndicator,
+    Option<Arc<GpuContext>>,
+    Result<YuNetDetector>,
+) {
+    let (preprocessor, gpu_context, gpu_status) = maybe_build_gpu_preprocessor(settings);
 
     let Some(model_path) = settings.model_path.as_deref() else {
-        return (gpu_status, Err(anyhow::anyhow!("no model path configured")));
+        return (
+            gpu_status,
+            gpu_context,
+            Err(anyhow::anyhow!("no model path configured")),
+        );
     };
 
     let preprocess: PreprocessConfig = settings.input.into();
@@ -48,12 +58,16 @@ pub fn build_detector(settings: &AppSettings) -> (GpuStatusIndicator, Result<YuN
         })
     };
 
-    (gpu_status, detector_result)
+    (gpu_status, gpu_context, detector_result)
 }
 
 fn maybe_build_gpu_preprocessor(
     settings: &AppSettings,
-) -> (Option<Arc<dyn Preprocessor>>, GpuStatusIndicator) {
+) -> (
+    Option<Arc<dyn Preprocessor>>,
+    Option<Arc<GpuContext>>,
+    GpuStatusIndicator,
+) {
     let options: GpuContextOptions = (&settings.gpu).into();
     let availability = GpuContext::init_with_fallback(&options);
 
@@ -74,7 +88,7 @@ fn maybe_build_gpu_preprocessor(
                         Some(info.device),
                     );
                     status.emit_telemetry(None, None);
-                    (Some(Arc::new(preprocessor)), status)
+                    (Some(Arc::new(preprocessor)), Some(context.clone()), status)
                 }
                 Err(err) => {
                     warn!(
@@ -86,7 +100,7 @@ fn maybe_build_gpu_preprocessor(
                         Some(format!("{:?}", info.backend)),
                     );
                     status.emit_telemetry(None, None);
-                    (None, status)
+                    (None, Some(context.clone()), status)
                 }
             }
         }
@@ -94,13 +108,13 @@ fn maybe_build_gpu_preprocessor(
             info!("GPU preprocessing disabled in GUI: {reason}");
             let status = GpuStatusIndicator::disabled(reason);
             status.emit_telemetry(None, None);
-            (None, status)
+            (None, None, status)
         }
         GpuAvailability::Unavailable { error } => {
             warn!("GUI GPU context unavailable: {error}");
             let status = GpuStatusIndicator::error(error.to_string());
             status.emit_telemetry(None, None);
-            (None, status)
+            (None, None, status)
         }
     }
 }
@@ -237,19 +251,23 @@ pub fn start_detection(
 pub fn ensure_detector(
     detector: &mut Option<Arc<YuNetDetector>>,
     settings: &AppSettings,
-) -> (Option<GpuStatusIndicator>, Result<Arc<YuNetDetector>>) {
+) -> (
+    Option<GpuStatusIndicator>,
+    Option<Arc<GpuContext>>,
+    Result<Arc<YuNetDetector>>,
+) {
     if let Some(existing) = detector {
-        return (None, Ok(existing.clone()));
+        return (None, None, Ok(existing.clone()));
     }
 
-    let (gpu_status, detector_result) = build_detector(settings);
+    let (gpu_status, gpu_context, detector_result) = build_detector(settings);
     match detector_result {
         Ok(built) => {
             let arc = Arc::new(built);
             *detector = Some(arc.clone());
-            (Some(gpu_status), Ok(arc))
+            (Some(gpu_status), gpu_context, Ok(arc))
         }
-        Err(err) => (Some(gpu_status), Err(err)),
+        Err(err) => (Some(gpu_status), gpu_context, Err(err)),
     }
 }
 
