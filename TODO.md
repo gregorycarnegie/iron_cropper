@@ -484,21 +484,23 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] **Target: 102ms → 5-10ms (10-20x speedup)**
 
 - [ ] **Phase 13.2: GPU enhancement pipeline** (~50-180ms savings)
-  - [ ] Create WGSL compute shaders for each filter
-    - [ ] `histogram_equalization.wgsl` - parallel histogram + scan/reduce kernels
-    - [ ] `gaussian_blur.wgsl` - separable 2-pass convolution (horizontal + vertical)
-    - [ ] `bilateral_filter.wgsl` - skin smoothing with spatial+color kernels
-    - [ ] `unsharp_mask.wgsl` - blur + subtract composite
-    - [ ] `pixel_adjust.wgsl` - exposure, brightness, contrast, saturation (single kernel)
-    - [ ] `background_blur.wgsl` - elliptical mask + selective blur
-    - [ ] `red_eye_removal.wgsl` - red dominance detection + color replacement
-  - [ ] Implement `WgpuEnhancer` in `yunet-utils/src/enhance.rs`
-    - [ ] Pipeline state management (reuse bind groups)
-    - [ ] Minimize CPU↔GPU transfers (keep intermediate results on GPU)
+  - [x] Create WGSL compute shaders for each filter
+    - [x] `histogram_equalization.wgsl` - parallel histogram + scan/reduce kernels (full GPU pipeline)
+    - [x] `gaussian_blur.wgsl` - separable 2-pass convolution (horizontal + vertical)
+    - [x] `bilateral_filter.wgsl` - skin smoothing with spatial+color kernels
+    - [ ] `unsharp_mask.wgsl` - blur + subtract composite (currently piggybacks on gaussian blur)
+    - [x] `pixel_adjust.wgsl` - exposure, brightness, contrast, saturation (single kernel)
+    - [x] `background_blur.wgsl` - elliptical mask + selective blur
+    - [x] `red_eye_removal.wgsl` - red dominance detection + color replacement
+    - [x] `shape_mask.wgsl` - GPU crop masking
+  - [x] Implement `WgpuEnhancer` in `yunet-utils/src/enhance.rs`
+    - [x] Pipeline state management (reuse bind groups)
+    - [x] Minimize CPU↔GPU transfers (keep intermediate results on GPU)
     - [ ] Async compute queue for overlapping operations
   - [ ] Add feature flag `gpu-enhance` with CPU fallback
   - [ ] Benchmark each filter GPU vs CPU
   - [ ] **Target: 50-200ms → 10-20ms (5-10x speedup per filter)**
+
 
 - [ ] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
   - [ ] **Option A: DirectML via ort crate** (Recommended for Windows)

@@ -18,6 +18,15 @@ struct HistogramUniforms {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+struct CdfUniforms {
+    total_pixels: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct LutUniforms {
     pixel_count: u32,
     _pad0: u32,
@@ -29,8 +38,10 @@ struct LutUniforms {
 pub struct GpuHistogramEqualizer {
     context: Arc<GpuContext>,
     histogram_pipeline: wgpu::ComputePipeline,
+    cdf_pipeline: wgpu::ComputePipeline,
     apply_pipeline: wgpu::ComputePipeline,
     histogram_bgl: wgpu::BindGroupLayout,
+    cdf_bgl: wgpu::BindGroupLayout,
     apply_bgl: wgpu::BindGroupLayout,
 }
 
@@ -50,6 +61,14 @@ impl GpuHistogramEqualizer {
                 uniform_entry(2),
             ],
         });
+        let cdf_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("yunet_hist_cdf_bgl"),
+            entries: &[
+                storage_entry(0, true),
+                storage_entry(1, false),
+                uniform_entry(2),
+            ],
+        });
         let apply_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_hist_apply_bgl"),
             entries: &[
@@ -62,6 +81,11 @@ impl GpuHistogramEqualizer {
         let histogram_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("yunet_histogram_layout"),
             bind_group_layouts: &[&histogram_bgl],
+            push_constant_ranges: &[],
+        });
+        let cdf_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("yunet_hist_cdf_layout"),
+            bind_group_layouts: &[&cdf_bgl],
             push_constant_ranges: &[],
         });
         let apply_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -78,6 +102,14 @@ impl GpuHistogramEqualizer {
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             cache: None,
         });
+        let cdf_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("yunet_hist_cdf_pipeline"),
+            layout: Some(&cdf_layout),
+            module: &module,
+            entry_point: Some("compute_lut"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        });
         let apply_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("yunet_hist_apply_pipeline"),
             layout: Some(&apply_layout),
@@ -90,8 +122,10 @@ impl GpuHistogramEqualizer {
         Ok(Self {
             context,
             histogram_pipeline,
+            cdf_pipeline,
             apply_pipeline,
             histogram_bgl,
+            cdf_bgl,
             apply_bgl,
         })
     }
@@ -107,21 +141,26 @@ impl GpuHistogramEqualizer {
         let mut data_u32 = Vec::with_capacity(pixel_count * 4);
         data_u32.extend(rgba.as_raw().iter().map(|b| *b as u32));
 
-        let histogram = self.build_histogram(&data_u32)?;
-        let lut = compute_lut(&histogram, pixel_count as u32);
+        let (lut_buffer, pixel_buffer) =
+            self.build_histogram_and_lut(&data_u32, pixel_count as u32)?;
 
-        self.apply_lut(data_u32, width, height, &lut)
+        self.apply_lut(pixel_buffer, lut_buffer, width, height)
     }
 
-    fn build_histogram(&self, pixels: &[u32]) -> Result<Vec<u32>> {
+    fn build_histogram_and_lut(
+        &self,
+        pixels: &[u32],
+        pixel_count: u32,
+    ) -> Result<(wgpu::Buffer, wgpu::Buffer)> {
         let device = self.context.device();
         let queue = self.context.queue();
-        let pixel_count = (pixels.len() / 4) as u32;
 
         let pixel_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_hist_pixels"),
             contents: cast_slice(pixels),
-            usage: wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
         });
         let histogram_size = (256 * 3 * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
         let histogram_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -167,6 +206,46 @@ impl GpuHistogramEqualizer {
             ],
         });
 
+        let lut_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("yunet_hist_lut_buffer"),
+            size: (256 * 3 * std::mem::size_of::<u32>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let cdf_uniform = CdfUniforms {
+            total_pixels: pixel_count,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
+        };
+        let cdf_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("yunet_hist_cdf_uniform"),
+            contents: bytes_of(&cdf_uniform),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let cdf_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("yunet_hist_cdf_bg"),
+            layout: &self.cdf_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: histogram_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: lut_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: cdf_uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("yunet_hist_encoder"),
         });
@@ -180,64 +259,33 @@ impl GpuHistogramEqualizer {
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(dispatch, 1, 1);
         }
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("yunet_hist_cdf_pass"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.cdf_pipeline);
+            pass.set_bind_group(0, &cdf_bind_group, &[]);
+            pass.dispatch_workgroups(1, 1, 1);
+        }
 
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("yunet_hist_readback"),
-            size: histogram_size,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        encoder.copy_buffer_to_buffer(&histogram_buffer, 0, &readback, 0, histogram_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("histogram map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("histogram map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let counts: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-        Ok(counts)
+        Ok((lut_buffer, pixel_buffer))
     }
 
     fn apply_lut(
         &self,
-        pixels: Vec<u32>,
+        pixel_buffer: wgpu::Buffer,
+        lut_buffer: wgpu::Buffer,
         width: u32,
         height: u32,
-        lut: &[u8; 256 * 3],
     ) -> Result<DynamicImage> {
         let device = self.context.device();
         let queue = self.context.queue();
-        let pixel_count = (pixels.len() / 4) as u32;
-        let buffer_size = (pixels.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
-        let pixel_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("yunet_hist_apply_pixels"),
-            contents: cast_slice(&pixels),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let lut_u32: Vec<u32> = lut.iter().map(|v| *v as u32).collect();
-        let lut_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("yunet_hist_lut"),
-            contents: cast_slice(&lut_u32),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let pixel_count = (width as usize * height as usize) as u32;
+        let buffer_size =
+            (pixel_count as usize * 4 * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
         let uniform = LutUniforms {
             pixel_count,
@@ -353,52 +401,4 @@ fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 
 fn div_ceil(value: u32, divisor: u32) -> u32 {
     (value + divisor - 1) / divisor
-}
-
-fn compute_lut(histogram: &[u32], pixel_count: u32) -> [u8; 256 * 3] {
-    let mut lut = [0u8; 256 * 3];
-    let channels = [0usize, 256, 512];
-    for (channel_idx, start) in channels.iter().enumerate() {
-        let channel_hist = &histogram[*start..*start + 256];
-        let channel_lut = build_channel_lut(channel_hist, pixel_count);
-        for (i, value) in channel_lut.iter().enumerate() {
-            lut[channel_idx * 256 + i] = *value;
-        }
-    }
-    lut
-}
-
-fn build_channel_lut(hist: &[u32], total_pixels: u32) -> [u8; 256] {
-    let mut lut = [0u8; 256];
-    if total_pixels == 0 {
-        return lut;
-    }
-
-    let mut cdf = [0u32; 256];
-    let mut cumulative = 0u32;
-    let mut cdf_min = None;
-    for (idx, count) in hist.iter().enumerate() {
-        cumulative += *count;
-        cdf[idx] = cumulative;
-        if cdf_min.is_none() && *count > 0 {
-            cdf_min = Some(cumulative);
-        }
-    }
-
-    let cdf_min = match cdf_min {
-        Some(v) => v,
-        None => return lut,
-    };
-
-    for (idx, value) in lut.iter_mut().enumerate() {
-        let numerator = (cdf[idx].saturating_sub(cdf_min)) as f32;
-        let denominator = (total_pixels - cdf_min) as f32;
-        let scaled = if denominator.abs() < f32::EPSILON {
-            0.0
-        } else {
-            (numerator / denominator).clamp(0.0, 1.0) * 255.0
-        };
-        *value = scaled.round() as u8;
-    }
-    lut
 }
