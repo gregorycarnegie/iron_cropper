@@ -41,20 +41,24 @@
     }
   },
   "enhance": {
-    "enabled": false,
-    "preset": "none",
-    "auto_color": true,
-    "exposure_stops": 0.4,
-    "brightness": 30,
-    "contrast": 1.28,
-    "saturation": 1.5,
-    "sharpness": 0.73,
-    "skin_smooth": 0.27,
-    "red_eye_removal": false,
-    "background_blur": false
+    "enabled": true,
+    "preset": "professional",
+    "auto_color": false,
+    "exposure_stops": 0.0,
+    "brightness": 0,
+    "contrast": 1.1,
+    "saturation": 1.0,
+    "sharpness": 0.6,
+    "skin_smooth": 0.0,
+    "red_eye_removal": true,
+    "background_blur": true
   },
   "telemetry": {
     "enabled": true,
     "level": "trace"
+  },
+  "gpu": {
+    "enabled": true,
+    "respect_env": true
   }
 }

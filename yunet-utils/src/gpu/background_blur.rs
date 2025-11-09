@@ -35,7 +35,7 @@ impl GpuBackgroundBlur {
             label: Some("yunet_background_blur_bgl"),
             entries: &[
                 buffer_entry(0, true),
-                buffer_entry(1, false),
+                buffer_entry(1, true),
                 buffer_entry(2, false),
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,

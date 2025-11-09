@@ -20,15 +20,6 @@ var<storage, read_write> output_pixels : array<u32>;
 @group(0) @binding(3)
 var<uniform> params : BackgroundBlurUniforms;
 
-fn load_pixel(buffer : array<u32>, idx : u32) -> vec4<f32> {
-    return vec4<f32>(
-        f32(buffer[idx + 0u]),
-        f32(buffer[idx + 1u]),
-        f32(buffer[idx + 2u]),
-        f32(buffer[idx + 3u])
-    );
-}
-
 fn store_pixel(idx : u32, value : vec4<f32>) {
     output_pixels[idx + 0u] = u32(clamp(round(value.x), 0.0, 255.0));
     output_pixels[idx + 1u] = u32(clamp(round(value.y), 0.0, 255.0));
@@ -62,8 +53,18 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let radii = half * mask_size;
     let blend = compute_blend(sharp - half, radii);
 
-    let sharp_px = load_pixel(sharp_pixels, idx);
-    let blur_px = load_pixel(blur_pixels, idx);
+    let sharp_px = vec4<f32>(
+        f32(sharp_pixels[idx + 0u]),
+        f32(sharp_pixels[idx + 1u]),
+        f32(sharp_pixels[idx + 2u]),
+        f32(sharp_pixels[idx + 3u])
+    );
+    let blur_px = vec4<f32>(
+        f32(blur_pixels[idx + 0u]),
+        f32(blur_pixels[idx + 1u]),
+        f32(blur_pixels[idx + 2u]),
+        f32(blur_pixels[idx + 3u])
+    );
     let color = mix(sharp_px, blur_px, vec4<f32>(blend, blend, blend, blend));
     store_pixel(idx, color);
 }

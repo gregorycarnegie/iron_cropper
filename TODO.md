@@ -501,7 +501,6 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] Benchmark each filter GPU vs CPU
   - [ ] **Target: 50-200ms → 10-20ms (5-10x speedup per filter)**
 
-
 - [ ] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
   - [ ] **Option A: DirectML via ort crate** (Recommended for Windows)
     - [ ] Add `ort = { version = "2.0", features = ["load-dynamic"] }` dependency

@@ -21,7 +21,6 @@ struct BlurUniforms {
     _pad0: u32,
     _pad1: u32,
     _pad2: u32,
-    weights: [f32; MAX_KERNEL_SIZE],
 }
 
 #[derive(Clone)]
@@ -72,6 +71,16 @@ impl GpuGaussianBlur {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -114,6 +123,11 @@ impl GpuGaussianBlur {
 
         let device = self.context.device();
         let queue = self.context.queue();
+        let weights_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("yunet_gaussian_blur_weights"),
+            contents: cast_slice(&weights),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
         let buffer_size = (data_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
         let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -154,7 +168,6 @@ impl GpuGaussianBlur {
             _pad0: 0,
             _pad1: 0,
             _pad2: 0,
-            weights,
         };
         let horizontal_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_gaussian_blur_uniform_horizontal"),
@@ -176,6 +189,10 @@ impl GpuGaussianBlur {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: horizontal_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: weights_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -206,6 +223,10 @@ impl GpuGaussianBlur {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: vertical_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: weights_buffer.as_entire_binding(),
                 },
             ],
         });

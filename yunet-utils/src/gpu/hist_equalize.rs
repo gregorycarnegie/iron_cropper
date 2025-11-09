@@ -56,7 +56,7 @@ impl GpuHistogramEqualizer {
         let histogram_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_histogram_bgl"),
             entries: &[
-                storage_entry(0, false),
+                storage_entry(0, true),
                 storage_entry(1, false),
                 uniform_entry(2),
             ],
@@ -166,7 +166,9 @@ impl GpuHistogramEqualizer {
         let histogram_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("yunet_histogram_buffer"),
             size: histogram_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         queue.write_buffer(
