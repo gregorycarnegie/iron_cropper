@@ -81,3 +81,13 @@ This is a multi-crate Rust workspace for face detection using the YuNet ONNX mod
 
 * **Secrets:** Never commit proprietary images or API keys. Use a `.env` file for local overrides.
 * **Models:** Verify YuNet ONNX file downloads against the SHA256 checksums in `models/README.md`.
+
+## Python Interpreter Usage
+
+* Use the local Python interpreter in the `scripts/` folder for all Python scripts and `pip` installations.
+* Never install packages into the system/global interpreter.
+* If the `scripts/` folder is missing:
+  1. Create it (`mkdir scripts`).
+  2. Initialize a virtual environment inside it (`python -m venv scripts/venv`).
+  3. Point all script execution and package installation to `scripts/venv/bin/python` (Linux/macOS) or `scripts\venv\Scripts\python.exe` (Windows).
+* This ensures isolated dependencies and avoids conflicts with system Python.

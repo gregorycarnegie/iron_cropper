@@ -108,3 +108,13 @@ cargo build --release -p yunet-cli
 - **NMS behavior**: IoU calculation and suppression logic in postprocess.rs follows YuNet paper
 - **Image loading**: yunet-utils abstracts image loading; use those helpers for consistency
 - **Model compatibility**: The 320x320 YuNet model (`face_detection_yunet_2023mar.onnx`) has a tract compatibility issue (fails at Conv_0 node during optimization). Use the 640x640 model (`face_detection_yunet_2023mar_640.onnx`) instead. Attempts to use tract Symbols for dynamic shapes did not resolve the underlying model export issue.
+
+## Python Interpreter Usage
+
+- Always use the local Python interpreter located in the `scripts/` folder when running Python scripts or installing packages with `pip`.
+- Do not use the system/global interpreter.
+- If the `scripts/` folder does not exist:
+  1. Create it at the root of the repository (`mkdir scripts`).
+  2. Set up a local virtual environment inside `scripts/` (e.g., `python -m venv scripts/venv`).
+  3. Use `scripts/venv/bin/python` (Linux/macOS) or `scripts\venv\Scripts\python.exe` (Windows) as the interpreter path.
+- All utility scripts must explicitly reference this interpreter to ensure reproducibility.

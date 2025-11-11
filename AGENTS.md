@@ -44,3 +44,13 @@
 - Power the desktop shell with `egui`/`eframe`, offloading heavy inference to `rayon` tasks to keep frames responsive.
 - Cache textures and normalized tensors per image to reduce uploads; refresh caches when model paths or thresholds change.
 - Match CLI capabilities: expose model selection, `input_size`, and YuNet thresholds in the UI, and cover settings serialization with an `app/tests/` smoke test.
+
+## Python Interpreter Usage
+
+- Always run Python scripts and install packages using the interpreter located in the `scripts/` folder.
+- Do not rely on the system/global interpreter.
+- If the `scripts/` folder does not exist:
+  1. Create it (`mkdir scripts`).
+  2. Initialize a virtual environment (`python -m venv scripts/venv`).
+  3. Use the interpreter path `scripts/venv/bin/python` (Linux/macOS) or `scripts\venv\Scripts\python.exe` (Windows).
+- All developer instructions and automation must reference this interpreter to maintain consistency across environments.
