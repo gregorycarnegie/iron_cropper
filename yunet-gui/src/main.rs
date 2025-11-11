@@ -89,17 +89,17 @@ impl YuNetApp {
         let settings_path = default_settings_path();
 
         // Try to extract the WGPU render state from eframe
-        let shared_gpu_context = cc.wgpu_render_state.as_ref().and_then(|render_state| {
+        let shared_gpu_context = cc.wgpu_render_state.as_ref().map(|render_state| {
             info!("Extracting GPU context from eframe WGPU renderer");
             let device = render_state.device.clone();
             let queue = render_state.queue.clone();
             let info = render_state.adapter.get_info();
 
-            Some(Arc::new(GpuContext::from_existing(
+            Arc::new(GpuContext::from_existing(
                 None, // eframe doesn't expose the instance
                 None, // eframe doesn't expose the adapter directly
                 device, queue, info,
-            )))
+            ))
         });
 
         if shared_gpu_context.is_some() {
