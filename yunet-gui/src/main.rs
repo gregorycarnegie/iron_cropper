@@ -96,18 +96,18 @@ impl YuNetApp {
             let info = render_state.adapter.get_info();
 
             Some(Arc::new(GpuContext::from_existing(
-                None,  // eframe doesn't expose the instance
-                None,  // eframe doesn't expose the adapter directly
-                device,
-                queue,
-                info,
+                None, // eframe doesn't expose the instance
+                None, // eframe doesn't expose the adapter directly
+                device, queue, info,
             )))
         });
 
         if shared_gpu_context.is_some() {
             info!("Successfully created shared GPU context from eframe renderer");
         } else {
-            info!("No WGPU render state available from eframe, will create separate GPU context if needed");
+            info!(
+                "No WGPU render state available from eframe, will create separate GPU context if needed"
+            );
         }
 
         Self::create(&cc.egui_ctx, settings_path, shared_gpu_context)
@@ -140,7 +140,8 @@ impl YuNetApp {
         }
         let (job_tx, job_rx) = mpsc::channel();
 
-        let (initial_gpu_status, initial_gpu_context, detector_result) = build_detector(&settings, shared_gpu_context);
+        let (initial_gpu_status, initial_gpu_context, detector_result) =
+            build_detector(&settings, shared_gpu_context);
         let (gpu_context, gpu_enhancer) = YuNetApp::init_gpu_enhancer(initial_gpu_context);
         let detector = match detector_result {
             Ok(detector) => {

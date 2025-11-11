@@ -83,9 +83,7 @@ fn maybe_build_gpu_preprocessor(
     let availability = GpuContext::init_with_fallback(&options);
 
     match availability {
-        GpuAvailability::Available(context) => {
-            build_preprocessor_from_context(context)
-        }
+        GpuAvailability::Available(context) => build_preprocessor_from_context(context),
         GpuAvailability::Disabled { reason } => {
             info!("GPU preprocessing disabled in GUI: {reason}");
             let status = GpuStatusIndicator::disabled(reason);
@@ -145,9 +143,7 @@ fn build_preprocessor_from_context(
             (Some(Arc::new(preprocessor)), Some(context.clone()), status)
         }
         Err(err) => {
-            warn!(
-                "Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path."
-            );
+            warn!("Failed to initialize GUI GPU preprocessor ({err}); falling back to CPU path.");
             let status = GpuStatusIndicator::fallback(
                 format!("Failed to compile GPU shader: {err}"),
                 Some(info.name.clone()),
