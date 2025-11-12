@@ -63,6 +63,7 @@ This is a multi-crate Rust workspace for face detection using the YuNet ONNX mod
   * Types/Enums: `PascalCase`
   * Constants: `SCREAMING_SNAKE_CASE`
 * **Structure:** Keep `main.rs` files minimal. GUI styling is centralized in `yunet-gui/src/theme.rs`.
+* **Dependencies:** When introducing new dependencies, check crates.io (or the existing lockfile) for the latest compatible version before adding it to `Cargo.toml`.
 
 ### Testing
 

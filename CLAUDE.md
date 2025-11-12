@@ -90,6 +90,7 @@ cargo build --release -p yunet-cli
 - snake_case modules/functions, PascalCase types, SCREAMING_SNAKE_CASE constants
 - Keep main.rs minimal, document YuNet-specific behaviors with `///`
 - GUI styling centralized in yunet-gui/src/theme.rs
+- When introducing new dependencies, check crates.io (or the existing lockfile) for the latest compatible version before adding it to `Cargo.toml`.
 
 ### Task Management
 

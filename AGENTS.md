@@ -18,6 +18,7 @@
 - Stay on stable Rust (`rustup default stable`) and let `rustfmt` manage 4-space indentation, trailing commas, and import ordering.
 - Use `snake_case` for modules/functions, `PascalCase` for types/enums, and `SCREAMING_SNAKE_CASE` for constants; align file names with module names.
 - Keep `main.rs` files thin, document YuNet-specific behaviors with `///`, and centralize `egui` styling in `yunet-gui/src/theme.rs` for consistent spacing and colors.
+- When introducing new dependencies, check crates.io (or the existing lockfile) for the latest compatible version before adding it to `Cargo.toml`.
 - When authoring utility scripts, place them under `scripts/` and create a local Python virtual environment per script; never install packages into the system interpreter.
 
 ## Testing Guidelines
