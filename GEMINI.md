@@ -71,6 +71,11 @@ This is a multi-crate Rust workspace for face detection using the YuNet ONNX mod
 * **Fixtures:** Golden inputs/outputs are in `fixtures/` and loaded via `yunet-utils`.
 * **Scenarios:** Ensure test coverage for images with no faces, a single face, and multiple faces.
 * **Model Requirements:** Tests require the 640x640 model (`models/face_detection_yunet_2023mar_640.onnx`). The 320x320 model has tract compatibility issues.
+* **Test Images:** Test images are in `fixtures/images/` with naming conventions:
+  * `_g` suffix: Multiple faces (group)
+  * `_n` suffix: No faces (none)
+  * No suffix: Single face
+  * `_o` suffix: Obscured face
 
 ### Commits & Pull Requests
 

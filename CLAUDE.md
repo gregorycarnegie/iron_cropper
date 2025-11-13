@@ -80,6 +80,11 @@ cargo build --release -p yunet-cli
 - **Test fixtures**: Golden inputs in `fixtures/`, loaded via yunet-utils helpers
 - Use default thresholds in tests to catch regressions
 - Cover edge cases: no faces, single face, multiple overlapping faces
+- **Test images**: Located in `fixtures/images/` with naming conventions:
+  - `_g` suffix: Multiple faces (group)
+  - `_n` suffix: No faces (none)
+  - No suffix: Single face
+  - `_o` suffix: Obscured face
 
 ## Development Conventions
 

@@ -18,7 +18,7 @@
 - Stay on stable Rust (`rustup default stable`) and let `rustfmt` manage 4-space indentation, trailing commas, and import ordering.
 - Use `snake_case` for modules/functions, `PascalCase` for types/enums, and `SCREAMING_SNAKE_CASE` for constants; align file names with module names.
 - Keep `main.rs` files thin, document YuNet-specific behaviors with `///`, and centralize `egui` styling in `yunet-gui/src/theme.rs` for consistent spacing and colors.
-- When introducing new dependencies, check crates.io (or the existing lockfile) for the latest compatible version before adding it to `Cargo.toml`.
+- Before adding or bumping any dependency, check crates.io (or the existing lockfile) for the latest compatible version and note the rationale if you cannot use it.
 - When authoring utility scripts, place them under `scripts/` and create a local Python virtual environment per script; never install packages into the system interpreter.
 
 ## Testing Guidelines
@@ -27,6 +27,7 @@
 - Store golden inputs/outputs in `fixtures/` and load them via `yunet-utils`; name tests for user-visible behaviors.
 - Run `cargo test --release` for latency checks and ensure coverage for empty, single-face, and crowded images.
 - Tests require the 640x640 model (`models/face_detection_yunet_2023mar_640.onnx`). The 320x320 model has tract compatibility issues (fails at Conv_0 node during optimization).
+- Test images are in `fixtures/images/` with naming conventions: `_g` suffix (multiple faces), `_n` suffix (no faces), no suffix (single face), `_o` suffix (obscured face).
 
 ## Commit & Pull Request Guidelines
 
