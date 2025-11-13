@@ -169,6 +169,9 @@ fn show_gpu_section(
         .changed()
     {
         app.settings.gpu.enabled = enabled;
+        if !enabled {
+            app.settings.gpu.inference = false;
+        }
         *settings_changed = true;
         *requires_detector_reset = true;
     }
@@ -188,6 +191,22 @@ fn show_gpu_section(
         }
     });
     ui.small("Disable overrides to force the default backend if diagnostics require it.");
+
+    ui.add_enabled_ui(enabled, |ui| {
+        let mut gpu_inference = app.settings.gpu.inference;
+        if ui
+            .checkbox(&mut gpu_inference, "Enable GPU inference (experimental)")
+            .changed()
+        {
+            app.settings.gpu.inference = gpu_inference;
+            *settings_changed = true;
+            *requires_detector_reset = true;
+        }
+        ui.label(
+            RichText::new("Runs the YuNet ONNX graph on the GPU; automatically falls back to CPU if initialization fails.")
+                .color(palette.subtle_text),
+        );
+    });
 
     let status = &app.gpu_status;
     let headline_color = match status.mode {

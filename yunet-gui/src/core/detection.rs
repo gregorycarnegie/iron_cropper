@@ -8,7 +8,8 @@ use egui::{Context as EguiContext, TextureOptions};
 use image::DynamicImage;
 use log::{error, info, warn};
 use yunet_core::{
-    PostprocessConfig, PreprocessConfig, Preprocessor, WgpuPreprocessor, YuNetDetector,
+    CpuPreprocessor, PostprocessConfig, PreprocessConfig, Preprocessor, WgpuPreprocessor,
+    YuNetDetector,
 };
 use yunet_utils::{
     GpuAvailability, GpuContext, GpuContextOptions, config::AppSettings, load_image,
@@ -52,21 +53,65 @@ pub fn build_detector(
     let preprocess: PreprocessConfig = settings.input.into();
 
     let postprocess: PostprocessConfig = (&settings.detection).into();
-    let detector_result = if let Some(preprocessor) = preprocessor {
-        YuNetDetector::with_preprocessor(model_path, preprocess, postprocess, preprocessor)
+    let prefer_gpu_inference = settings.gpu.enabled && settings.gpu.inference;
+
+    let build_cpu_detector = || -> Result<YuNetDetector> {
+        if let Some(pre) = &preprocessor {
+            YuNetDetector::with_preprocessor(
+                model_path,
+                preprocess.clone(),
+                postprocess.clone(),
+                Arc::clone(pre),
+            )
             .with_context(|| {
                 format!(
                     "failed to load YuNet model with GPU preprocessing from {}",
                     model_path
                 )
             })
-    } else {
-        YuNetDetector::new(model_path, preprocess, postprocess).with_context(|| {
+        } else {
+            YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone()).with_context(
+                || {
+                    format!(
+                        "failed to load YuNet model from configured path {}",
+                        model_path
+                    )
+                },
+            )
+        }
+    };
+
+    let detector_result = if prefer_gpu_inference {
+        let preprocessor_arc: Arc<dyn Preprocessor> = preprocessor
+            .as_ref()
+            .map(Arc::clone)
+            .unwrap_or_else(|| Arc::new(CpuPreprocessor));
+        match YuNetDetector::with_gpu_preprocessor(
+            model_path,
+            preprocess.clone(),
+            postprocess.clone(),
+            preprocessor_arc,
+        )
+        .with_context(|| {
             format!(
-                "failed to load YuNet model from configured path {}",
+                "failed to load GPU YuNet model with preprocessing from {}",
                 model_path
             )
-        })
+        }) {
+            Ok(detector) => {
+                info!("GUI using GPU inference with YuNetDetector.");
+                Ok(detector)
+            }
+            Err(err) => {
+                warn!(
+                    "GPU inference initialization failed ({}); falling back to CPU detector.",
+                    err
+                );
+                build_cpu_detector()
+            }
+        }
+    } else {
+        build_cpu_detector()
     };
 
     (gpu_status, gpu_context, detector_result)

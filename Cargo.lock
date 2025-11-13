@@ -6473,6 +6473,7 @@ dependencies = [
  "criterion",
  "image",
  "log",
+ "prost",
  "rayon",
  "serde",
  "tempfile",

@@ -8,9 +8,11 @@ use std::{path::Path, sync::Arc};
 use anyhow::{Context, Result};
 use image::DynamicImage;
 
+use crate::gpu::runtime::GpuYuNet;
 use crate::model::YuNetModel;
 use crate::postprocess::{Detection, PostprocessConfig, apply_postprocess};
 use crate::preprocess::{CpuPreprocessor, PreprocessConfig, PreprocessOutput, Preprocessor};
+use tract_onnx::prelude::Tensor;
 use yunet_utils::load_image;
 use yunet_utils::timing_guard;
 
@@ -35,10 +37,25 @@ pub struct DetectionOutput {
 /// This is the main entry point for running face detection.
 #[derive(Debug)]
 pub struct YuNetDetector {
-    model: YuNetModel,
+    backend: DetectorBackend,
     preprocess: PreprocessConfig,
     postprocess: PostprocessConfig,
     preprocessor: Arc<dyn Preprocessor>,
+}
+
+#[derive(Debug)]
+enum DetectorBackend {
+    Cpu(YuNetModel),
+    Gpu(GpuYuNet),
+}
+
+impl DetectorBackend {
+    fn run(&self, tensor: Tensor) -> Result<Tensor> {
+        match self {
+            DetectorBackend::Cpu(model) => model.run(tensor),
+            DetectorBackend::Gpu(model) => model.run(tensor),
+        }
+    }
 }
 
 impl YuNetDetector {
@@ -65,9 +82,35 @@ impl YuNetDetector {
         postprocess: PostprocessConfig,
         preprocessor: Arc<dyn Preprocessor>,
     ) -> Result<Self> {
-        let model = YuNetModel::load(model_path, preprocess.input_size)?;
+        let model = YuNetModel::load(model_path.as_ref(), preprocess.input_size)?;
         Ok(Self {
-            model,
+            backend: DetectorBackend::Cpu(model),
+            preprocess,
+            postprocess,
+            preprocessor,
+        })
+    }
+
+    /// Construct a detector that executes inference on the GPU (if available).
+    pub fn new_gpu<P: AsRef<Path>>(
+        model_path: P,
+        preprocess: PreprocessConfig,
+        postprocess: PostprocessConfig,
+    ) -> Result<Self> {
+        let cpu = Arc::new(CpuPreprocessor);
+        Self::with_gpu_preprocessor(model_path, preprocess, postprocess, cpu)
+    }
+
+    /// GPU-backed detector with a custom preprocessor implementation.
+    pub fn with_gpu_preprocessor<P: AsRef<Path>>(
+        model_path: P,
+        preprocess: PreprocessConfig,
+        postprocess: PostprocessConfig,
+        preprocessor: Arc<dyn Preprocessor>,
+    ) -> Result<Self> {
+        let model = GpuYuNet::new(model_path.as_ref(), preprocess.input_size)?;
+        Ok(Self {
+            backend: DetectorBackend::Gpu(model),
             preprocess,
             postprocess,
             preprocessor,
@@ -127,7 +170,7 @@ impl YuNetDetector {
 
         let raw = {
             let _guard = timing_guard("yunet_core::onnx_inference", log::Level::Debug);
-            self.model.run(tensor)?
+            self.backend.run(tensor)?
         };
 
         let detections = {

@@ -140,7 +140,7 @@ fn load_runnable_model(
     }
 }
 
-fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Tensor> {
+pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) -> Result<Tensor> {
     anyhow::ensure!(
         outputs.len() == STRIDES.len() * OUTPUTS_PER_STRIDE,
         "YuNet decode expects {} tensors, got {}",

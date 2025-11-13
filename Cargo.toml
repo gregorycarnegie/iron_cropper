@@ -45,3 +45,5 @@ wgpu = "27.0.1"
 pollster = "0.4.0"
 async-channel = "2.5.0"
 bytemuck = { version = "1.24.0", features = ["derive"] }
+prost = "0.14.1"
+prost011 = { package = "prost", version = "0.11.9" }

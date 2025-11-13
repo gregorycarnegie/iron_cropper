@@ -417,6 +417,8 @@ pub struct GpuSettings {
     pub enabled: bool,
     /// Respect `WGPU_*` environment overrides when initializing the backend.
     pub respect_env: bool,
+    /// Execute YuNet inference on the GPU when supported.
+    pub inference: bool,
 }
 
 impl Default for GpuSettings {
@@ -424,6 +426,7 @@ impl Default for GpuSettings {
         Self {
             enabled: true,
             respect_env: true,
+            inference: false,
         }
     }
 }

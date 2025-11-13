@@ -9,6 +9,8 @@ pub mod cropper;
 pub mod detector;
 /// Utilities to extract and resize face crops from images.
 pub mod face_cropper;
+/// GPU inference building blocks (Phase 13.3 Option C).
+pub mod gpu;
 /// ONNX model loading and execution.
 pub mod model;
 /// Detection post-processing (NMS, score filtering).

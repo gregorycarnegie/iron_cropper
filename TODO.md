@@ -513,7 +513,8 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [ ] Use ort with CoreML execution provider
     - [ ] Benchmark on Apple Silicon vs Intel Macs
   - [ ] **Option C: Custom WGPU YuNet implementation** (Future work)
-    - [ ] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
+    - [x] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
+      - `yunet-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `yunet-core/src/gpu/*.wgsl`
     - [ ] Port YuNet architecture to WGSL
     - [ ] Validate outputs against ONNX reference
     - [ ] Most flexibility but significant development effort

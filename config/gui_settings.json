@@ -59,6 +59,7 @@
   },
   "gpu": {
     "enabled": true,
-    "respect_env": true
+    "respect_env": true,
+    "inference": false
   }
 }

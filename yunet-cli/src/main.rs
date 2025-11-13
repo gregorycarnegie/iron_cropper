@@ -77,6 +77,10 @@ struct DetectArgs {
     #[arg(long = "no-gpu", action = ArgAction::SetTrue)]
     no_gpu: bool,
 
+    /// Run YuNet inference on the GPU (falls back to CPU if unavailable).
+    #[arg(long = "gpu-inference", action = ArgAction::SetTrue)]
+    gpu_inference: bool,
+
     /// Control whether `WGPU_*` env vars influence GPU selection (`auto` or `ignore`).
     #[arg(long = "gpu-env", value_enum)]
     gpu_env: Option<GpuEnvMode>,
@@ -635,7 +639,48 @@ fn build_cli_detector(
     preprocess: &PreprocessConfig,
     postprocess: &PostprocessConfig,
     gpu_runtime: &CliGpuRuntime,
+    prefer_gpu_inference: bool,
 ) -> Result<YuNetDetector> {
+    if prefer_gpu_inference {
+        if let Some(gpu_ctx) = gpu_runtime.context() {
+            let preprocessor: Arc<dyn Preprocessor> = match WgpuPreprocessor::new(gpu_ctx.clone()) {
+                Ok(pre) => {
+                    info!(
+                        "Using GPU preprocessing + inference on {} ({:?})",
+                        gpu_ctx.adapter_info().name,
+                        gpu_ctx.adapter_info().backend
+                    );
+                    Arc::new(pre)
+                }
+                Err(err) => {
+                    warn!(
+                        "GPU preprocessor initialization failed ({err}); using CPU preprocessing for GPU inference."
+                    );
+                    Arc::new(CpuPreprocessor)
+                }
+            };
+
+            match YuNetDetector::with_gpu_preprocessor(
+                model_path,
+                preprocess.clone(),
+                postprocess.clone(),
+                preprocessor,
+            ) {
+                Ok(detector) => {
+                    info!("GPU inference enabled for CLI detector.");
+                    return Ok(detector);
+                }
+                Err(err) => {
+                    warn!("GPU inference initialization failed: {err}; falling back to CPU path.");
+                }
+            }
+        } else {
+            warn!(
+                "GPU inference requested but no GPU context available; falling back to CPU path."
+            );
+        }
+    }
+
     if let Some(gpu_ctx) = gpu_runtime.context() {
         match WgpuPreprocessor::new(gpu_ctx.clone()) {
             Ok(pre) => {
@@ -730,11 +775,13 @@ fn main() -> Result<()> {
         input_size.width,
         input_size.height
     );
+    let prefer_gpu_inference = settings.gpu.enabled && settings.gpu.inference;
     let detector = build_cli_detector(
         &model_path,
         &preprocess_config,
         &postprocess_config,
         gpu_runtime.as_ref(),
+        prefer_gpu_inference,
     )?;
 
     if args.mapping_file.is_some() && !args.crop {
@@ -1265,6 +1312,7 @@ mod tests {
             telemetry_level: None,
             gpu: false,
             no_gpu: false,
+            gpu_inference: false,
             gpu_env: None,
             benchmark_preprocess: false,
             width: None,
@@ -1341,6 +1389,7 @@ mod tests {
             telemetry_level: None,
             gpu: false,
             no_gpu: false,
+            gpu_inference: false,
             gpu_env: None,
             benchmark_preprocess: false,
             width: None,
@@ -1459,6 +1508,7 @@ mod tests {
             telemetry_level: None,
             gpu: false,
             no_gpu: false,
+            gpu_inference: false,
             gpu_env: None,
             benchmark_preprocess: false,
             width: None,
@@ -1573,6 +1623,10 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     }
     if args.no_gpu {
         settings.gpu.enabled = false;
+        settings.gpu.inference = false;
+    }
+    if args.gpu_inference {
+        settings.gpu.inference = true;
     }
     if let Some(mode) = args.gpu_env {
         settings.gpu.respect_env = mode.respects_env();

@@ -163,6 +163,7 @@ fn run_cli_detection(
         .arg(image_path)
         .arg("--model")
         .arg(model_path)
+        .arg("--no-gpu")
         .arg("--json")
         .arg(json_path);
     for arg in extra_args {
@@ -260,6 +261,7 @@ fn cli_json_output_matches_snapshot() -> Result<(), Box<dyn Error>> {
         .arg(fixture_image)
         .arg("--model")
         .arg(&model)
+        .arg("--no-gpu")
         .arg("--json")
         .arg(&json_path);
 
