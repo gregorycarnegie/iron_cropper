@@ -60,6 +60,6 @@
   "gpu": {
     "enabled": true,
     "respect_env": true,
-    "inference": false
+    "inference": true
   }
 }

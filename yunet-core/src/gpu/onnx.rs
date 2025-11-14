@@ -51,6 +51,10 @@ impl OnnxInitializerMap {
         self.tensors.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.tensors.is_empty()
+    }
+
     pub fn into_map(self) -> HashMap<String, OnnxTensor> {
         self.tensors
     }

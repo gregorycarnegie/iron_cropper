@@ -45,7 +45,7 @@ pub struct YuNetDetector {
 
 #[derive(Debug)]
 enum DetectorBackend {
-    Cpu(YuNetModel),
+    Cpu(Box<YuNetModel>),
     Gpu(GpuYuNet),
 }
 
@@ -84,7 +84,7 @@ impl YuNetDetector {
     ) -> Result<Self> {
         let model = YuNetModel::load(model_path.as_ref(), preprocess.input_size)?;
         Ok(Self {
-            backend: DetectorBackend::Cpu(model),
+            backend: DetectorBackend::Cpu(Box::new(model)),
             preprocess,
             postprocess,
             preprocessor,

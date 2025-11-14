@@ -160,8 +160,8 @@ fn reorder_hw_major(
     for c in 0..channels {
         for y in 0..height {
             for x in 0..width {
-                let src = ((c * height + y) * width + x) as usize;
-                let dst = ((y * width + x) * channels + c) as usize;
+                let src = (c * height + y) * width + x;
+                let dst = (y * width + x) * channels + c;
                 let mut value = data[src];
                 if apply_sigmoid {
                     value = sigmoid(value);

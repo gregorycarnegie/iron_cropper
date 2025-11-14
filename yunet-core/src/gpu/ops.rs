@@ -137,8 +137,14 @@ impl GpuInferenceOps {
         self.ensure_same_context(beta, "batch_norm beta")?;
         self.ensure_same_context(mean, "batch_norm mean")?;
         self.ensure_same_context(variance, "batch_norm variance")?;
-        self.batch_norm
-            .execute(&self.context, tensor, gamma, beta, mean, variance, config)
+        let tensors = BatchNormBindings {
+            tensor,
+            gamma,
+            beta,
+            mean,
+            variance,
+        };
+        self.batch_norm.execute(&self.context, tensors, config)
     }
 
     pub fn batch_norm(
@@ -309,8 +315,8 @@ impl Conv2dPipeline {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                div_ceil(config.output_width, CONV_WORKGROUP_X),
-                div_ceil(config.output_height, CONV_WORKGROUP_Y),
+                config.output_width.div_ceil(CONV_WORKGROUP_X),
+                config.output_height.div_ceil(CONV_WORKGROUP_Y),
                 config.output_channels,
             );
         }
@@ -325,6 +331,15 @@ impl Conv2dPipeline {
 struct BatchNormPipeline {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+}
+
+#[derive(Clone, Copy)]
+struct BatchNormBindings<'a> {
+    tensor: &'a GpuTensor,
+    gamma: &'a GpuTensor,
+    beta: &'a GpuTensor,
+    mean: &'a GpuTensor,
+    variance: &'a GpuTensor,
 }
 
 impl BatchNormPipeline {
@@ -370,18 +385,14 @@ impl BatchNormPipeline {
     fn execute(
         &self,
         context: &Arc<GpuContext>,
-        tensor: &GpuTensor,
-        gamma: &GpuTensor,
-        beta: &GpuTensor,
-        mean: &GpuTensor,
-        variance: &GpuTensor,
+        tensors: BatchNormBindings<'_>,
         config: &BatchNormConfig,
     ) -> Result<GpuTensor> {
         let device = context.device();
         let queue = context.queue();
         let uniforms = BatchNormUniforms::from(config);
         let uniform_buffer = create_uniform_buffer(device, "yunet_bn_uniforms", &uniforms);
-        let tensor_copy = tensor.duplicate(Some("yunet_bn_tensor_copy"))?;
+        let tensor_copy = tensors.tensor.duplicate(Some("yunet_bn_tensor_copy"))?;
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("yunet_bn_bg"),
@@ -393,19 +404,19 @@ impl BatchNormPipeline {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: gamma.buffer().as_entire_binding(),
+                    resource: tensors.gamma.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: beta.buffer().as_entire_binding(),
+                    resource: tensors.beta.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: mean.buffer().as_entire_binding(),
+                    resource: tensors.mean.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: variance.buffer().as_entire_binding(),
+                    resource: tensors.variance.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
@@ -426,8 +437,8 @@ impl BatchNormPipeline {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                div_ceil(config.width, BN_WORKGROUP_X),
-                div_ceil(config.height, BN_WORKGROUP_Y),
+                config.width.div_ceil(BN_WORKGROUP_X),
+                config.height.div_ceil(BN_WORKGROUP_Y),
                 config.channels,
             );
         }
@@ -622,8 +633,8 @@ impl MaxPoolPipeline {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                div_ceil(config.output_width, POOL_WORKGROUP_X),
-                div_ceil(config.output_height, POOL_WORKGROUP_Y),
+                config.output_width.div_ceil(POOL_WORKGROUP_X),
+                config.output_height.div_ceil(POOL_WORKGROUP_Y),
                 config.channels,
             );
         }
@@ -728,7 +739,7 @@ impl AddPipeline {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            pass.dispatch_workgroups(div_ceil(uniforms.len, ADD_WORKGROUP_SIZE), 1, 1);
+            pass.dispatch_workgroups(uniforms.len.div_ceil(ADD_WORKGROUP_SIZE), 1, 1);
         }
 
         context.queue().submit(Some(encoder.finish()));
@@ -839,8 +850,8 @@ impl Upsample2xPipeline {
             let out_width = width * 2;
             let out_height = height * 2;
             pass.dispatch_workgroups(
-                div_ceil(out_width, UPSAMPLE_WORKGROUP_X),
-                div_ceil(out_height, UPSAMPLE_WORKGROUP_Y),
+                out_width.div_ceil(UPSAMPLE_WORKGROUP_X),
+                out_height.div_ceil(UPSAMPLE_WORKGROUP_Y),
                 channels,
             );
         }
@@ -884,15 +895,11 @@ fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
-fn div_ceil(value: u32, divisor: u32) -> u32 {
-    (value + divisor - 1) / divisor
-}
-
 fn div_ceil_uniform(value: u32, divisor: u32) -> u32 {
     if value == 0 {
         0
     } else {
-        div_ceil(value, divisor)
+        value.div_ceil(divisor)
     }
 }
 
@@ -904,6 +911,39 @@ pub enum ActivationKind {
     Relu = 0,
     /// Sigmoid.
     Sigmoid = 1,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Conv2dChannels {
+    pub input: u32,
+    pub output: u32,
+}
+
+impl Conv2dChannels {
+    pub const fn new(input: u32, output: u32) -> Self {
+        Self { input, output }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SpatialDims {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl SpatialDims {
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
+    }
+}
+
+impl From<(u32, u32)> for SpatialDims {
+    fn from(value: (u32, u32)) -> Self {
+        Self {
+            width: value.0,
+            height: value.1,
+        }
+    }
 }
 
 /// Geometry for a convolution layer.
@@ -929,18 +969,33 @@ impl Conv2dConfig {
     /// Create a validated convolution configuration.
     pub fn new(
         batch: u32,
-        input_channels: u32,
-        output_channels: u32,
-        input_width: u32,
-        input_height: u32,
-        kernel_width: u32,
-        kernel_height: u32,
-        stride_x: u32,
-        stride_y: u32,
-        pad_x: u32,
-        pad_y: u32,
+        channels: Conv2dChannels,
+        input: SpatialDims,
+        kernel: SpatialDims,
+        stride: SpatialDims,
+        pad: SpatialDims,
         groups: u32,
     ) -> Result<Self> {
+        let Conv2dChannels {
+            input: input_channels,
+            output: output_channels,
+        } = channels;
+        let SpatialDims {
+            width: input_width,
+            height: input_height,
+        } = input;
+        let SpatialDims {
+            width: kernel_width,
+            height: kernel_height,
+        } = kernel;
+        let SpatialDims {
+            width: stride_x,
+            height: stride_y,
+        } = stride;
+        let SpatialDims {
+            width: pad_x,
+            height: pad_y,
+        } = pad;
         anyhow::ensure!(batch == 1, "only batch size 1 is supported (got {batch})");
         anyhow::ensure!(input_channels > 0, "input channels must be > 0");
         anyhow::ensure!(output_channels > 0, "output channels must be > 0");
@@ -951,11 +1006,11 @@ impl Conv2dConfig {
         anyhow::ensure!(stride_x > 0 && stride_y > 0, "stride must be non-zero");
         anyhow::ensure!(groups > 0, "groups must be > 0");
         anyhow::ensure!(
-            input_channels % groups == 0,
+            input_channels.is_multiple_of(groups),
             "input channels ({input_channels}) must be divisible by groups ({groups})"
         );
         anyhow::ensure!(
-            output_channels % groups == 0,
+            output_channels.is_multiple_of(groups),
             "output channels ({output_channels}) must be divisible by groups ({groups})"
         );
 
@@ -1759,8 +1814,16 @@ mod tests {
         let dw_weight = upload_named(ops, loader, "423")?;
         let dw_bias = upload_named(ops, loader, "424")?;
 
-        let conv_cfg =
-            Conv2dConfig::new(1, 3, 16, 640, 640, 3, 3, 2, 2, 1, 1, 1).expect("conv config");
+        let conv_cfg = Conv2dConfig::new(
+            1,
+            Conv2dChannels::new(3, 16),
+            SpatialDims::new(640, 640),
+            SpatialDims::new(3, 3),
+            SpatialDims::new(2, 2),
+            SpatialDims::new(1, 1),
+            1,
+        )
+        .expect("conv config");
         let conv0 = ops
             .conv2d_tensor(input, &conv0_weight, &conv0_bias, &conv_cfg)
             .expect("stage0 conv");
@@ -1768,12 +1831,30 @@ mod tests {
             .activation_tensor(&conv0, ActivationKind::Relu)
             .expect("stage0 relu");
 
-        let point_cfg = Conv2dConfig::new(1, 16, 16, 320, 320, 1, 1, 1, 1, 0, 0, 1).unwrap();
+        let point_cfg = Conv2dConfig::new(
+            1,
+            Conv2dChannels::new(16, 16),
+            SpatialDims::new(320, 320),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(0, 0),
+            1,
+        )
+        .unwrap();
         let point = ops
             .conv2d_tensor(&relu0, &pw_weight, &pw_bias, &point_cfg)
             .expect("stage0 pw");
 
-        let depth_cfg = Conv2dConfig::new(1, 16, 16, 320, 320, 3, 3, 1, 1, 1, 1, 16).unwrap();
+        let depth_cfg = Conv2dConfig::new(
+            1,
+            Conv2dChannels::new(16, 16),
+            SpatialDims::new(320, 320),
+            SpatialDims::new(3, 3),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            16,
+        )
+        .unwrap();
         let depth = ops
             .conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
             .expect("stage0 depth");
@@ -1890,16 +1971,11 @@ mod tests {
 
         let point_cfg = Conv2dConfig::new(
             batch,
-            in_channels,
-            point_out,
-            width,
-            height,
-            1,
-            1,
-            1,
-            1,
-            0,
-            0,
+            Conv2dChannels::new(in_channels, point_out),
+            SpatialDims::new(width, height),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(0, 0),
             1,
         )?;
         let reduced = ops.conv2d_tensor(input, &point_weight, &point_bias, &point_cfg)?;
@@ -1912,7 +1988,13 @@ mod tests {
             depth_out
         );
         let depth_cfg = Conv2dConfig::new(
-            batch, point_out, depth_out, width, height, 3, 3, 1, 1, 1, 1, depth_out,
+            batch,
+            Conv2dChannels::new(point_out, depth_out),
+            SpatialDims::new(width, height),
+            SpatialDims::new(3, 3),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            depth_out,
         )?;
         ops.conv2d_tensor(&reduced, &depth_weight, &depth_bias, &depth_cfg)
     }
@@ -1953,7 +2035,13 @@ mod tests {
         );
 
         let point_cfg = Conv2dConfig::new(
-            batch, channels, point_out, width, height, 1, 1, 1, 1, 0, 0, 1,
+            batch,
+            Conv2dChannels::new(channels, point_out),
+            SpatialDims::new(width, height),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(0, 0),
+            1,
         )?;
         let point = ops.conv2d_tensor(input, point_weight, point_bias, &point_cfg)?;
 
@@ -1985,16 +2073,11 @@ mod tests {
 
         let depth_cfg = Conv2dConfig::new(
             batch,
-            point_out,
-            depth_out,
-            width,
-            height,
-            depth_kernel_w,
-            depth_kernel_h,
-            1,
-            1,
-            pad,
-            pad,
+            Conv2dChannels::new(point_out, depth_out),
+            SpatialDims::new(width, height),
+            SpatialDims::new(depth_kernel_w, depth_kernel_h),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(pad, pad),
             depth_out,
         )?;
         let depth = ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)?;
@@ -2069,7 +2152,16 @@ mod tests {
             eprintln!("Skipping conv2d GPU test (no adapter)");
             return;
         };
-        let config = Conv2dConfig::new(1, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1, 2).unwrap();
+        let config = Conv2dConfig::new(
+            1,
+            Conv2dChannels::new(4, 4),
+            SpatialDims::new(4, 4),
+            SpatialDims::new(3, 3),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            2,
+        )
+        .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
             .map(|i| ((i * 13 % 17) as f32) * 0.1)
             .collect();
@@ -2178,7 +2270,16 @@ mod tests {
             return;
         };
 
-        let config = Conv2dConfig::new(1, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1, 2).unwrap();
+        let config = Conv2dConfig::new(
+            1,
+            Conv2dChannels::new(4, 4),
+            SpatialDims::new(4, 4),
+            SpatialDims::new(3, 3),
+            SpatialDims::new(1, 1),
+            SpatialDims::new(1, 1),
+            2,
+        )
+        .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
             .map(|i| ((i * 17 % 23) as f32) * 0.05)
             .collect();
