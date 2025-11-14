@@ -483,6 +483,10 @@ Leverage GPU compute for massive performance gains in image processing operation
     - CLI `--release --benchmark-preprocess`: CPU avg 7.13 ms/image vs GPU avg 35.48 ms/image (still limited by synchronous map/poll).
   - [ ] **Target: 102ms → 5-10ms (10-20x speedup)**
 
+- [x] **Micro-optimizations**
+  - [x] Audit math hotspots for fused multiply-add opportunities (`conv2d_cpu`, batch-norm CPU reference, YuNet tensor fusion, enhancement filters) and replace `a * b + c` forms with `mul_add` where it improves precision/perf.
+  - [x] Evaluate `reorder_hw_major` (`yunet-core/src/gpu/runtime.rs`) for Rayon-based parallelism — kept serial because tensors are small and integer indexing offers no fused helper; only revisit if profiling flags it as a bottleneck.
+
 - [x] **Phase 13.2: GPU enhancement pipeline** (~50-180ms savings)
   - [x] Create WGSL compute shaders for each filter
     - [x] `histogram_equalization.wgsl` - parallel histogram + scan/reduce kernels (full GPU pipeline)
@@ -500,8 +504,8 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] GPU enhancement fully operational with automatic CPU fallback
   - Note: Further optimization to keep textures on GPU between operations would be Phase 13.4+ work
 
-- [ ] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
-  - [ ] **Option A: DirectML via ort crate** (Recommended for Windows)
+- [x] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
+  - [ ] **Option A: DirectML via ort crate** (Recommended for Windows, *deferred while Option C is active*)
     - [ ] Add `ort = { version = "2.0", features = ["load-dynamic"] }` dependency
     - [ ] Add `ort = { version = "2.0", features = ["directml"] }` for Windows builds
     - [ ] Create `yunet-core/src/ort_model.rs` as alternative to tract
@@ -509,18 +513,18 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [ ] Benchmark tract CPU vs ort DirectML on Windows
     - [ ] Add fallback to CPU execution provider if DirectML unavailable
     - [ ] **Target: 444ms → 100-150ms (3-4x speedup on GPU)**
-  - [ ] **Option B: Metal Performance Shaders** (macOS)
+  - [ ] **Option B: Metal Performance Shaders** (macOS, *deferred while Option C is active*)
     - [ ] Use ort with CoreML execution provider
     - [ ] Benchmark on Apple Silicon vs Intel Macs
-  - [ ] **Option C: Custom WGPU YuNet implementation** (Future work)
+  - [x] **Option C: Custom WGPU YuNet implementation** (Future work)
     - [x] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
       - `yunet-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `yunet-core/src/gpu/*.wgsl`
     - [x] Keep YuNet backbone/neck/head on-GPU and expose runtime toggles in CLI (`--gpu-inference`) and GUI settings
     - [x] Add automated accuracy gating (run CPU vs GPU parity suite in CI and surface diffs)
       - `cargo test -p yunet-core gpu_inference_matches_cpu_baseline -- --nocapture` now exercises `yunet-core/tests/gpu_cpu_parity.rs` across representative fixtures, comparing scores/bboxes/landmarks and surfacing max deltas.
-    - [ ] Port YuNet architecture to WGSL
-    - [ ] Validate outputs against ONNX reference
-    - [ ] Most flexibility but significant development effort
+    - [x] Port YuNet architecture to WGSL
+    - [x] Validate outputs against ONNX reference
+    - [x] Most flexibility but significant development effort
 
 - [ ] **Phase 13.4: GPU batch face cropping** (~10-30ms savings for multi-face)
   - [ ] Implement parallel crop extraction via GPU texture operations
