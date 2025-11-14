@@ -10,7 +10,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.6.1"
+version = "0.7.0"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
@@ -19,9 +19,9 @@ calamine = "0.31.0"
 clap = { version = "4.5.51", features = ["derive"] }
 criterion = "0.7.0"
 csv = "1.3.0"
-egui = "0.33.0"
-egui_extras = "0.33.0"
-eframe = { version = "0.33.0", features = ["wgpu"] }
+egui = "0.33.2"
+egui_extras = "0.33.2"
+eframe = { version = "0.33.2", features = ["wgpu"] }
 env_logger = "0.11.8"
 image = { version = "0.25.8", default-features = false, features = ["png", "jpeg", "webp"] }
 log = "0.4.28"
@@ -45,5 +45,4 @@ wgpu = "27.0.1"
 pollster = "0.4.0"
 async-channel = "2.5.0"
 bytemuck = { version = "1.24.0", features = ["derive"] }
-prost = "0.14.1"
-prost011 = { package = "prost", version = "0.11.9" }
+prost = "0.11.9" # Set to 0.11.9 for tract-onnx compatibility

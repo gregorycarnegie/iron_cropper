@@ -4,14 +4,14 @@
 ![WGSL](https://img.shields.io/badge/WGSL-GPU%20Compute-blue?logo=webgpu)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Iron Cropper is a Rust workspace that wraps the YuNet face detector with deterministic cropping, quality analysis, enhancement, and export tooling. The project ships both a command-line workflow and an egui desktop application, backed by shared utilities for image processing, metadata handling, and configuration.
+Iron Cropper is a Rust workspace that wraps the YuNet face detector with deterministic cropping, quality analysis, enhancement, and export tooling. The project ships both a command-line workflow and an egui desktop application, backed by shared utilities for image processing, metadata handling, and configuration. Both CPU and GPU acceleration paths are supported via wgpu/WGSL compute shaders for preprocessing, enhancement, and custom YuNet inference.
 
 ## Crates
 
-- **`yunet-core`** – Loads the YuNet ONNX model with `tract-onnx`, handles preprocessing/postprocessing, and implements the crop calculation logic (see `ARCHITECTURE.md` for details).
-- **`yunet-utils`** – Shared helpers: configuration structs, Laplacian-variance quality scoring, enhancement pipeline, and output encoders with metadata support.
-- **`yunet-cli`** – Command-line frontend aimed at batch processing and automation. Example invocations are documented in `docs/cli_recipes.md`.
-- **`yunet-gui`** – eframe/egui desktop experience with live preview, crop adjustments, enhancements, history/undo, and batch export. A user guide lives in `docs/gui_crop_guide.md`.
+- **`yunet-core`** – Loads the YuNet ONNX model with `tract-onnx`, handles preprocessing/postprocessing, and implements the crop calculation logic. Includes GPU-accelerated preprocessing and custom GPU YuNet inference via WGSL compute shaders (see `ARCHITECTURE.md` for details).
+- **`yunet-utils`** – Shared helpers: configuration structs, Laplacian-variance quality scoring, enhancement pipeline (CPU and GPU paths with 7 WGSL compute shaders), mapping system for CSV/Excel/Parquet/SQLite, and output encoders with metadata support.
+- **`yunet-cli`** – Command-line frontend aimed at batch processing and automation with optional GPU acceleration (auto-detected, with fallback to CPU). Features GPU context pooling for efficient batch operations. Example invocations are documented in `docs/cli_recipes.md`.
+- **`yunet-gui`** – eframe/egui desktop experience with live preview, crop adjustments, enhancements, history/undo, and batch export. Shares GPU context with eframe's wgpu backend for efficient rendering and compute. A user guide lives in `docs/gui_crop_guide.md`.
 
 ## Crop Features Overview
 
@@ -19,9 +19,19 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - **Face height targeting** – Configure how large the face should appear in the final crop (10–100%). The cropper preserves the requested aspect ratio and clamps within source bounds.
 - **Positioning modes** – Center, Rule of Thirds, or fully custom offsets with keyboard nudges and undo/redo support.
 - **Quality automation** – Laplacian-variance scoring categorises crops into Low/Medium/High. Filters can auto-select the sharpest face, skip soft captures, and append quality suffixes.
-- **Enhancement pipeline** – Optional post-crop adjustments (auto color, exposure, brightness, contrast, saturation, sharpening, skin smoothing, red-eye removal, and portrait background blur) implemented in pure Rust.
+- **Enhancement pipeline** – Optional post-crop adjustments (auto color, exposure, brightness, contrast, saturation, sharpening, skin smoothing, red-eye removal, and portrait background blur) with both CPU (pure Rust) and GPU (WGSL compute shaders) implementations.
 - **Metadata & export** – Preserve, strip, or customise metadata. Exports support PNG, JPEG (with quality controls), and WebP.
 - **Batch processing** – Both CLI and GUI support multi-image workflows with status tracking, filenames derived from templates, and quality-aware selection.
+
+## GPU Acceleration
+
+The project includes comprehensive GPU acceleration via wgpu and WGSL compute shaders:
+
+- **Preprocessing** – GPU-accelerated image resizing, color space conversion (RGB→BGR), and tensor layout transformation (HWC→CHW) with automatic fallback to CPU.
+- **Enhancement shaders** – 7 WGSL compute pipelines: pixel adjustments (exposure/brightness/contrast/saturation), histogram equalization, Gaussian blur, bilateral filter (skin smoothing), red-eye removal, background blur, and shape masking.
+- **Custom YuNet inference** – Full GPU implementation of YuNet face detection model using custom WGSL shaders for Conv2D, BatchNorm, pooling, and activation operations (see `docs/gpu_research.md`).
+- **GPU context pooling** – CLI uses async GPU context pool for efficient batch operations; GUI shares wgpu context with eframe's rendering backend.
+- **Auto-detection** – Both CLI and GUI automatically detect GPU availability and fall back to CPU when necessary. Use `--gpu` or `--no-gpu` flags in CLI for explicit control.
 
 ## Mapping-driven Workflows
 
@@ -34,7 +44,10 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - `cargo check --workspace` – Fast type checking across all crates.
 - `cargo test --workspace --all-features` – Run the full test suite (requires the YuNet 640×640 ONNX model under `models/`).
 - `cargo run -p yunet-cli -- --help` – View CLI options.
-- `cargo run -p yunet-gui` – Launch the GUI with default settings.
+- `cargo run -p yunet-cli -- --benchmark-preprocess` – Benchmark GPU vs CPU preprocessing performance.
+- `cargo run -p yunet-cli -- --input fixtures/ --gpu` – Run with explicit GPU acceleration.
+- `cargo run -p yunet-cli -- --input fixtures/ --no-gpu` – Run with CPU-only mode.
+- `cargo run -p yunet-gui` – Launch the GUI with default settings (auto-detects GPU).
 - `cargo bench -p yunet-core crop_enhance` – Measure the crop + enhancement micro-benchmark.
 - `cargo fmt --all && cargo clippy --workspace -- -D warnings` – Formatting and linting hygiene.
 
@@ -53,5 +66,6 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - `ARCHITECTURE.md` – End-to-end architecture and crop pipeline notes.
 - `docs/gui_crop_guide.md` – Detailed walkthrough of the GUI crop features.
 - `docs/cli_recipes.md` – Command-line recipes for common automation scenarios.
+- `docs/gpu_research.md` – GPU acceleration research and implementation notes for custom WGSL YuNet inference.
 
 Refer to `TODO.md` for the broader roadmap and phase breakdown.

@@ -19,7 +19,7 @@ tract-onnx.workspace = true
 wgpu.workspace = true
 bytemuck.workspace = true
 yunet-utils = { path = "../yunet-utils" }
-prost011.workspace = true
+prost.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

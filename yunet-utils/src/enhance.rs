@@ -223,7 +223,8 @@ fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
     let multiplier = multiplier.clamp(0.5, 2.0);
     let lut = build_lut(|value| {
         let normalized = value as f32 / 255.0;
-        let contrasted = ((normalized - 0.5) * multiplier + 0.5).clamp(0.0, 1.0) * 255.0;
+        let contrasted =
+            multiplier.mul_add(normalized - 0.5, 0.5).clamp(0.0, 1.0) * 255.0;
         contrasted.round() as u8
     });
     apply_lut_rgb(img, &lut)
@@ -281,16 +282,13 @@ fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
         let r = pixel[0] as f32;
         let g = pixel[1] as f32;
         let b = pixel[2] as f32;
-        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        pixel[0] = (gray * (1.0 - multiplier) + r * multiplier)
-            .round()
-            .clamp(0.0, 255.0) as u8;
-        pixel[1] = (gray * (1.0 - multiplier) + g * multiplier)
-            .round()
-            .clamp(0.0, 255.0) as u8;
-        pixel[2] = (gray * (1.0 - multiplier) + b * multiplier)
-            .round()
-            .clamp(0.0, 255.0) as u8;
+        let gray = 0.587f32.mul_add(g, 0.114f32.mul_add(b, 0.299f32 * r));
+        let r_adj = multiplier.mul_add(r - gray, gray);
+        let g_adj = multiplier.mul_add(g - gray, gray);
+        let b_adj = multiplier.mul_add(b - gray, gray);
+        pixel[0] = r_adj.round().clamp(0.0, 255.0) as u8;
+        pixel[1] = g_adj.round().clamp(0.0, 255.0) as u8;
+        pixel[2] = b_adj.round().clamp(0.0, 255.0) as u8;
     }
 
     DynamicImage::ImageRgba8(buf)
@@ -352,16 +350,16 @@ fn apply_skin_smoothing(
                     let dr = center[0] as f32 - neighbor[0] as f32;
                     let dg = center[1] as f32 - neighbor[1] as f32;
                     let db = center[2] as f32 - neighbor[2] as f32;
-                    let color_dist_sq = dr * dr + dg * dg + db * db;
+                    let color_dist_sq = dr.mul_add(dr, dg.mul_add(dg, db * db));
 
                     // Combine spatial and color weights
                     let spatial_w = spatial_weights[(dy + radius) as usize][(dx + radius) as usize];
                     let color_w = (color_coeff * color_dist_sq).exp();
                     let weight = spatial_w * color_w;
 
-                    sum_r += neighbor[0] as f32 * weight;
-                    sum_g += neighbor[1] as f32 * weight;
-                    sum_b += neighbor[2] as f32 * weight;
+                    sum_r = weight.mul_add(neighbor[0] as f32, sum_r);
+                    sum_g = weight.mul_add(neighbor[1] as f32, sum_g);
+                    sum_b = weight.mul_add(neighbor[2] as f32, sum_b);
                     sum_weight += weight;
                 }
             }
@@ -372,13 +370,19 @@ fn apply_skin_smoothing(
                 let filtered_b = (sum_b / sum_weight).round().clamp(0.0, 255.0) as u8;
 
                 // Blend with original based on amount
-                let final_r = ((1.0 - amount) * center[0] as f32 + amount * filtered_r as f32)
+                let center_r = center[0] as f32;
+                let center_g = center[1] as f32;
+                let center_b = center[2] as f32;
+                let final_r = amount
+                    .mul_add(filtered_r as f32 - center_r, center_r)
                     .round()
                     .clamp(0.0, 255.0) as u8;
-                let final_g = ((1.0 - amount) * center[1] as f32 + amount * filtered_g as f32)
+                let final_g = amount
+                    .mul_add(filtered_g as f32 - center_g, center_g)
                     .round()
                     .clamp(0.0, 255.0) as u8;
-                let final_b = ((1.0 - amount) * center[2] as f32 + amount * filtered_b as f32)
+                let final_b = amount
+                    .mul_add(filtered_b as f32 - center_b, center_b)
                     .round()
                     .clamp(0.0, 255.0) as u8;
 
@@ -467,7 +471,7 @@ fn background_blur_from_rgba(
         for x in 0..w {
             let dx = (x as f32 - cx) / rx;
             let dy = (y as f32 - cy) / ry;
-            let dist = (dx * dx + dy * dy).sqrt();
+            let dist = dx.mul_add(dx, dy * dy).sqrt();
 
             let blend = if dist < 0.9 {
                 0.0
@@ -482,9 +486,9 @@ fn background_blur_from_rgba(
 
             let mut result = [0u8; 4];
             for c in 0..4 {
-                result[c] = ((1.0 - blend) * sharp_px[c] as f32 + blend * blur_px[c] as f32)
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
+                let sharp_val = sharp_px[c] as f32;
+                let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
+                result[c] = mix.round().clamp(0.0, 255.0) as u8;
             }
 
             out.put_pixel(x, y, Rgba(result));
@@ -524,7 +528,9 @@ fn unsharp_with_preblur_rgba(
                     new_px[c] = s[c];
                     continue;
                 }
-                let val = s[c] as f32 + amount * (s[c] as f32 - b[c] as f32);
+                let src_val = s[c] as f32;
+                let diff = src_val - b[c] as f32;
+                let val = amount.mul_add(diff, src_val);
                 new_px[c] = val.round().clamp(0.0, 255.0) as u8;
             }
             out.put_pixel(x, y, Rgba(new_px));

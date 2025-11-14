@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::Path};
 
 use anyhow::{Context, Result, anyhow};
 use bytemuck::cast_slice;
-use prost011::Message;
+use prost::Message;
 use tract_onnx::pb;
 
 /// Thin wrapper around a subset of ONNX initializers (float tensors only).

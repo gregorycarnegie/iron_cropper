@@ -246,8 +246,8 @@ pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) ->
                     let cy = (row as f32 + dy) * stride_f;
                     let w = dw.exp() * stride_f;
                     let h = dh.exp() * stride_f;
-                    let x = cx - w * 0.5;
-                    let y = cy - h * 0.5;
+                    let x = (-0.5f32).mul_add(w, cx);
+                    let y = (-0.5f32).mul_add(h, cy);
 
                     stride_data.push(x);
                     stride_data.push(y);

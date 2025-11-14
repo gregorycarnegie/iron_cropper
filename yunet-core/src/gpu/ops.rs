@@ -2224,7 +2224,7 @@ mod tests {
                                 let input_index = (ic * in_h + iy as usize) * in_w + ix as usize;
                                 let weight_index =
                                     oc * weights_per_out + ic_local * k_h * k_w + ky * k_w + kx;
-                                acc += input[input_index] * weights[weight_index];
+                                acc = input[input_index].mul_add(weights[weight_index], acc);
                             }
                         }
                     }
@@ -2257,7 +2257,8 @@ mod tests {
             let inv_std = 1.0 / (var_c + cfg.epsilon).sqrt();
             for idx in 0..plane {
                 let offset = c * plane + idx;
-                out[offset] = (out[offset] - mean_c) * inv_std * gamma_c + beta_c;
+                let gain = inv_std * gamma_c;
+                out[offset] = gain.mul_add(out[offset] - mean_c, beta_c);
             }
         }
         out
