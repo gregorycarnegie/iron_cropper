@@ -1,27 +1,23 @@
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
+use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{GAUSSIAN_BLUR_WGSL, GpuContext};
+use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
 const MAX_RADIUS: u32 = 12;
 const MAX_KERNEL_SIZE: usize = (MAX_RADIUS as usize * 2) + 1;
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct BlurUniforms {
+gpu_uniforms!(BlurUniforms, 3, {
     width: u32,
     height: u32,
     radius: u32,
     direction: u32,
     kernel_size: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-}
+});
 
 #[derive(Clone)]
 pub struct GpuGaussianBlur {
@@ -33,71 +29,18 @@ pub struct GpuGaussianBlur {
 impl GpuGaussianBlur {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_gaussian_blur_shader"),
-            source: wgpu::ShaderSource::Wgsl(GAUSSIAN_BLUR_WGSL.into()),
-        });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_gaussian_blur_bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_gaussian_blur_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_gaussian_blur_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "gaussian_blur",
+            GAUSSIAN_BLUR_WGSL,
+            [
+                storage_buffer_entry!(0, read_only),
+                storage_buffer_entry!(1, read_write),
+                uniform_buffer_entry!(2),
+                storage_buffer_entry!(3, read_only),
+            ]
+        );
 
         Ok(Self {
             context,
@@ -165,9 +108,7 @@ impl GpuGaussianBlur {
             radius,
             direction: 0,
             kernel_size,
-            _pad0: 0,
-            _pad1: 0,
-            _pad2: 0,
+            __padding: [0; 3],
         };
         let horizontal_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_gaussian_blur_uniform_horizontal"),
@@ -235,39 +176,7 @@ impl GpuGaussianBlur {
         encoder.copy_buffer_to_buffer(&input_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed during blur: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("GPU blur map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("GPU blur map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let result_u32: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-
-        anyhow::ensure!(
-            result_u32.len() == data_u32.len(),
-            "unexpected GPU blur output size (expected {}, got {})",
-            data_u32.len(),
-            result_u32.len()
-        );
-
-        let mut out_bytes = Vec::with_capacity(result_u32.len());
-        for value in result_u32 {
-            out_bytes.push((value & 0xFF) as u8);
-        }
+        let out_bytes = gpu_readback!(readback, device, data_u32.len(), "gaussian blur")?;
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build blurred image")?;

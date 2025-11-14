@@ -1,20 +1,18 @@
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
+use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{GpuContext, RED_EYE_WGSL};
+use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct RedEyeUniforms {
+gpu_uniforms!(RedEyeUniforms, 1, {
     pixel_count: u32,
     threshold: f32,
     min_red: f32,
-    _pad: f32,
-}
+});
 
 #[derive(Clone)]
 pub struct GpuRedEyeRemoval {
@@ -26,51 +24,16 @@ pub struct GpuRedEyeRemoval {
 impl GpuRedEyeRemoval {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_red_eye_shader"),
-            source: wgpu::ShaderSource::Wgsl(RED_EYE_WGSL.into()),
-        });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_red_eye_bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_red_eye_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_red_eye_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "red_eye",
+            RED_EYE_WGSL,
+            [
+                storage_buffer_entry!(0, read_write),
+                uniform_buffer_entry!(1),
+            ]
+        );
 
         Ok(Self {
             context,
@@ -111,7 +74,7 @@ impl GpuRedEyeRemoval {
             pixel_count: pixel_count as u32,
             threshold,
             min_red: 80.0,
-            _pad: 0.0,
+            __padding: [0; 1],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_red_eye_uniforms"),
@@ -150,38 +113,7 @@ impl GpuRedEyeRemoval {
         encoder.copy_buffer_to_buffer(&storage, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("GPU red-eye map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("GPU red-eye map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let result_u32: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-
-        anyhow::ensure!(
-            result_u32.len() == data_u32.len(),
-            "unexpected red-eye output size (expected {}, got {})",
-            data_u32.len(),
-            result_u32.len()
-        );
-
-        let mut out_bytes = Vec::with_capacity(result_u32.len());
-        for value in result_u32 {
-            out_bytes.push((value & 0xFF) as u8);
-        }
+        let out_bytes = gpu_readback!(readback, device, data_u32.len(), "red-eye removal")?;
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build red-eye image")?;

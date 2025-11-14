@@ -1,38 +1,24 @@
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
+use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{GpuContext, HIST_EQUALIZE_WGSL};
+use crate::{gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct HistogramUniforms {
+gpu_uniforms!(HistogramUniforms, 3, {
     pixel_count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-}
+});
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct CdfUniforms {
+gpu_uniforms!(CdfUniforms, 3, {
     total_pixels: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-}
+});
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct LutUniforms {
+gpu_uniforms!(LutUniforms, 3, {
     pixel_count: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-}
+});
 
 #[derive(Clone)]
 pub struct GpuHistogramEqualizer {
@@ -56,25 +42,25 @@ impl GpuHistogramEqualizer {
         let histogram_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_histogram_bgl"),
             entries: &[
-                storage_entry(0, true),
-                storage_entry(1, false),
-                uniform_entry(2),
+                storage_buffer_entry!(0, read_only),
+                storage_buffer_entry!(1, read_write),
+                uniform_buffer_entry!(2),
             ],
         });
         let cdf_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_hist_cdf_bgl"),
             entries: &[
-                storage_entry(0, true),
-                storage_entry(1, false),
-                uniform_entry(2),
+                storage_buffer_entry!(0, read_only),
+                storage_buffer_entry!(1, read_write),
+                uniform_buffer_entry!(2),
             ],
         });
         let apply_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_hist_apply_bgl"),
             entries: &[
-                storage_entry(0, false),
-                storage_entry(1, true),
-                uniform_entry(2),
+                storage_buffer_entry!(0, read_write),
+                storage_buffer_entry!(1, read_only),
+                uniform_buffer_entry!(2),
             ],
         });
 
@@ -179,9 +165,7 @@ impl GpuHistogramEqualizer {
 
         let uniform = HistogramUniforms {
             pixel_count,
-            _pad0: 0,
-            _pad1: 0,
-            _pad2: 0,
+            __padding: [0; 3],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_hist_uniform"),
@@ -219,9 +203,7 @@ impl GpuHistogramEqualizer {
 
         let cdf_uniform = CdfUniforms {
             total_pixels: pixel_count,
-            _pad0: 0,
-            _pad1: 0,
-            _pad2: 0,
+            __padding: [0; 3],
         };
         let cdf_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_hist_cdf_uniform"),
@@ -291,9 +273,7 @@ impl GpuHistogramEqualizer {
 
         let uniform = LutUniforms {
             pixel_count,
-            _pad0: 0,
-            _pad1: 0,
-            _pad2: 0,
+            __padding: [0; 3],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_hist_apply_uniform"),
@@ -343,60 +323,11 @@ impl GpuHistogramEqualizer {
         encoder.copy_buffer_to_buffer(&pixel_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("hist apply map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("hist apply map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let data: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-
-        let mut bytes = Vec::with_capacity(data.len());
-        for value in data {
-            bytes.push((value & 0xFF) as u8);
-        }
+        let expected_len = (pixel_count as usize) * 4;
+        let bytes = gpu_readback!(readback, device, expected_len, "histogram equalization")?;
 
         let result =
             RgbaImage::from_raw(width, height, bytes).context("failed to build equalized image")?;
         Ok(DynamicImage::ImageRgba8(result))
-    }
-}
-
-fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
-    }
-}
-
-fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Uniform,
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
     }
 }

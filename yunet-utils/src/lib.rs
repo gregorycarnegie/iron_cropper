@@ -10,6 +10,9 @@ pub mod fixtures;
 pub mod gpu;
 /// Image loading, resizing, and tensor conversion.
 pub mod image_utils;
+/// Macros for reducing GPU shader boilerplate.
+#[macro_use]
+pub mod macros;
 /// Data-driven mapping utilities (CSV/Excel/Parquet/SQLite ingestion).
 pub mod mapping;
 /// Image output helpers (encoding, metadata preservation).

@@ -1,20 +1,18 @@
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, bytes_of, cast_slice};
+use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{BACKGROUND_BLUR_WGSL, GpuContext};
+use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct BackgroundBlurUniforms {
+gpu_uniforms!(BackgroundBlurUniforms, 1, {
     width: u32,
     height: u32,
     mask_size: f32,
-    _pad: f32,
-}
+});
 
 #[derive(Clone)]
 pub struct GpuBackgroundBlur {
@@ -26,44 +24,18 @@ pub struct GpuBackgroundBlur {
 impl GpuBackgroundBlur {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_background_blur_shader"),
-            source: wgpu::ShaderSource::Wgsl(BACKGROUND_BLUR_WGSL.into()),
-        });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_background_blur_bgl"),
-            entries: &[
-                buffer_entry(0, true),
-                buffer_entry(1, true),
-                buffer_entry(2, false),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_background_blur_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_background_blur_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "background_blur",
+            BACKGROUND_BLUR_WGSL,
+            [
+                storage_buffer_entry!(0, read_only),
+                storage_buffer_entry!(1, read_only),
+                storage_buffer_entry!(2, read_write),
+                uniform_buffer_entry!(3),
+            ]
+        );
 
         Ok(Self {
             context,
@@ -125,7 +97,7 @@ impl GpuBackgroundBlur {
             width,
             height,
             mask_size,
-            _pad: 0.0,
+            __padding: [0; 1],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_background_blur_uniforms"),
@@ -173,55 +145,10 @@ impl GpuBackgroundBlur {
         encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("GPU background blur map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("GPU background blur map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let result_u32: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-
-        anyhow::ensure!(
-            result_u32.len() == sharp_u32.len(),
-            "unexpected background blur output size (expected {}, got {})",
-            sharp_u32.len(),
-            result_u32.len()
-        );
-
-        let mut out_bytes = Vec::with_capacity(result_u32.len());
-        for value in result_u32 {
-            out_bytes.push((value & 0xFF) as u8);
-        }
+        let out_bytes = gpu_readback!(readback, device, sharp_u32.len(), "background blur")?;
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build blurred image")?;
         Ok(DynamicImage::ImageRgba8(image))
-    }
-}
-
-fn buffer_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
-    wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::COMPUTE,
-        ty: wgpu::BindingType::Buffer {
-            ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false,
-            min_binding_size: None,
-        },
-        count: None,
     }
 }

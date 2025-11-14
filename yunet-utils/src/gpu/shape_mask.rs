@@ -1,25 +1,24 @@
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, cast_slice};
+use bytemuck::cast_slice;
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use crate::shape::CropShape;
 use crate::shape::outline_points_for_rect;
+use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
 use super::{GpuContext, SHAPE_MASK_WGSL};
 
 const MAX_POINTS: usize = 512;
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct ShapeMaskUniforms {
+gpu_uniforms!(ShapeMaskUniforms, 0, {
     width: u32,
     height: u32,
     point_count: u32,
     samples: u32,
-}
+});
 
 #[derive(Clone)]
 pub struct GpuShapeMask {
@@ -31,61 +30,17 @@ pub struct GpuShapeMask {
 impl GpuShapeMask {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_shape_mask_shader"),
-            source: wgpu::ShaderSource::Wgsl(SHAPE_MASK_WGSL.into()),
-        });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_shape_mask_bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_shape_mask_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_shape_mask_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "shape_mask",
+            SHAPE_MASK_WGSL,
+            [
+                storage_buffer_entry!(0, read_write),
+                storage_buffer_entry!(1, read_only),
+                uniform_buffer_entry!(2),
+            ]
+        );
 
         Ok(Self {
             context,
@@ -148,6 +103,7 @@ impl GpuShapeMask {
             height,
             point_count: clamped.len() as u32,
             samples: 4,
+            __padding: [0; 0],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_shape_mask_uniforms"),
@@ -191,38 +147,7 @@ impl GpuShapeMask {
         encoder.copy_buffer_to_buffer(&storage, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let slice = readback.slice(..);
-        let (sender, receiver) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |res| {
-            let _ = sender.send(res);
-        });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|err| anyhow::anyhow!("device poll failed: {err}"))?;
-        receiver
-            .recv()
-            .map_err(|_| anyhow::anyhow!("shape mask map callback dropped"))?
-            .map_err(|err| anyhow::anyhow!("shape mask map error: {err}"))?;
-
-        let mapped = slice.get_mapped_range();
-        let result_u32: Vec<u32> = cast_slice(&mapped).to_vec();
-        drop(mapped);
-        readback.unmap();
-
-        anyhow::ensure!(
-            result_u32.len() == pixels_u32.len(),
-            "unexpected shape mask output size (expected {}, got {})",
-            pixels_u32.len(),
-            result_u32.len()
-        );
-
-        let mut out_bytes = Vec::with_capacity(result_u32.len());
-        for value in result_u32 {
-            out_bytes.push((value & 0xFF) as u8);
-        }
+        let out_bytes = gpu_readback!(readback, device, pixels_u32.len(), "shape mask")?;
 
         let masked = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build masked image")?;
