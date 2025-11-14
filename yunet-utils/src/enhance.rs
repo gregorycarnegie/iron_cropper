@@ -223,8 +223,7 @@ fn apply_contrast(img: &DynamicImage, multiplier: f32) -> DynamicImage {
     let multiplier = multiplier.clamp(0.5, 2.0);
     let lut = build_lut(|value| {
         let normalized = value as f32 / 255.0;
-        let contrasted =
-            multiplier.mul_add(normalized - 0.5, 0.5).clamp(0.0, 1.0) * 255.0;
+        let contrasted = multiplier.mul_add(normalized - 0.5, 0.5).clamp(0.0, 1.0) * 255.0;
         contrasted.round() as u8
     });
     apply_lut_rgb(img, &lut)

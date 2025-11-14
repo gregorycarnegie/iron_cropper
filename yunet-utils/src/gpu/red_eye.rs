@@ -6,7 +6,9 @@ use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{GpuContext, RED_EYE_WGSL};
-use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
+use crate::{
+    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
+};
 
 gpu_uniforms!(RedEyeUniforms, 1, {
     pixel_count: u32,

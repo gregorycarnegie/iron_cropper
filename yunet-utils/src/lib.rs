@@ -34,8 +34,8 @@ pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
 };
 pub use gpu::{
-    GpuAvailability, GpuContext, GpuContextGuard, GpuContextOptions, GpuContextPool, GpuInitError,
-    GpuPoolError,
+    BatchCropRequest, GpuAvailability, GpuBatchCropper, GpuContext, GpuContextGuard,
+    GpuContextOptions, GpuContextPool, GpuInitError, GpuPoolError,
 };
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,

@@ -6,7 +6,9 @@ use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{BILATERAL_FILTER_WGSL, GpuContext};
-use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
+use crate::{
+    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
+};
 
 const MAX_RADIUS: u32 = 8;
 

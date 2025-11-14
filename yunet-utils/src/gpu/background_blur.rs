@@ -6,7 +6,9 @@ use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use super::{BACKGROUND_BLUR_WGSL, GpuContext};
-use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
+use crate::{
+    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
+};
 
 gpu_uniforms!(BackgroundBlurUniforms, 1, {
     width: u32,

@@ -151,8 +151,8 @@ macro_rules! create_gpu_pipeline {
 #[macro_export]
 macro_rules! gpu_readback {
     ($readback:expr, $device:expr, $expected_len:expr, $operation:literal) => {{
-        use std::sync::mpsc;
         use bytemuck::cast_slice;
+        use std::sync::mpsc;
 
         let slice = $readback.slice(..);
         let (sender, receiver) = mpsc::channel();
@@ -284,7 +284,11 @@ mod tests {
 
         // Verify that the generated struct implements Pod and Zeroable
         let _zeroed: PodTestUniforms = bytemuck::Zeroable::zeroed();
-        let bytes = bytemuck::bytes_of(&PodTestUniforms { x: 42, y: 3.14, __padding: [0; 2] });
+        let bytes = bytemuck::bytes_of(&PodTestUniforms {
+            x: 42,
+            y: 3.14,
+            __padding: [0; 2],
+        });
         assert_eq!(bytes.len(), 16);
     }
 }

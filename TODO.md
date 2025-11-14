@@ -527,9 +527,9 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [x] Most flexibility but significant development effort
 
 - [ ] **Phase 13.4: GPU batch face cropping** (~10-30ms savings for multi-face)
-  - [ ] Implement parallel crop extraction via GPU texture operations
-  - [ ] Upload source image once, execute multiple crop regions as draw calls
-  - [ ] Batch resize operations for all detected faces
+  - [x] Implement parallel crop extraction via GPU texture operations
+  - [x] Upload source image once, execute multiple crop regions as draw calls
+  - [x] Batch resize operations for all detected faces
   - [ ] Single download of all cropped faces
   - [ ] Integrate with GUI thumbnail generation
   - [ ] **Target: 3-10x speedup for images with multiple faces**

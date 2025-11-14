@@ -6,7 +6,9 @@ use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
 use crate::enhance::EnhancementSettings;
-use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
+use crate::{
+    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
+};
 
 use super::{GpuContext, PIXEL_ADJUST_WGSL};
 

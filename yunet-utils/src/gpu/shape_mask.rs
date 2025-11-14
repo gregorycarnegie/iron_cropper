@@ -7,7 +7,9 @@ use wgpu::util::DeviceExt;
 
 use crate::shape::CropShape;
 use crate::shape::outline_points_for_rect;
-use crate::{create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
+use crate::{
+    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
+};
 
 use super::{GpuContext, SHAPE_MASK_WGSL};
 

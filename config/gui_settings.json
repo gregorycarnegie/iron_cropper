@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "passport",
-    "output_width": 413,
-    "output_height": 531,
+    "preset": "idcard",
+    "output_width": 332,
+    "output_height": 498,
     "face_height_pct": 60.0,
     "positioning_mode": "center",
     "vertical_offset": -0.0,

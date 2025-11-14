@@ -21,11 +21,14 @@ use yunet_core::{
     BoundingBox, CpuPreprocessor, Detection, PostprocessConfig, PreprocessConfig, Preprocessor,
     WgpuPreprocessor, YuNetDetector,
 };
-use yunet_core::{CropSettings, PositioningMode, crop_face_from_image, preset_by_name};
+use yunet_core::{
+    CropSettings, PositioningMode, calculate_crop_region, crop_face_from_image, preset_by_name,
+};
 use yunet_utils::{
-    CropShape, EnhancementSettings, GpuAvailability, GpuContext, GpuContextOptions, GpuContextPool,
-    GpuPoolError, MetadataContext, OutputOptions, Quality, QualityFilter, WgpuEnhancer,
-    append_suffix_to_filename, apply_enhancements, apply_shape_mask_dynamic,
+    BatchCropRequest, CropShape, EnhancementSettings, GpuAvailability, GpuBatchCropper, GpuContext,
+    GpuContextOptions, GpuContextPool, GpuPoolError, MetadataContext, OutputOptions, Quality,
+    QualityFilter, WgpuEnhancer, append_suffix_to_filename, apply_enhancements,
+    apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         ResizeQuality, default_settings_path,
@@ -348,6 +351,7 @@ struct CliGpuRuntime {
     pool: Option<GpuContextPool>,
     status: GpuStatusIndicator,
     enhancer: Option<Arc<WgpuEnhancer>>,
+    cropper: Option<Arc<GpuBatchCropper>>,
 }
 
 impl CliGpuRuntime {
@@ -392,6 +396,54 @@ impl CliGpuRuntime {
         let mut cpu = image.clone();
         apply_shape_mask_dynamic(&mut cpu, shape);
         cpu
+    }
+
+    fn crop_faces_gpu(
+        &self,
+        image: &DynamicImage,
+        detections: &[Detection],
+        settings: &CropSettings,
+    ) -> Option<Vec<DynamicImage>> {
+        if settings.output_width == 0 || settings.output_height == 0 {
+            return None;
+        }
+        let cropper = self.cropper.as_ref()?;
+        if detections.is_empty() {
+            return Some(Vec::new());
+        }
+
+        let (img_w, img_h) = image.dimensions();
+        let mut jobs = Vec::with_capacity(detections.len());
+        for det in detections {
+            let region = calculate_crop_region(img_w, img_h, det.bbox, settings);
+            jobs.push(BatchCropRequest {
+                source_x: region.x,
+                source_y: region.y,
+                source_width: region.width.max(1),
+                source_height: region.height.max(1),
+                output_width: settings.output_width,
+                output_height: settings.output_height,
+            });
+        }
+
+        match cropper.crop(image, &jobs) {
+            Ok(images) => {
+                if images.len() == detections.len() {
+                    Some(images)
+                } else {
+                    warn!(
+                        "GPU crop count mismatch (expected {}, got {}); reverting to CPU crops.",
+                        detections.len(),
+                        images.len()
+                    );
+                    None
+                }
+            }
+            Err(err) => {
+                warn!("GPU batch cropping failed: {err}; reverting to CPU crops.");
+                None
+            }
+        }
     }
 }
 
@@ -501,11 +553,30 @@ fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
         None => None,
     };
 
+    let cropper = match &context {
+        Some(ctx) => match GpuBatchCropper::new(ctx.clone()) {
+            Ok(cropper) => {
+                info!(
+                    "GPU batch cropper ready on '{}' ({:?})",
+                    ctx.adapter_info().name,
+                    ctx.adapter_info().backend
+                );
+                Some(Arc::new(cropper))
+            }
+            Err(err) => {
+                warn!("GPU batch cropper initialization failed: {err}");
+                None
+            }
+        },
+        None => None,
+    };
+
     let runtime = CliGpuRuntime {
         context,
         pool,
         status,
         enhancer,
+        cropper,
     };
     runtime.log_status();
     runtime.log_pool_state();
@@ -893,20 +964,47 @@ fn main() -> Result<()> {
 
                     let mut processed: Vec<ProcessedCrop> =
                         Vec::with_capacity(output.detections.len());
-                    for (idx, det) in output.detections.iter().enumerate() {
-                        let mut crop_img = crop_face_from_image(img, det, &core_settings);
-                        if let Some(enh) = enhancement_settings.as_ref() {
-                            crop_img = runtime.enhance(&crop_img, enh);
+
+                    let gpu_crops =
+                        runtime.crop_faces_gpu(img, &output.detections, &core_settings);
+                    if let Some(gpu_images) = gpu_crops {
+                        for ((idx, det), mut crop_img) in output
+                            .detections
+                            .iter()
+                            .enumerate()
+                            .zip(gpu_images.into_iter())
+                        {
+                            if let Some(enh) = enhancement_settings.as_ref() {
+                                crop_img = runtime.enhance(&crop_img, enh);
+                            }
+                            let (quality_score, quality) = estimate_sharpness(&crop_img);
+                            crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+                            processed.push(ProcessedCrop {
+                                index: idx,
+                                image: crop_img,
+                                quality,
+                                quality_score,
+                                score: det.score,
+                            });
                         }
-                        let (quality_score, quality) = estimate_sharpness(&crop_img);
-                        crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
-                        processed.push(ProcessedCrop {
-                            index: idx,
-                            image: crop_img,
-                            quality,
-                            quality_score,
-                            score: det.score,
-                        });
+                    }
+
+                    if processed.is_empty() {
+                        for (idx, det) in output.detections.iter().enumerate() {
+                            let mut crop_img = crop_face_from_image(img, det, &core_settings);
+                            if let Some(enh) = enhancement_settings.as_ref() {
+                                crop_img = runtime.enhance(&crop_img, enh);
+                            }
+                            let (quality_score, quality) = estimate_sharpness(&crop_img);
+                            crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+                            processed.push(ProcessedCrop {
+                                index: idx,
+                                image: crop_img,
+                                quality,
+                                quality_score,
+                                score: det.score,
+                            });
+                        }
                     }
 
                     if processed.is_empty() {
