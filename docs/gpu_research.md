@@ -168,6 +168,8 @@ struct TensorInit {
 - **Unit tests**:
   - Operator parity: Conv/BN/Activation vs. CPU reference (within ε).
   - End‑to‑end: fixed input → compare final tensors to known outputs.
+  - GPU↔CPU gating: `cargo test -p yunet-core gpu_inference_matches_cpu_baseline -- --nocapture` exercises `yunet-core/tests/gpu_cpu_parity.rs`, running mixed fixtures (single, group, occluded, negative) through real GPU preprocess/inference stacks, enforcing 1e-3 score and 5 px bbox/landmark tolerances and emitting max deltas.
+    The suite auto-skips when the model or GPU adapter is unavailable.
 - **Numerical**:
   - Watch for off‑by‑one in padding; confirm dilations/groups; clamp index bounds in WGSL.
 - **Profiling**:

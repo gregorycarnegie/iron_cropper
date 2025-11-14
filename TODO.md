@@ -515,6 +515,9 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] **Option C: Custom WGPU YuNet implementation** (Future work)
     - [x] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
       - `yunet-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `yunet-core/src/gpu/*.wgsl`
+    - [x] Keep YuNet backbone/neck/head on-GPU and expose runtime toggles in CLI (`--gpu-inference`) and GUI settings
+    - [x] Add automated accuracy gating (run CPU vs GPU parity suite in CI and surface diffs)
+      - `cargo test -p yunet-core gpu_inference_matches_cpu_baseline -- --nocapture` now exercises `yunet-core/tests/gpu_cpu_parity.rs` across representative fixtures, comparing scores/bboxes/landmarks and surfacing max deltas.
     - [ ] Port YuNet architecture to WGSL
     - [ ] Validate outputs against ONNX reference
     - [ ] Most flexibility but significant development effort
