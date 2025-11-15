@@ -21,17 +21,17 @@ pub struct Palette {
 /// Returns the default palette.
 pub fn palette() -> Palette {
     Palette {
-        canvas: Color32::from_rgb(12, 16, 24),
-        panel: Color32::from_rgb(22, 26, 36),
-        panel_dark: Color32::from_rgb(16, 20, 30),
-        panel_light: Color32::from_rgb(32, 36, 48),
-        accent: Color32::from_rgb(118, 201, 255),
-        accent_soft: Color32::from_rgba_unmultiplied(118, 201, 255, 60),
-        success: Color32::from_rgb(94, 223, 164),
-        warning: Color32::from_rgb(255, 206, 117),
-        danger: Color32::from_rgb(255, 135, 135),
-        subtle_text: Color32::from_rgb(185, 193, 208),
-        outline: Color32::from_rgba_unmultiplied(105, 114, 140, 140),
+        canvas: Color32::from_rgb(8, 13, 24),
+        panel: Color32::from_rgb(18, 26, 40),
+        panel_dark: Color32::from_rgb(10, 16, 28),
+        panel_light: Color32::from_rgb(36, 48, 74),
+        accent: Color32::from_rgb(88, 182, 255),
+        accent_soft: Color32::from_rgba_unmultiplied(88, 182, 255, 70),
+        success: Color32::from_rgb(92, 214, 172),
+        warning: Color32::from_rgb(255, 194, 122),
+        danger: Color32::from_rgb(255, 128, 140),
+        subtle_text: Color32::from_rgb(196, 207, 223),
+        outline: Color32::from_rgba_unmultiplied(90, 106, 140, 150),
     }
 }
 

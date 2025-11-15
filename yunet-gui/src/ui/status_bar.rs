@@ -2,56 +2,84 @@
 
 use egui::{
     Align, Button, Color32, CornerRadius, Layout, Margin, Response, RichText, Spinner, Stroke,
-    TopBottomPanel, Ui, vec2,
+    TopBottomPanel, Ui, Vec2,
 };
 
 use crate::{GpuStatusMode, YuNetApp, theme};
 
 impl YuNetApp {
-    /// Renders the top status bar with quick stats and actions.
+    /// Renders the top hero/status bar with quick stats and actions.
     pub fn show_status_bar(&mut self, ctx: &egui::Context) {
         let palette = theme::palette();
         TopBottomPanel::top("yunet_status_bar")
             .frame(
                 egui::Frame::new()
-                    .fill(palette.panel_dark)
+                    .fill(palette.canvas)
                     .stroke(Stroke::new(1.0, palette.outline))
-                    .inner_margin(Margin::symmetric(20, 16)),
+                    .inner_margin(Margin::symmetric(22, 16)),
             )
             .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
                 ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 6.0;
                     ui.horizontal(|ui| {
-                        ui.heading(RichText::new("YuNet Studio").size(26.0).strong());
+                        ui.vertical(|ui| {
+                            ui.label(
+                                RichText::new("Face Crop Studio")
+                                    .size(28.0)
+                                    .strong()
+                                    .color(Color32::WHITE),
+                            );
+                            ui.label(
+                                RichText::new("Batch-perfect crops with YuNet precision")
+                                    .color(palette.subtle_text),
+                            );
+                        });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if self.can_export_selected() {
+                                if ui
+                                    .add(
+                                        Button::new(
+                                            RichText::new("Export selected")
+                                                .strong()
+                                                .color(palette.panel_dark),
+                                        )
+                                        .fill(palette.accent)
+                                        .min_size(Vec2::new(170.0, 42.0))
+                                        .stroke(Stroke::NONE)
+                                        .corner_radius(CornerRadius::same(22)),
+                                    )
+                                    .clicked()
+                                {
+                                    self.export_selected_faces();
+                                }
+                            }
                             self.draw_status_badge(ui, palette);
                         });
                     });
 
-                    ui.label(RichText::new(&self.status_line).color(palette.subtle_text));
-
                     if let Some(err) = &self.last_error {
                         ui.colored_label(palette.danger, err);
-                    } else if self.preview.detections.is_empty() && !self.is_busy {
-                        ui.label(
-                            RichText::new("Choose an image to begin detecting faces.")
-                                .color(palette.subtle_text),
-                        );
+                    } else {
+                        ui.label(RichText::new(&self.status_line).color(palette.subtle_text));
                     }
 
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
                     self.draw_status_chips(ui, palette);
-                    ui.add_space(10.0);
+                    ui.add_space(8.0);
                     self.draw_quick_actions(ui, palette);
                 });
             });
     }
 
+    fn can_export_selected(&self) -> bool {
+        !self.selected_faces.is_empty() && !self.preview.detections.is_empty()
+    }
+
     fn draw_status_badge(&self, ui: &mut Ui, palette: theme::Palette) {
         let (label, color) = if self.is_busy {
-            ("Detecting...", palette.accent)
+            ("Detecting…", palette.accent)
         } else if self.detector.is_none() {
-            ("Model Required", palette.warning)
+            ("Model required", palette.warning)
         } else {
             ("Ready", palette.success)
         };
@@ -59,8 +87,8 @@ impl YuNetApp {
         egui::Frame::new()
             .fill(palette.panel_light)
             .stroke(Stroke::new(1.0, color))
-            .corner_radius(CornerRadius::same(64))
-            .inner_margin(Margin::symmetric(14, 6))
+            .corner_radius(CornerRadius::same(20))
+            .inner_margin(Margin::symmetric(18, 8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if self.is_busy {
@@ -89,7 +117,6 @@ impl YuNetApp {
                     palette.success
                 },
             );
-
             self.status_chip(
                 ui,
                 palette,
@@ -108,25 +135,25 @@ impl YuNetApp {
     fn draw_quick_actions(&mut self, ui: &mut Ui, palette: theme::Palette) {
         ui.horizontal_wrapped(|ui| {
             if self
-                .quick_action_button(ui, palette, "Open Image", "Pick a single file", true)
+                .quick_action_button(ui, palette, "Open image", "Select a single source", true)
                 .clicked()
             {
                 self.open_image_dialog();
             }
             if self
-                .quick_action_button(ui, palette, "Load Batch", "Queue multiple images", true)
+                .quick_action_button(ui, palette, "Load batch", "Queue multiple files", true)
                 .clicked()
             {
                 self.open_batch_dialog();
             }
 
-            let export_enabled = !self.selected_faces.is_empty();
+            let export_enabled = self.can_export_selected();
             if self
                 .quick_action_button(
                     ui,
                     palette,
-                    "Export Selected",
-                    "Sends crops to disk",
+                    "Export selected",
+                    "Send crops to disk",
                     export_enabled,
                 )
                 .clicked()
@@ -135,9 +162,13 @@ impl YuNetApp {
             }
 
             let batch_enabled = !self.batch_files.is_empty();
-            let subtitle = format!("{} queued", self.batch_files.len());
+            let subtitle = if batch_enabled {
+                format!("{} queued", self.batch_files.len())
+            } else {
+                "No queue".to_string()
+            };
             if self
-                .quick_action_button(ui, palette, "Run Batch", &subtitle, batch_enabled)
+                .quick_action_button(ui, palette, "Run batch", &subtitle, batch_enabled)
                 .clicked()
             {
                 self.start_batch_export();
@@ -156,16 +187,19 @@ impl YuNetApp {
         let text = format!("{title}\n{subtitle}");
         ui.add_enabled(
             enabled,
-            Button::new(RichText::new(text).size(15.0))
-                .wrap()
-                .min_size(vec2(150.0, 64.0))
-                .fill(if enabled {
-                    palette.panel_light
-                } else {
-                    palette.panel_dark
-                })
-                .stroke(Stroke::new(1.0, palette.outline))
-                .corner_radius(CornerRadius::same(16)),
+            Button::new(RichText::new(text).size(15.0).strong().color(if enabled {
+                palette.subtle_text
+            } else {
+                palette.subtle_text.gamma_multiply(0.5)
+            }))
+            .min_size(Vec2::new(150.0, 64.0))
+            .fill(if enabled {
+                palette.panel_light
+            } else {
+                palette.panel_dark
+            })
+            .stroke(Stroke::new(1.0, palette.outline))
+            .corner_radius(CornerRadius::same(18)),
         )
     }
 
@@ -202,7 +236,7 @@ impl YuNetApp {
                 format!("GPU {adapter} ({backend})")
             }
             Disabled => "GPU disabled".to_string(),
-            Pending => "GPU probing…".to_string(),
+            Pending => "GPU probing...".to_string(),
             Fallback => self
                 .gpu_status
                 .detail
@@ -221,7 +255,7 @@ impl YuNetApp {
     }
 }
 
-/// Helper function for drawing status chips (exported for use in other modules).
+/// Helper function for drawing status chips.
 pub(crate) fn status_chip_helper(
     _app: &crate::YuNetApp,
     ui: &mut Ui,
@@ -233,7 +267,7 @@ pub(crate) fn status_chip_helper(
         .fill(palette.panel_dark)
         .stroke(Stroke::new(1.0, accent))
         .corner_radius(CornerRadius::same(24))
-        .inner_margin(Margin::symmetric(12, 4))
+        .inner_margin(Margin::symmetric(12, 6))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(text.into())

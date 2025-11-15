@@ -257,6 +257,7 @@ impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         self.poll_worker(ctx);
         self.show_status_bar(ctx);
+        self.show_navigation_panel(ctx);
         ui::config::panel::show_configuration_panel(self, ctx);
         self.show_preview(ctx);
 

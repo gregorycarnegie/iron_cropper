@@ -355,4 +355,31 @@ impl YuNetApp {
             info!("Loaded {loaded} images for batch processing");
         }
     }
+
+    /// Opens a dialog to load mapping data files into the batch workflow.
+    pub(crate) fn pick_mapping_file_from_dialog(&mut self) {
+        use log::info;
+        use rfd::FileDialog;
+
+        if let Some(path) = FileDialog::new()
+            .add_filter(
+                "Data files",
+                &[
+                    "csv", "tsv", "txt", "xlsx", "xls", "parquet", "db", "sqlite",
+                ],
+            )
+            .pick_file()
+        {
+            self.mapping.set_file(path.clone());
+            match self.mapping.reload_preview() {
+                Ok(_) => {
+                    self.show_success(format!("Loaded mapping preview from {}", path.display()));
+                    info!("Mapping preview loaded from {}", path.display());
+                }
+                Err(err) => {
+                    self.show_error("Failed to load mapping preview", err.to_string());
+                }
+            }
+        }
+    }
 }

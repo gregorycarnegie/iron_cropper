@@ -18,51 +18,82 @@ impl YuNetApp {
                     .inner_margin(Margin::symmetric(16, 16)),
             )
             .show(ctx, |ui| {
-                if let Some(texture) = self.preview.texture.clone() {
-                    let image_dimensions = self.preview.image_size;
-                    let available = ui.available_size();
-                    if available.x > 0.0 && available.y > 0.0 {
-                        let tex_size = texture.size_vec2();
-                        if tex_size.x > 0.0 && tex_size.y > 0.0 {
-                            let scale = (available.x / tex_size.x)
-                                .min(available.y / tex_size.y)
-                                .max(0.0);
-                            let scale = if scale.is_finite() && scale > 0.0 {
-                                scale
-                            } else {
-                                1.0
-                            };
-                            let scaled = tex_size * scale;
-                            ui.centered_and_justified(|ui| {
-                                let image_widget =
-                                    egui::Image::new(&texture).fit_to_exact_size(scaled);
-                                let response = ui.add(image_widget);
-                                if let Some(dimensions) = image_dimensions {
-                                    let image_rect =
-                                        Rect::from_center_size(response.rect.center(), scaled);
-                                    self.handle_preview_interactions(ctx, image_rect, dimensions);
-                                    self.paint_detections(ui, image_rect, dimensions);
-                                    self.preview_overlay(ui, image_rect, palette);
-                                }
+                let total_height = ui.available_height().max(360.0);
+                let detection_height = (total_height * 0.25).max(180.0);
+                let preview_height = (total_height - detection_height).max(220.0);
+                let width = ui.available_width();
+
+                ui.allocate_ui_with_layout(
+                    vec2(width, preview_height),
+                    Layout::top_down(Align::Center),
+                    |ui| {
+                        egui::Frame::new()
+                            .fill(palette.panel_dark)
+                            .stroke(Stroke::new(1.0, palette.outline))
+                            .corner_radius(CornerRadius::same(28))
+                            .inner_margin(Margin::symmetric(18, 18))
+                            .show(ui, |ui| {
+                                ui.set_min_height(preview_height);
+                                self.render_preview_area(ui, ctx, palette);
                             });
-                        }
-                    }
-                } else if self.preview.is_loading {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(64.0);
-                        ui.add(Spinner::new().size(28.0));
-                        ui.label(
-                            RichText::new("Loading image and running detection...").size(16.0),
+                    },
+                );
+
+                ui.add_space(12.0);
+                ui.allocate_ui_with_layout(
+                    vec2(width, detection_height),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        ui.set_min_height(detection_height);
+                        crate::ui::config::detections::show_detection_carousel(
+                            self, ctx, ui, palette,
                         );
-                    });
-                } else {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(64.0);
-                        ui.heading("Drop an image or pick one from Quick Actions.");
-                        ui.label("The preview area will light up once detection finishes.");
+                    },
+                );
+            });
+    }
+
+    fn render_preview_area(&mut self, ui: &mut Ui, ctx: &egui::Context, palette: theme::Palette) {
+        if let Some(texture) = self.preview.texture.clone() {
+            let image_dimensions = self.preview.image_size;
+            let available = ui.available_size();
+            if available.x > 0.0 && available.y > 0.0 {
+                let tex_size = texture.size_vec2();
+                if tex_size.x > 0.0 && tex_size.y > 0.0 {
+                    let scale = (available.x / tex_size.x)
+                        .min(available.y / tex_size.y)
+                        .max(0.0);
+                    let scale = if scale.is_finite() && scale > 0.0 {
+                        scale
+                    } else {
+                        1.0
+                    };
+                    let scaled = tex_size * scale;
+                    ui.centered_and_justified(|ui| {
+                        let image_widget = egui::Image::new(&texture).fit_to_exact_size(scaled);
+                        let response = ui.add(image_widget);
+                        if let Some(dimensions) = image_dimensions {
+                            let image_rect = Rect::from_center_size(response.rect.center(), scaled);
+                            self.handle_preview_interactions(ctx, image_rect, dimensions);
+                            self.paint_detections(ui, image_rect, dimensions);
+                            self.preview_overlay(ui, image_rect, palette);
+                        }
                     });
                 }
+            }
+        } else if self.preview.is_loading {
+            ui.vertical_centered(|ui| {
+                ui.add_space(64.0);
+                ui.add(Spinner::new().size(28.0));
+                ui.label(RichText::new("Loading image and running detection...").size(16.0));
             });
+        } else {
+            ui.vertical_centered(|ui| {
+                ui.add_space(64.0);
+                ui.heading("Drop an image or pick one from Quick Actions.");
+                ui.label("The preview area will light up once detection finishes.");
+            });
+        }
     }
 
     fn preview_overlay(&mut self, ui: &mut Ui, image_rect: Rect, palette: theme::Palette) {

@@ -1,6 +1,8 @@
 //! Main configuration panel orchestration.
 
-use egui::{Context as EguiContext, RichText, ScrollArea, SidePanel, Spinner, Ui};
+use egui::{
+    Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Slider, Stroke, Ui,
+};
 
 use crate::YuNetApp;
 use crate::theme;
@@ -8,68 +10,50 @@ use crate::theme;
 /// Renders the left-hand configuration panel.
 pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
     let palette = theme::palette();
-    SidePanel::left("yunet_settings_panel")
-        .resizable(true)
-        .default_width(320.0)
+    SidePanel::right("yunet_adjustments_panel")
+        .resizable(false)
+        .exact_width(360.0)
+        .frame(
+            Frame::new()
+                .fill(palette.panel)
+                .stroke(Stroke::new(1.0, palette.outline))
+                .inner_margin(Margin::symmetric(16, 18)),
+        )
         .show(ctx, |ui| {
             ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     let initial_crop_settings = app.settings.crop.clone();
                     let initial_enhance_settings = app.settings.enhance.clone();
-                    let mut settings_changed = false;
+                    let mut crop_settings_changed = false;
+                    let mut enhancement_settings_changed = false;
+                    let mut engine_changed = false;
                     let mut enhancement_changed = false;
                     let mut preview_invalidated = false;
                     let mut metadata_tags_changed = false;
                     let mut requires_detector_reset = false;
                     let mut requires_cache_refresh = false;
 
-                    // Image selection
-                    show_image_section(app, ui);
-
-                    // Detected faces listing
-                    super::detections::show_detections_section(app, ctx, ui, palette);
-
-                    // Batch processing
-                    show_batch_section(app, ui, palette);
-
-                    // Model settings
-                    show_model_settings(
+                    ui.heading("Adjustments");
+                    ui.label("Fine-tune the framing and automation for exports.");
+                    show_primary_adjustments(
                         app,
                         ui,
-                        &mut settings_changed,
-                        &mut requires_detector_reset,
-                        &mut requires_cache_refresh,
+                        &mut crop_settings_changed,
+                        &mut preview_invalidated,
+                        &mut enhancement_changed,
                     );
 
                     ui.separator();
-                    ui.heading("GPU Acceleration");
-                    show_gpu_section(
-                        app,
-                        ui,
-                        palette,
-                        &mut settings_changed,
-                        &mut requires_detector_reset,
-                    );
-
-                    ui.separator();
-                    ui.heading("Diagnostics");
-                    show_diagnostics_section(app, ui, &mut settings_changed);
-
-                    if settings_changed {
-                        app.apply_settings_changes(requires_detector_reset, requires_cache_refresh);
-                    }
-
-                    // Crop settings
                     super::crop::show_crop_section(
                         app,
                         ui,
-                        &mut settings_changed,
+                        &mut crop_settings_changed,
                         &mut preview_invalidated,
                         &mut metadata_tags_changed,
                     );
 
-                    if settings_changed {
+                    if crop_settings_changed {
                         app.push_crop_history();
                         app.persist_settings_with_feedback();
                         app.apply_quality_rules_to_preview();
@@ -78,11 +62,11 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                         }
                     }
 
-                    // Enhancement settings
+                    ui.separator();
                     super::enhancement::show_enhancement_section(
                         app,
                         ui,
-                        &mut settings_changed,
+                        &mut enhancement_settings_changed,
                         &mut enhancement_changed,
                     );
 
@@ -95,8 +79,38 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                         }
                         ctx.request_repaint();
                     }
+                    if enhancement_settings_changed {
+                        app.persist_settings_with_feedback();
+                    }
 
-                    if settings_changed {
+                    ui.separator();
+                    ui.heading("Batch Queue");
+                    show_batch_section(app, ui, palette);
+
+                    ui.separator();
+                    ui.heading("Detection Engine");
+                    show_model_settings(
+                        app,
+                        ui,
+                        &mut engine_changed,
+                        &mut requires_detector_reset,
+                        &mut requires_cache_refresh,
+                    );
+
+                    ui.separator();
+                    show_gpu_section(
+                        app,
+                        ui,
+                        palette,
+                        &mut engine_changed,
+                        &mut requires_detector_reset,
+                    );
+
+                    ui.separator();
+                    show_diagnostics_section(app, ui, &mut engine_changed);
+
+                    if engine_changed {
+                        app.apply_settings_changes(requires_detector_reset, requires_cache_refresh);
                         app.persist_settings_with_feedback();
                     }
 
@@ -123,35 +137,90 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
         });
 }
 
-/// Shows the image selection section.
-fn show_image_section(app: &mut YuNetApp, ui: &mut Ui) {
-    ui.heading("Image");
-    ui.horizontal(|ui| {
-        if ui.button("Open image…").clicked() {
-            app.open_image_dialog();
+fn show_primary_adjustments(
+    app: &mut YuNetApp,
+    ui: &mut Ui,
+    settings_changed: &mut bool,
+    preview_invalidated: &mut bool,
+    enhancement_changed: &mut bool,
+) {
+    let mut face_fill = app.settings.crop.face_height_pct;
+    if ui
+        .add(Slider::new(&mut face_fill, 20.0..=95.0).text("Face fill (%)"))
+        .changed()
+    {
+        app.settings.crop.face_height_pct = face_fill;
+        *settings_changed = true;
+        *preview_invalidated = true;
+    }
+
+    let mut horizontal = app.settings.crop.horizontal_offset;
+    if ui
+        .add(Slider::new(&mut horizontal, -1.0..=1.0).text("Eye alignment"))
+        .changed()
+    {
+        app.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
+        *settings_changed = true;
+        *preview_invalidated = true;
+    }
+
+    let mut vertical = app.settings.crop.vertical_offset;
+    if ui
+        .add(Slider::new(&mut vertical, -1.0..=1.0).text("Vertical lift"))
+        .changed()
+    {
+        app.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
+        *settings_changed = true;
+        *preview_invalidated = true;
+    }
+
+    ui.add_space(6.0);
+    ui.label("Automation");
+    if ui
+        .checkbox(
+            &mut app.settings.crop.quality_rules.auto_select_best_face,
+            "Auto-select best face",
+        )
+        .changed()
+    {
+        *settings_changed = true;
+    }
+    if ui
+        .checkbox(
+            &mut app.settings.crop.quality_rules.auto_skip_no_high_quality,
+            "Skip export without a high-quality face",
+        )
+        .changed()
+    {
+        *settings_changed = true;
+    }
+
+    ui.add_space(6.0);
+    ui.label("Enhancements");
+    if ui
+        .checkbox(&mut app.settings.enhance.enabled, "Enable enhancements")
+        .changed()
+    {
+        *settings_changed = true;
+        *enhancement_changed = true;
+    }
+    ui.add_enabled_ui(app.settings.enhance.enabled, |ui| {
+        let mut background_blur = app.settings.enhance.background_blur;
+        if ui
+            .checkbox(&mut background_blur, "Background blur")
+            .changed()
+        {
+            app.settings.enhance.background_blur = background_blur;
+            *settings_changed = true;
+            *enhancement_changed = true;
         }
-        if ui.button("Load multiple…").clicked() {
-            app.open_batch_dialog();
+        let mut red_eye = app.settings.enhance.red_eye_removal;
+        if ui.checkbox(&mut red_eye, "Red-eye removal").changed() {
+            app.settings.enhance.red_eye_removal = red_eye;
+            *settings_changed = true;
+            *enhancement_changed = true;
         }
     });
-
-    if !app.batch_files.is_empty() {
-        ui.label(format!("Batch: {} images loaded", app.batch_files.len()));
-    } else if let Some(path) = &app.preview.image_path {
-        ui.label("Selected");
-        ui.monospace(path.to_string_lossy());
-    } else {
-        ui.label("No image selected yet.");
-    }
-
-    if app.is_busy {
-        ui.horizontal(|ui| {
-            ui.add(Spinner::new());
-            ui.label("Running detection…");
-        });
-    }
-
-    ui.separator();
 }
 
 fn show_gpu_section(
@@ -258,9 +327,6 @@ fn show_batch_section(app: &mut YuNetApp, ui: &mut Ui, palette: theme::Palette) 
     use egui::{Color32, ProgressBar, RichText, ScrollArea};
 
     if !app.batch_files.is_empty() {
-        ui.separator();
-        ui.heading("Batch Processing");
-
         let total = app.batch_files.len();
         let completed = app
             .batch_files
@@ -350,8 +416,6 @@ fn show_batch_section(app: &mut YuNetApp, ui: &mut Ui, palette: theme::Palette) 
             }
         });
     } else {
-        ui.separator();
-        ui.heading("Batch Processing");
         ui.label("No batch files loaded.");
     }
 }
