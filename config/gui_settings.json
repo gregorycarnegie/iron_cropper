@@ -36,8 +36,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "rounded_rectangle",
-      "radius_pct": 0.12
+      "kind": "ellipse"
     }
   },
   "enhance": {

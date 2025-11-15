@@ -18,29 +18,21 @@ impl YuNetApp {
                     .inner_margin(Margin::symmetric(16, 16)),
             )
             .show(ctx, |ui| {
-                let total_height = ui.available_height().max(320.0);
+                let total_height = ui.available_height();
                 let spacing = 12.0;
                 let min_preview = 220.0;
                 let min_detections = 180.0;
                 let mut preview_height = (total_height * 0.75).max(min_preview);
-                if preview_height > total_height {
-                    preview_height = total_height;
-                }
+                preview_height = preview_height.min(total_height.max(0.0));
                 let mut detection_height = (total_height - preview_height - spacing).max(0.0);
-                if detection_height < min_detections {
-                    let deficit = min_detections - detection_height;
-                    preview_height = (preview_height - deficit).max(min_preview);
-                    detection_height = (total_height - preview_height - spacing).max(0.0);
-                    if detection_height < min_detections {
-                        detection_height = min_detections.min(total_height - spacing);
-                        preview_height =
-                            (total_height - detection_height - spacing).max(min_preview);
+                if detection_height < min_detections && preview_height > min_preview {
+                    let available_shift = (preview_height - min_preview).max(0.0);
+                    let needed = (min_detections - detection_height).max(0.0);
+                    let shift = available_shift.min(needed);
+                    if shift > 0.0 {
+                        preview_height -= shift;
+                        detection_height += shift;
                     }
-                }
-                if preview_height < min_preview {
-                    preview_height = min_preview.min(total_height);
-                    detection_height = (total_height - preview_height - spacing)
-                        .max(min_detections.min(total_height - spacing));
                 }
                 let width = ui.available_width();
 
@@ -61,8 +53,9 @@ impl YuNetApp {
                 );
 
                 ui.add_space(spacing);
-                ui.allocate_ui(vec2(width, detection_height), |ui| {
-                    ui.set_max_height(detection_height);
+                let detection_allocation = detection_height.min(ui.available_height()).max(0.0);
+                ui.allocate_ui(vec2(width, detection_allocation), |ui| {
+                    ui.set_max_height(detection_allocation);
                     ui.set_clip_rect(ui.max_rect());
                     crate::ui::config::detections::show_detection_carousel(
                         self, ctx, ui, palette,

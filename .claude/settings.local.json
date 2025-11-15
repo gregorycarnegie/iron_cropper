@@ -15,7 +15,8 @@
       "Bash(cargo --version:*)",
       "Bash(rustc:*)",
       "Bash(cargo run:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Bash(cargo build:*)"
     ],
     "deny": [],
     "ask": []
