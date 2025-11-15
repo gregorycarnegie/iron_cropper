@@ -42,6 +42,12 @@ type GpuPipelineInit = (
 fn main() -> eframe::Result<()> {
     init_logging(log::LevelFilter::Info).expect("failed to initialize logging");
     let mut options = NativeOptions::default();
+
+    // Set initial window size to avoid scrunched UI on first launch
+    options.viewport = options
+        .viewport
+        .with_inner_size([1280.0, 800.0]);
+
     if let Some(icon) = load_app_icon() {
         options.viewport = options.viewport.with_icon(Arc::new(icon));
     }
