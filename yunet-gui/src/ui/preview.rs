@@ -18,9 +18,30 @@ impl YuNetApp {
                     .inner_margin(Margin::symmetric(16, 16)),
             )
             .show(ctx, |ui| {
-                let total_height = ui.available_height().max(360.0);
-                let detection_height = (total_height * 0.25).max(180.0);
-                let preview_height = (total_height - detection_height).max(220.0);
+                let total_height = ui.available_height().max(320.0);
+                let spacing = 12.0;
+                let min_preview = 220.0;
+                let min_detections = 180.0;
+                let mut preview_height = (total_height * 0.75).max(min_preview);
+                if preview_height > total_height {
+                    preview_height = total_height;
+                }
+                let mut detection_height = (total_height - preview_height - spacing).max(0.0);
+                if detection_height < min_detections {
+                    let deficit = min_detections - detection_height;
+                    preview_height = (preview_height - deficit).max(min_preview);
+                    detection_height = (total_height - preview_height - spacing).max(0.0);
+                    if detection_height < min_detections {
+                        detection_height = min_detections.min(total_height - spacing);
+                        preview_height =
+                            (total_height - detection_height - spacing).max(min_preview);
+                    }
+                }
+                if preview_height < min_preview {
+                    preview_height = min_preview.min(total_height);
+                    detection_height = (total_height - preview_height - spacing)
+                        .max(min_detections.min(total_height - spacing));
+                }
                 let width = ui.available_width();
 
                 ui.allocate_ui_with_layout(
@@ -39,7 +60,7 @@ impl YuNetApp {
                     },
                 );
 
-                ui.add_space(12.0);
+                ui.add_space(spacing);
                 ui.allocate_ui_with_layout(
                     vec2(width, detection_height),
                     Layout::top_down(Align::Min),
@@ -69,6 +90,7 @@ impl YuNetApp {
                         1.0
                     };
                     let scaled = tex_size * scale;
+                    let preview_bounds = ui.max_rect();
                     ui.centered_and_justified(|ui| {
                         let image_widget = egui::Image::new(&texture).fit_to_exact_size(scaled);
                         let response = ui.add(image_widget);
@@ -76,7 +98,7 @@ impl YuNetApp {
                             let image_rect = Rect::from_center_size(response.rect.center(), scaled);
                             self.handle_preview_interactions(ctx, image_rect, dimensions);
                             self.paint_detections(ui, image_rect, dimensions);
-                            self.preview_overlay(ui, image_rect, palette);
+                            self.preview_overlay(ui, preview_bounds, palette);
                         }
                     });
                 }
@@ -96,27 +118,32 @@ impl YuNetApp {
         }
     }
 
-    fn preview_overlay(&mut self, ui: &mut Ui, image_rect: Rect, palette: theme::Palette) {
+    fn preview_overlay(&mut self, ui: &mut Ui, boundary_rect: Rect, palette: theme::Palette) {
         let overlay_size = self.preview_hud_size();
-        if image_rect.width() < overlay_size.x || image_rect.height() < overlay_size.y {
+        if boundary_rect.width() < overlay_size.x || boundary_rect.height() < overlay_size.y {
             return;
         }
 
-        let mut overlay_rect = self.preview_hud_rect(image_rect, overlay_size);
+        let mut overlay_rect = self.preview_hud_rect(boundary_rect, overlay_size);
         let overlay_id = ui.make_persistent_id("preview_hud_overlay");
-        let drag_response = ui.interact(overlay_rect, overlay_id, Sense::drag());
-
-        if drag_response.drag_started() {
-            self.preview_hud_drag_origin = Some(overlay_rect.left_top());
-        }
 
         if let Some(origin) = self.preview_hud_drag_origin {
-            let desired = origin + drag_response.drag_delta();
-            overlay_rect = self.update_hud_anchor_from_top_left(image_rect, overlay_size, desired);
+            let delta = ui.ctx().input(|i| i.pointer.delta());
+            let desired = origin + delta;
+            overlay_rect =
+                self.update_hud_anchor_from_top_left(boundary_rect, overlay_size, desired);
+            self.preview_hud_drag_origin = Some(overlay_rect.left_top());
         }
 
         if self.preview_hud_drag_origin.is_some() && !ui.ctx().input(|i| i.pointer.primary_down()) {
             self.preview_hud_drag_origin = None;
+        }
+
+        let painter = ui.painter();
+        let drag_response = ui.interact(overlay_rect, overlay_id, Sense::drag());
+
+        if drag_response.drag_started() {
+            self.preview_hud_drag_origin = Some(overlay_rect.left_top());
         }
 
         let hovered = drag_response.hovered() || drag_response.dragged();
@@ -126,148 +153,153 @@ impl YuNetApp {
             translucent_color(palette.panel_dark, 0.7)
         };
 
-        ui.scope_builder(UiBuilder::new().max_rect(overlay_rect), |overlay_ui| {
-            egui::Frame::new()
-                .fill(fill)
-                .stroke(Stroke::new(1.0, palette.outline))
-                .corner_radius(CornerRadius::same(16))
-                .inner_margin(Margin::symmetric(14, 10))
-                .show(overlay_ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Preview HUD").strong());
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let label = if self.preview_hud_minimized {
-                                "Expand"
-                            } else {
-                                "Minimize"
-                            };
-                            if ui.small_button(label).clicked() {
-                                self.preview_hud_minimized = !self.preview_hud_minimized;
-                                ui.ctx().request_repaint();
-                            }
-                        });
-                    });
+        painter.rect_filled(overlay_rect, 16.0, fill);
+        painter.rect_stroke(overlay_rect, 16.0, Stroke::new(1.0, palette.outline), egui::StrokeKind::Outside);
 
-                    if self.preview_hud_minimized {
-                        ui.add_space(4.0);
-                        ui.label(format!(
-                            "Faces: {}  |  Selected: {}",
-                            self.preview.detections.len(),
-                            self.selected_faces.len()
-                        ));
-                        ui.label(
-                            RichText::new("Drag to reposition / expand for actions")
-                                .color(palette.subtle_text),
-                        );
-                        return;
-                    }
-
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        self.status_chip(
-                            ui,
-                            palette,
-                            format!("Faces {}", self.preview.detections.len()),
-                            palette.accent,
-                        );
-                        self.status_chip(
-                            ui,
-                            palette,
-                            format!("Selected {}", self.selected_faces.len()),
-                            if self.selected_faces.is_empty() {
-                                palette.subtle_text
-                            } else {
-                                palette.success
-                            },
-                        );
-                    });
-
-                    ui.add_space(6.0);
-                    self.quality_legend(ui, palette);
-                    ui.add_space(6.0);
-
-                    if self.preview.detections.is_empty() {
-                        ui.label(RichText::new("No faces detected yet.").weak());
+        let content_rect = overlay_rect.shrink2(vec2(14.0, 10.0));
+        let mut child_ui = ui.new_child(
+            UiBuilder::new()
+                .max_rect(content_rect)
+                .layout(Layout::top_down(Align::Min))
+        );
+        child_ui.set_clip_rect(content_rect);
+        {
+            let overlay_ui = &mut child_ui;
+            overlay_ui.horizontal(|ui| {
+                ui.label(RichText::new("Preview HUD").strong());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let label = if self.preview_hud_minimized {
+                        "Expand"
                     } else {
-                        ui.checkbox(&mut self.show_crop_overlay, "Show crop guides");
-                    }
-
-                    ui.add_space(6.0);
-                    let selected = self.selected_faces.len();
-                    if selected > 0 {
-                        let button_label = format!(
-                            "Export {} face{}",
-                            selected,
-                            if selected == 1 { "" } else { "s" }
-                        );
-                        if ui.button(button_label).clicked() {
-                            self.export_selected_faces();
-                        }
-                    } else {
-                        ui.label(
-                            RichText::new("Select faces from the list to export.")
-                                .color(palette.subtle_text),
-                        );
+                        "Minimize"
+                    };
+                    if ui.small_button(label).clicked() {
+                        self.preview_hud_minimized = !self.preview_hud_minimized;
+                        ui.ctx().request_repaint();
                     }
                 });
-        });
+            });
+
+            if self.preview_hud_minimized {
+                overlay_ui.add_space(4.0);
+                overlay_ui.label(format!(
+                    "Faces: {}  |  Selected: {}",
+                    self.preview.detections.len(),
+                    self.selected_faces.len()
+                ));
+                overlay_ui.label(
+                    RichText::new("Drag to reposition")
+                        .color(palette.subtle_text)
+                        .size(13.0),
+                );
+                return;
+            }
+
+            overlay_ui.add_space(4.0);
+            overlay_ui.horizontal(|ui| {
+                self.status_chip(
+                    ui,
+                    palette,
+                    format!("Faces {}", self.preview.detections.len()),
+                    palette.accent,
+                );
+                self.status_chip(
+                    ui,
+                    palette,
+                    format!("Selected {}", self.selected_faces.len()),
+                    if self.selected_faces.is_empty() {
+                        palette.subtle_text
+                    } else {
+                        palette.success
+                    },
+                );
+            });
+
+            overlay_ui.add_space(6.0);
+            self.quality_legend(overlay_ui, palette);
+            overlay_ui.add_space(6.0);
+
+            if self.preview.detections.is_empty() {
+                overlay_ui.label(RichText::new("No faces detected yet.").weak());
+            } else {
+                overlay_ui.checkbox(&mut self.show_crop_overlay, "Show crop guides");
+            }
+
+            overlay_ui.add_space(6.0);
+            let selected = self.selected_faces.len();
+            if selected > 0 {
+                let button_label = format!(
+                    "Export {} face{}",
+                    selected,
+                    if selected == 1 { "" } else { "s" }
+                );
+                if overlay_ui.button(button_label).clicked() {
+                    self.export_selected_faces();
+                }
+            } else {
+                overlay_ui.label(
+                    RichText::new("Select faces from the list to export.")
+                        .color(palette.subtle_text),
+                );
+            }
+        }
     }
 
     fn preview_hud_size(&self) -> egui::Vec2 {
         if self.preview_hud_minimized {
-            vec2(220.0, 72.0)
+            vec2(230.0, 80.0)
         } else {
             vec2(260.0, 190.0)
         }
     }
 
-    fn preview_hud_rect(&self, image_rect: Rect, overlay_size: egui::Vec2) -> Rect {
-        let available_width = (image_rect.width() - overlay_size.x).max(0.0);
-        let available_height = (image_rect.height() - overlay_size.y).max(0.0);
+    fn preview_hud_rect(&self, boundary_rect: Rect, overlay_size: egui::Vec2) -> Rect {
+        let available_width = (boundary_rect.width() - overlay_size.x).max(0.0);
+        let available_height = (boundary_rect.height() - overlay_size.y).max(0.0);
         let anchor_x = self.preview_hud_anchor.x.clamp(0.0, 1.0);
         let anchor_y = self.preview_hud_anchor.y.clamp(0.0, 1.0);
         let top_left = pos2(
-            image_rect.left() + anchor_x * available_width,
-            image_rect.top() + anchor_y * available_height,
+            boundary_rect.left() + anchor_x * available_width,
+            boundary_rect.top() + anchor_y * available_height,
         );
         Rect::from_min_size(top_left, overlay_size)
     }
 
     fn update_hud_anchor_from_top_left(
         &mut self,
-        image_rect: Rect,
+        boundary_rect: Rect,
         overlay_size: egui::Vec2,
         desired_top_left: egui::Pos2,
     ) -> Rect {
-        let clamped = self.clamp_hud_top_left(image_rect, overlay_size, desired_top_left);
-        self.preview_hud_anchor = self.anchor_from_top_left(image_rect, overlay_size, clamped);
+        let clamped = self.clamp_hud_top_left(boundary_rect, overlay_size, desired_top_left);
+        self.preview_hud_anchor = self.anchor_from_top_left(boundary_rect, overlay_size, clamped);
         Rect::from_min_size(clamped, overlay_size)
     }
 
     fn clamp_hud_top_left(
         &self,
-        image_rect: Rect,
+        boundary_rect: Rect,
         overlay_size: egui::Vec2,
         desired: egui::Pos2,
     ) -> egui::Pos2 {
-        let min_x = image_rect.left();
-        let min_y = image_rect.top();
-        let max_x = (image_rect.right() - overlay_size.x).max(min_x);
-        let max_y = (image_rect.bottom() - overlay_size.y).max(min_y);
+        let min_x = boundary_rect.left();
+        let min_y = boundary_rect.top();
+        let max_x = (boundary_rect.right() - overlay_size.x).max(min_x);
+        let max_y = (boundary_rect.bottom() - overlay_size.y).max(min_y);
         pos2(desired.x.clamp(min_x, max_x), desired.y.clamp(min_y, max_y))
     }
 
     fn anchor_from_top_left(
         &self,
-        image_rect: Rect,
+        boundary_rect: Rect,
         overlay_size: egui::Vec2,
         top_left: egui::Pos2,
     ) -> egui::Vec2 {
-        let denom_x = (image_rect.width() - overlay_size.x).max(1.0);
-        let denom_y = (image_rect.height() - overlay_size.y).max(1.0);
+        let denom_x = (boundary_rect.width() - overlay_size.x).max(1.0);
+        let denom_y = (boundary_rect.height() - overlay_size.y).max(1.0);
         vec2(
-            ((top_left.x - image_rect.left()) / denom_x).clamp(0.0, 1.0),
-            ((top_left.y - image_rect.top()) / denom_y).clamp(0.0, 1.0),
+            ((top_left.x - boundary_rect.left()) / denom_x).clamp(0.0, 1.0),
+            ((top_left.y - boundary_rect.top()) / denom_y).clamp(0.0, 1.0),
         )
     }
 }
