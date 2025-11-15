@@ -1,7 +1,7 @@
 //! Status bar UI components for the YuNet GUI.
 
 use egui::{
-    Align, Button, Color32, CornerRadius, Layout, Margin, Response, RichText, Spinner, Stroke,
+    Align, Button, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke,
     TopBottomPanel, Ui, Vec2,
 };
 
@@ -65,13 +65,11 @@ impl YuNetApp {
 
                     ui.add_space(4.0);
                     self.draw_status_chips(ui, palette);
-                    ui.add_space(8.0);
-                    self.draw_quick_actions(ui, palette);
                 });
             });
     }
 
-    fn can_export_selected(&self) -> bool {
+    pub(crate) fn can_export_selected(&self) -> bool {
         !self.selected_faces.is_empty() && !self.preview.detections.is_empty()
     }
 
@@ -132,76 +130,6 @@ impl YuNetApp {
         });
     }
 
-    fn draw_quick_actions(&mut self, ui: &mut Ui, palette: theme::Palette) {
-        ui.horizontal_wrapped(|ui| {
-            if self
-                .quick_action_button(ui, palette, "Open image", "Select a single source", true)
-                .clicked()
-            {
-                self.open_image_dialog();
-            }
-            if self
-                .quick_action_button(ui, palette, "Load batch", "Queue multiple files", true)
-                .clicked()
-            {
-                self.open_batch_dialog();
-            }
-
-            let export_enabled = self.can_export_selected();
-            if self
-                .quick_action_button(
-                    ui,
-                    palette,
-                    "Export selected",
-                    "Send crops to disk",
-                    export_enabled,
-                )
-                .clicked()
-            {
-                self.export_selected_faces();
-            }
-
-            let batch_enabled = !self.batch_files.is_empty();
-            let subtitle = if batch_enabled {
-                format!("{} queued", self.batch_files.len())
-            } else {
-                "No queue".to_string()
-            };
-            if self
-                .quick_action_button(ui, palette, "Run batch", &subtitle, batch_enabled)
-                .clicked()
-            {
-                self.start_batch_export();
-            }
-        });
-    }
-
-    fn quick_action_button(
-        &self,
-        ui: &mut Ui,
-        palette: theme::Palette,
-        title: &str,
-        subtitle: &str,
-        enabled: bool,
-    ) -> Response {
-        let text = format!("{title}\n{subtitle}");
-        ui.add_enabled(
-            enabled,
-            Button::new(RichText::new(text).size(15.0).strong().color(if enabled {
-                palette.subtle_text
-            } else {
-                palette.subtle_text.gamma_multiply(0.5)
-            }))
-            .min_size(Vec2::new(150.0, 64.0))
-            .fill(if enabled {
-                palette.panel_light
-            } else {
-                palette.panel_dark
-            })
-            .stroke(Stroke::new(1.0, palette.outline))
-            .corner_radius(CornerRadius::same(18)),
-        )
-    }
 
     pub(crate) fn status_chip(
         &self,

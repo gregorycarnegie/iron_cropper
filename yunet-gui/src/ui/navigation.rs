@@ -1,144 +1,210 @@
-//! Navigation rail shown on the left edge of the application.
+//! Left panel with simple/common settings and quick actions.
 
-use egui::{
-    Align, CornerRadius, Frame, Layout, Margin, RichText, Sense, SidePanel, Stroke, StrokeKind, Ui,
-    Vec2, emath::Align2,
-};
+use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, SidePanel, Slider, Stroke, Ui};
 
-use crate::{YuNetApp, theme};
+use crate::{theme, YuNetApp};
 
 impl YuNetApp {
-    /// Renders the compact navigation rail with quick actions.
+    /// Renders the left panel with common settings and actions.
     pub fn show_navigation_panel(&mut self, ctx: &egui::Context) {
         let palette = theme::palette();
         SidePanel::left("yunet_navigation_panel")
             .resizable(false)
-            .exact_width(150.0)
+            .exact_width(280.0)
             .frame(
                 Frame::new()
-                    .fill(palette.panel_dark)
-                    .inner_margin(Margin::symmetric(12, 18))
+                    .fill(palette.panel)
+                    .inner_margin(Margin::symmetric(16, 18))
                     .stroke(Stroke::new(1.0, palette.outline)),
             )
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    self.draw_nav_logo(ui, palette);
-                    ui.add_space(14.0);
-                    self.nav_button(
-                        ui,
-                        palette,
-                        "Import",
-                        "Pick a single image",
-                        !self.is_busy,
-                        |app| app.open_image_dialog(),
-                    );
-                    self.nav_button(ui, palette, "Batch", "Queue multiple files", true, |app| {
-                        app.open_batch_dialog()
-                    });
-                    self.nav_button(ui, palette, "Settings", "Choose YuNet model", true, |app| {
-                        app.open_model_dialog()
-                    });
-                    self.nav_button(ui, palette, "Mapping", "Load CSV / Excel", true, |app| {
-                        app.pick_mapping_file_from_dialog()
-                    });
-                });
+                ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        self.draw_nav_logo(ui, palette);
+                        ui.add_space(18.0);
 
-                ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
-                    ui.add_space(8.0);
-                    self.nav_stat(
-                        ui,
-                        palette,
-                        "Selected",
-                        format!("{}", self.selected_faces.len()),
-                    );
-                    self.nav_stat(
-                        ui,
-                        palette,
-                        "Detections",
-                        format!("{}", self.preview.detections.len()),
-                    );
-                    self.nav_stat(
-                        ui,
-                        palette,
-                        "Batch",
-                        if self.batch_files.is_empty() {
-                            "Empty".to_string()
-                        } else {
-                            format!("{} items", self.batch_files.len())
-                        },
-                    );
-                });
+                        // Quick actions
+                        ui.heading("Quick Actions");
+                        ui.add_space(8.0);
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Open image").clicked() {
+                                self.open_image_dialog();
+                            }
+                            if ui.button("Load batch").clicked() {
+                                self.open_batch_dialog();
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            let export_enabled = self.can_export_selected();
+                            if ui.add_enabled(export_enabled, egui::Button::new("Export selected")).clicked() {
+                                self.export_selected_faces();
+                            }
+                            let batch_enabled = !self.batch_files.is_empty();
+                            if ui.add_enabled(batch_enabled, egui::Button::new("Run batch")).clicked() {
+                                self.start_batch_export();
+                            }
+                        });
+
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+
+                        // Simple settings
+                        self.show_simple_settings(ui, palette);
+
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+
+                        // Stats
+                        ui.heading("Status");
+                        ui.add_space(8.0);
+                        self.nav_stat(ui, palette, "Detections", format!("{}", self.preview.detections.len()));
+                        self.nav_stat(ui, palette, "Selected", format!("{}", self.selected_faces.len()));
+                        self.nav_stat(
+                            ui,
+                            palette,
+                            "Batch",
+                            if self.batch_files.is_empty() {
+                                "Empty".to_string()
+                            } else {
+                                format!("{} items", self.batch_files.len())
+                            },
+                        );
+                    });
             });
     }
 
-    fn draw_nav_logo(&self, ui: &mut Ui, palette: theme::Palette) {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::hover());
-        let painter = ui.painter();
-        painter.circle_filled(rect.center(), 26.0, palette.panel_light);
-        painter.circle_filled(rect.center(), 20.0, palette.canvas);
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            "FC",
-            egui::FontId::new(20.0, egui::FontFamily::Proportional),
-            palette.accent,
-        );
-        ui.label(
-            RichText::new("Face Crop Studio")
-                .size(15.0)
-                .strong()
-                .color(palette.subtle_text),
-        );
+    fn show_simple_settings(&mut self, ui: &mut Ui, _palette: theme::Palette) {
+        ui.heading("Adjustments");
+        ui.add_space(6.0);
+
+        let mut face_fill = self.settings.crop.face_height_pct;
+        if ui
+            .add(Slider::new(&mut face_fill, 20.0..=95.0).text("Face fill (%)"))
+            .changed()
+        {
+            self.settings.crop.face_height_pct = face_fill;
+            self.push_crop_history();
+            self.persist_settings_with_feedback();
+            self.clear_crop_preview_cache();
+        }
+
+        let mut horizontal = self.settings.crop.horizontal_offset;
+        if ui
+            .add(Slider::new(&mut horizontal, -1.0..=1.0).text("Eye alignment"))
+            .changed()
+        {
+            self.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
+            self.push_crop_history();
+            self.persist_settings_with_feedback();
+            self.clear_crop_preview_cache();
+        }
+
+        let mut vertical = self.settings.crop.vertical_offset;
+        if ui
+            .add(Slider::new(&mut vertical, -1.0..=1.0).text("Vertical lift"))
+            .changed()
+        {
+            self.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
+            self.push_crop_history();
+            self.persist_settings_with_feedback();
+            self.clear_crop_preview_cache();
+        }
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Automation").strong());
+        if ui
+            .checkbox(
+                &mut self.settings.crop.quality_rules.auto_select_best_face,
+                "Auto-select best face",
+            )
+            .changed()
+        {
+            self.push_crop_history();
+            self.persist_settings_with_feedback();
+            self.apply_quality_rules_to_preview();
+        }
+        if ui
+            .checkbox(
+                &mut self.settings.crop.quality_rules.auto_skip_no_high_quality,
+                "Skip export without high-quality face",
+            )
+            .changed()
+        {
+            self.push_crop_history();
+            self.persist_settings_with_feedback();
+        }
+
+        ui.add_space(8.0);
+        ui.label(RichText::new("Enhancements").strong());
+
+        let mut enhance_enabled = self.settings.enhance.enabled;
+        if ui
+            .checkbox(&mut enhance_enabled, "Enable enhancements")
+            .changed()
+        {
+            self.settings.enhance.enabled = enhance_enabled;
+            self.persist_settings_with_feedback();
+            self.clear_crop_preview_cache();
+            if !self.preview.detections.is_empty() {
+                for idx in 0..self.preview.detections.len() {
+                    let _ = self.crop_preview_texture_for(&ui.ctx(), idx);
+                }
+            }
+            ui.ctx().request_repaint();
+        }
+
+        ui.add_enabled_ui(self.settings.enhance.enabled, |ui| {
+            let mut background_blur = self.settings.enhance.background_blur;
+            if ui.checkbox(&mut background_blur, "Background blur").changed() {
+                self.settings.enhance.background_blur = background_blur;
+                self.persist_settings_with_feedback();
+                self.clear_crop_preview_cache();
+            }
+            let mut red_eye = self.settings.enhance.red_eye_removal;
+            if ui.checkbox(&mut red_eye, "Red-eye removal").changed() {
+                self.settings.enhance.red_eye_removal = red_eye;
+                self.persist_settings_with_feedback();
+                self.clear_crop_preview_cache();
+            }
+        });
     }
 
-    fn nav_button<F>(
-        &mut self,
-        ui: &mut Ui,
-        palette: theme::Palette,
-        title: &str,
-        subtitle: &str,
-        enabled: bool,
-        mut action: F,
-    ) where
-        F: FnMut(&mut Self),
-    {
-        let desired = Vec2::new(ui.available_width(), 72.0);
-        let (rect, response) = ui.allocate_exact_size(desired, Sense::click());
-        let hover = response.hovered();
-        let fill = if enabled {
-            if hover {
-                palette.panel_light
-            } else {
-                palette.panel
-            }
-        } else {
-            palette.panel_dark
-        };
-        ui.painter().rect(
-            rect,
-            CornerRadius::same(18),
-            fill,
-            Stroke::new(1.0, palette.outline),
-            StrokeKind::Outside,
-        );
+    fn draw_nav_logo(&self, ui: &mut Ui, palette: theme::Palette) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(8.0);
 
-        let label = format!("{title}\n{subtitle}");
-        let text_color = if enabled {
-            palette.subtle_text
-        } else {
-            palette.subtle_text.gamma_multiply(0.6)
-        };
-        ui.painter().text(
-            rect.left_top() + Vec2::new(14.0, 12.0),
-            Align2::LEFT_TOP,
-            label,
-            egui::FontId::new(15.0, egui::FontFamily::Proportional),
-            text_color,
-        );
+            // Install image loaders once (safe to call multiple times)
+            egui_extras::install_image_loaders(ui.ctx());
 
-        if enabled && response.clicked() {
-            action(self);
-        }
+            // Load and display the SVG logo using egui_extras
+            let logo_size = egui::vec2(80.0, 80.0);
+            ui.add(
+                egui::Image::from_bytes(
+                    "bytes://app_logo.svg",
+                    include_bytes!("../../assets/app_logo.svg"),
+                )
+                .max_size(logo_size),
+            );
+
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("Face Crop Studio")
+                    .size(17.0)
+                    .strong()
+                    .color(egui::Color32::WHITE),
+            );
+            ui.label(
+                RichText::new("Batch-perfect crops with YuNet precision")
+                    .size(10.0)
+                    .color(palette.subtle_text),
+            );
+            ui.add_space(4.0);
+        });
     }
 
     fn nav_stat(&self, ui: &mut Ui, palette: theme::Palette, label: &str, value: String) {

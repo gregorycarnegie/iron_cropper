@@ -1,13 +1,13 @@
 //! Main configuration panel orchestration.
 
 use egui::{
-    Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Slider, Stroke, Ui,
+    Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Stroke, Ui,
 };
 
 use crate::YuNetApp;
 use crate::theme;
 
-/// Renders the left-hand configuration panel.
+/// Renders the right-hand advanced configuration panel.
 pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
     let palette = theme::palette();
     SidePanel::right("yunet_adjustments_panel")
@@ -34,17 +34,9 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                     let mut requires_detector_reset = false;
                     let mut requires_cache_refresh = false;
 
-                    ui.heading("Adjustments");
-                    ui.label("Fine-tune the framing and automation for exports.");
-                    show_primary_adjustments(
-                        app,
-                        ui,
-                        &mut crop_settings_changed,
-                        &mut preview_invalidated,
-                        &mut enhancement_changed,
-                    );
+                    ui.heading("Advanced Settings");
+                    ui.add_space(8.0);
 
-                    ui.separator();
                     super::crop::show_crop_section(
                         app,
                         ui,
@@ -137,91 +129,6 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
         });
 }
 
-fn show_primary_adjustments(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    preview_invalidated: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut face_fill = app.settings.crop.face_height_pct;
-    if ui
-        .add(Slider::new(&mut face_fill, 20.0..=95.0).text("Face fill (%)"))
-        .changed()
-    {
-        app.settings.crop.face_height_pct = face_fill;
-        *settings_changed = true;
-        *preview_invalidated = true;
-    }
-
-    let mut horizontal = app.settings.crop.horizontal_offset;
-    if ui
-        .add(Slider::new(&mut horizontal, -1.0..=1.0).text("Eye alignment"))
-        .changed()
-    {
-        app.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
-        *settings_changed = true;
-        *preview_invalidated = true;
-    }
-
-    let mut vertical = app.settings.crop.vertical_offset;
-    if ui
-        .add(Slider::new(&mut vertical, -1.0..=1.0).text("Vertical lift"))
-        .changed()
-    {
-        app.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
-        *settings_changed = true;
-        *preview_invalidated = true;
-    }
-
-    ui.add_space(6.0);
-    ui.label("Automation");
-    if ui
-        .checkbox(
-            &mut app.settings.crop.quality_rules.auto_select_best_face,
-            "Auto-select best face",
-        )
-        .changed()
-    {
-        *settings_changed = true;
-    }
-    if ui
-        .checkbox(
-            &mut app.settings.crop.quality_rules.auto_skip_no_high_quality,
-            "Skip export without a high-quality face",
-        )
-        .changed()
-    {
-        *settings_changed = true;
-    }
-
-    ui.add_space(6.0);
-    ui.label("Enhancements");
-    if ui
-        .checkbox(&mut app.settings.enhance.enabled, "Enable enhancements")
-        .changed()
-    {
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-    ui.add_enabled_ui(app.settings.enhance.enabled, |ui| {
-        let mut background_blur = app.settings.enhance.background_blur;
-        if ui
-            .checkbox(&mut background_blur, "Background blur")
-            .changed()
-        {
-            app.settings.enhance.background_blur = background_blur;
-            *settings_changed = true;
-            *enhancement_changed = true;
-        }
-        let mut red_eye = app.settings.enhance.red_eye_removal;
-        if ui.checkbox(&mut red_eye, "Red-eye removal").changed() {
-            app.settings.enhance.red_eye_removal = red_eye;
-            *settings_changed = true;
-            *enhancement_changed = true;
-        }
-    });
-}
 
 fn show_gpu_section(
     app: &mut YuNetApp,
