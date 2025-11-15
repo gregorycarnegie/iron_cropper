@@ -15,16 +15,19 @@ pub fn show_detection_carousel(
     ui: &mut Ui,
     palette: theme::Palette,
 ) {
-    Frame::new()
-        .fill(palette.panel_dark)
-        .stroke(Stroke::new(1.0, palette.outline))
-        .corner_radius(CornerRadius::same(20))
-        .inner_margin(Margin::symmetric(14, 12))
-        .show(ui, |ui| {
-            ScrollArea::vertical()
-                .id_salt("detections_panel_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
+    let max_height = ui.available_height();
+    ui.scope(|ui| {
+        ui.set_max_height(max_height);
+        Frame::new()
+            .fill(palette.panel_dark)
+            .stroke(Stroke::new(1.0, palette.outline))
+            .corner_radius(CornerRadius::same(20))
+            .inner_margin(Margin::symmetric(14, 12))
+            .show(ui, |ui| {
+                ScrollArea::vertical()
+                    .id_salt("detections_panel_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Detected faces").strong());
@@ -101,7 +104,8 @@ pub fn show_detection_carousel(
                         );
                     });
                 });
-        });
+            });
+    });
 }
 
 fn render_detections_strip(

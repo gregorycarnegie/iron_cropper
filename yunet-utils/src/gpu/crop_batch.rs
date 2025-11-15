@@ -112,15 +112,16 @@ impl GpuBatchCropper {
 
         let pixel_count = (src_width as usize) * (src_height as usize);
 
-        // WebGPU has a maximum buffer size limit of 256MB on most platforms.
+        // WebGPU has a maximum buffer binding size limit (typically 128MB per binding).
         // Since we convert u8 to u32 (4x expansion), check if the source buffer will fit.
-        const MAX_BUFFER_SIZE: usize = 256 * 1024 * 1024; // 256 MB
+        // The actual limit is device-dependent but 128MB is the common minimum for max_storage_buffer_binding_size.
+        const MAX_BUFFER_BINDING_SIZE: usize = 128 * 1024 * 1024; // 128 MB
         let source_buffer_size = pixel_count * 4 * std::mem::size_of::<u32>(); // RGBA * u32
         anyhow::ensure!(
-            source_buffer_size <= MAX_BUFFER_SIZE,
-            "Source image too large for GPU batch cropping ({} MB exceeds {} MB limit). Image dimensions: {}×{}. Use CPU cropping for large images.",
+            source_buffer_size <= MAX_BUFFER_BINDING_SIZE,
+            "Source image too large for GPU batch cropping ({} MB exceeds {} MB WebGPU buffer binding limit). Image dimensions: {}×{}. Use CPU cropping for large images.",
             source_buffer_size / (1024 * 1024),
-            MAX_BUFFER_SIZE / (1024 * 1024),
+            MAX_BUFFER_BINDING_SIZE / (1024 * 1024),
             src_width,
             src_height
         );

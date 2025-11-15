@@ -61,16 +61,13 @@ impl YuNetApp {
                 );
 
                 ui.add_space(spacing);
-                ui.allocate_ui_with_layout(
-                    vec2(width, detection_height),
-                    Layout::top_down(Align::Min),
-                    |ui| {
-                        ui.set_min_height(detection_height);
-                        crate::ui::config::detections::show_detection_carousel(
-                            self, ctx, ui, palette,
-                        );
-                    },
-                );
+                ui.allocate_ui(vec2(width, detection_height), |ui| {
+                    ui.set_max_height(detection_height);
+                    ui.set_clip_rect(ui.max_rect());
+                    crate::ui::config::detections::show_detection_carousel(
+                        self, ctx, ui, palette,
+                    );
+                });
             });
     }
 
