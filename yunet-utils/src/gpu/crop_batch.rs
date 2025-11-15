@@ -9,7 +9,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{CROP_WGSL, GpuContext};
+use super::{pack_rgba_pixels, unpack_rgba_pixels, CROP_WGSL, GpuContext};
 
 gpu_uniforms!(CropUniforms, 0, {
     src_width: u32,
@@ -110,24 +110,21 @@ impl GpuBatchCropper {
             "source image must be non-empty"
         );
 
-        let pixel_count = (src_width as usize) * (src_height as usize);
-
-        // WebGPU has a maximum buffer binding size limit (typically 128MB per binding).
-        // Since we convert u8 to u32 (4x expansion), check if the source buffer will fit.
-        // The actual limit is device-dependent but 128MB is the common minimum for max_storage_buffer_binding_size.
-        const MAX_BUFFER_BINDING_SIZE: usize = 128 * 1024 * 1024; // 128 MB
-        let source_buffer_size = pixel_count * 4 * std::mem::size_of::<u32>(); // RGBA * u32
+        let source_data = pack_rgba_pixels(rgba.as_raw());
+        let source_buffer_size =
+            (source_data.len() * std::mem::size_of::<u32>()) as u64;
+        let max_binding = self
+            .context
+            .limits()
+            .max_storage_buffer_binding_size as u64;
         anyhow::ensure!(
-            source_buffer_size <= MAX_BUFFER_BINDING_SIZE,
-            "Source image too large for GPU batch cropping ({} MB exceeds {} MB WebGPU buffer binding limit). Image dimensions: {}×{}. Use CPU cropping for large images.",
-            source_buffer_size / (1024 * 1024),
-            MAX_BUFFER_BINDING_SIZE / (1024 * 1024),
+            source_buffer_size <= max_binding,
+            "Source image too large for GPU batch cropping ({:.2} MB exceeds {:.2} MB WebGPU buffer binding limit). Image dimensions: {}x{}. Use CPU cropping for large images.",
+            source_buffer_size as f64 / (1024.0 * 1024.0),
+            max_binding as f64 / (1024.0 * 1024.0),
             src_width,
             src_height
         );
-
-        let mut source_data = Vec::with_capacity(pixel_count * 4);
-        source_data.extend(rgba.as_raw().iter().map(|b| *b as u32));
 
         let device = self.context.device();
         let queue = self.context.queue();
@@ -153,7 +150,7 @@ impl GpuBatchCropper {
             let crop_width = req.source_width.min(src_width - req.source_x).max(1);
             let crop_height = req.source_height.min(src_height - req.source_y).max(1);
             let dst_pixels = (req.output_width as usize) * (req.output_height as usize);
-            let element_count = dst_pixels * 4;
+            let element_count = dst_pixels;
             jobs.push(JobInfo {
                 element_offset: total_elements,
                 element_count,
@@ -251,14 +248,15 @@ impl GpuBatchCropper {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        let out_bytes = gpu_readback!(readback, device, total_elements, "batch crop")?;
+        let out_pixels = gpu_readback!(readback, device, total_elements, "batch crop")?;
 
         let mut outputs = Vec::with_capacity(requests.len());
         for job in jobs {
             let start = job.element_offset;
             let end = start + job.element_count;
-            let slice = out_bytes[start..end].to_vec();
-            let image = RgbaImage::from_raw(job.dst_width, job.dst_height, slice)
+            let slice = &out_pixels[start..end];
+            let bytes = unpack_rgba_pixels(slice);
+            let image = RgbaImage::from_raw(job.dst_width, job.dst_height, bytes)
                 .context("failed to build GPU crop image")?;
             outputs.push(DynamicImage::ImageRgba8(image));
         }

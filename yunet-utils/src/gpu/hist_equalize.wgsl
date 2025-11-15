@@ -21,14 +21,10 @@ fn build_histogram(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let base = index * 4u;
-    let r = pixels[base + 0u];
-    let g = pixels[base + 1u];
-    let b = pixels[base + 2u];
-
-    let r_idx = r & 0xFFu;
-    let g_idx = g & 0xFFu;
-    let b_idx = b & 0xFFu;
+    let value = pixels[index];
+    let r_idx = value & 0xFFu;
+    let g_idx = (value >> 8u) & 0xFFu;
+    let b_idx = (value >> 16u) & 0xFFu;
 
     atomicAdd(&histogram[r_idx + 0u], 1u);
     atomicAdd(&histogram[g_idx + 256u], 1u);
@@ -108,22 +104,16 @@ fn apply_equalization(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let base = index * 4u;
-    let r = pixels_apply[base + 0u];
-    let g = pixels_apply[base + 1u];
-    let b = pixels_apply[base + 2u];
-    let a = pixels_apply[base + 3u];
+    let pixel = pixels_apply[index];
+    let r_idx = pixel & 0xFFu;
+    let g_idx = (pixel >> 8u) & 0xFFu;
+    let b_idx = (pixel >> 16u) & 0xFFu;
+    let a = (pixel >> 24u) & 0xFFu;
 
-    let r_idx = r & 0xFFu;
-    let g_idx = g & 0xFFu;
-    let b_idx = b & 0xFFu;
+    let r_new = lut[r_idx + 0u] & 0xFFu;
+    let g_new = lut[g_idx + 256u] & 0xFFu;
+    let b_new = lut[b_idx + 512u] & 0xFFu;
 
-    let r_new = lut[r_idx + 0u];
-    let g_new = lut[g_idx + 256u];
-    let b_new = lut[b_idx + 512u];
-
-    pixels_apply[base + 0u] = r_new & 0xFFu;
-    pixels_apply[base + 1u] = g_new & 0xFFu;
-    pixels_apply[base + 2u] = b_new & 0xFFu;
-    pixels_apply[base + 3u] = a;
+    pixels_apply[index] =
+        r_new | (g_new << 8u) | (b_new << 16u) | (a << 24u);
 }

@@ -5,7 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{GAUSSIAN_BLUR_WGSL, GpuContext};
+use super::{pack_rgba_pixels, unpack_rgba_pixels, GAUSSIAN_BLUR_WGSL, GpuContext};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
@@ -62,9 +62,7 @@ impl GpuGaussianBlur {
 
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
-        let pixel_count = (width as usize) * (height as usize);
-        let mut data_u32 = Vec::with_capacity(pixel_count * 4);
-        data_u32.extend(rgba.as_raw().iter().map(|b| *b as u32));
+        let data_u32 = pack_rgba_pixels(rgba.as_raw());
 
         let device = self.context.device();
         let queue = self.context.queue();
@@ -178,7 +176,8 @@ impl GpuGaussianBlur {
         encoder.copy_buffer_to_buffer(&input_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let out_bytes = gpu_readback!(readback, device, data_u32.len(), "gaussian blur")?;
+        let out_pixels = gpu_readback!(readback, device, data_u32.len(), "gaussian blur")?;
+        let out_bytes = unpack_rgba_pixels(&out_pixels);
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build blurred image")?;

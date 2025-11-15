@@ -26,11 +26,11 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let base = index * 4u;
-    var r = f32(pixels[base + 0u]);
-    var g = f32(pixels[base + 1u]);
-    var b = f32(pixels[base + 2u]);
-    let a = pixels[base + 3u];
+    let pixel = pixels[index];
+    var r = f32(pixel & 0xFFu);
+    var g = f32((pixel >> 8u) & 0xFFu);
+    var b = f32((pixel >> 16u) & 0xFFu);
+    let a = (pixel >> 24u) & 0xFFu;
 
     // Exposure (multiply)
     r = clamp255(r * params.exposure_multiplier);
@@ -60,8 +60,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         b = clamp255(gray * inv + b * saturation);
     }
 
-    pixels[base + 0u] = u32(round(r));
-    pixels[base + 1u] = u32(round(g));
-    pixels[base + 2u] = u32(round(b));
-    pixels[base + 3u] = a;
+    let r_u32 = u32(round(r)) & 0xFFu;
+    let g_u32 = u32(round(g)) & 0xFFu;
+    let b_u32 = u32(round(b)) & 0xFFu;
+    pixels[index] = r_u32 | (g_u32 << 8u) | (b_u32 << 16u) | (a << 24u);
 }

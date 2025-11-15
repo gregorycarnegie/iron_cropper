@@ -18,11 +18,11 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let base = index * 4u;
-    let r = f32(pixels[base + 0u]);
-    let g = f32(pixels[base + 1u]);
-    let b = f32(pixels[base + 2u]);
-    let a = pixels[base + 3u];
+    let pixel = pixels[index];
+    let r = f32(pixel & 0xFFu);
+    let g = f32((pixel >> 8u) & 0xFFu);
+    let b = f32((pixel >> 16u) & 0xFFu);
+    let a = (pixel >> 24u) & 0xFFu;
 
     let avg_gb = (g + b) * 0.5 + 1e-6;
     let ratio = r / avg_gb;
@@ -32,8 +32,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         out_r = avg_gb;
     }
 
-    pixels[base + 0u] = u32(clamp(round(out_r), 0.0, 255.0));
-    pixels[base + 1u] = u32(clamp(round(g), 0.0, 255.0));
-    pixels[base + 2u] = u32(clamp(round(b), 0.0, 255.0));
-    pixels[base + 3u] = a;
+    let r_new = u32(clamp(round(out_r), 0.0, 255.0)) & 0xFFu;
+    let g_new = u32(clamp(round(g), 0.0, 255.0)) & 0xFFu;
+    let b_new = u32(clamp(round(b), 0.0, 255.0)) & 0xFFu;
+    pixels[index] = r_new | (g_new << 8u) | (b_new << 16u) | (a << 24u);
 }

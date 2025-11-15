@@ -25,22 +25,24 @@ var<uniform> params: CropUniforms;
 fn load_pixel(x: u32, y: u32) -> vec4<f32> {
     let clamped_x = min(x, params.src_width - 1u);
     let clamped_y = min(y, params.src_height - 1u);
-    let index = (clamped_y * params.src_width + clamped_x) * 4u;
+    let index = clamped_y * params.src_width + clamped_x;
+    let value = source_pixels.data[index];
     return vec4<f32>(
-        f32(source_pixels.data[index + 0u]),
-        f32(source_pixels.data[index + 1u]),
-        f32(source_pixels.data[index + 2u]),
-        f32(source_pixels.data[index + 3u]),
+        f32(value & 0xFFu),
+        f32((value >> 8u) & 0xFFu),
+        f32((value >> 16u) & 0xFFu),
+        f32((value >> 24u) & 0xFFu),
     );
 }
 
 fn store_pixel(x: u32, y: u32, color: vec4<f32>) {
-    let idx = (y * params.dst_width + x) * 4u;
-    let clamped = clamp(color, vec4<f32>(0.0), vec4<f32>(255.0));
-    dest_pixels.data[idx + 0u] = u32(clamped.r + 0.5);
-    dest_pixels.data[idx + 1u] = u32(clamped.g + 0.5);
-    dest_pixels.data[idx + 2u] = u32(clamped.b + 0.5);
-    dest_pixels.data[idx + 3u] = u32(clamped.a + 0.5);
+    let idx = y * params.dst_width + x;
+    let clamped = clamp(round(color), vec4<f32>(0.0), vec4<f32>(255.0));
+    let r = u32(clamped.r) & 0xFFu;
+    let g = u32(clamped.g) & 0xFFu;
+    let b = u32(clamped.b) & 0xFFu;
+    let a = u32(clamped.a) & 0xFFu;
+    dest_pixels.data[idx] = r | (g << 8u) | (b << 16u) | (a << 24u);
 }
 
 fn safe_span(size: u32) -> f32 {

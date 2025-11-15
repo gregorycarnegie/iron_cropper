@@ -119,7 +119,7 @@ macro_rules! create_gpu_pipeline {
     }};
 }
 
-/// Performs GPU buffer readback with async mapping and u32-to-u8 conversion.
+/// Performs GPU buffer readback with async mapping and returns packed `u32` pixels.
 ///
 /// This macro encapsulates the 11-step readback dance:
 /// 1. Create buffer slice
@@ -128,13 +128,12 @@ macro_rules! create_gpu_pipeline {
 /// 4. Poll device until mapping completes
 /// 5. Receive mapping result
 /// 6. Get mapped range
-/// 7. Cast from u8 slice to Vec<u32>
+/// 7. Cast from u8 slice to `Vec<u32>`
 /// 8. Drop mapped range
 /// 9. Unmap buffer
 /// 10. Validate output size
-/// 11. Convert u32 to u8 (extracting LSB)
 ///
-/// Returns `Result<Vec<u8>>` containing the readback bytes.
+/// Returns `Result<Vec<u32>>` containing the packed RGBA pixels.
 ///
 /// # Example
 ///
@@ -185,12 +184,7 @@ macro_rules! gpu_readback {
             result_u32.len()
         );
 
-        let mut out_bytes = Vec::with_capacity(result_u32.len());
-        for value in result_u32 {
-            out_bytes.push((value & 0xFF) as u8);
-        }
-
-        Ok::<Vec<u8>, anyhow::Error>(out_bytes)
+        Ok::<Vec<u32>, anyhow::Error>(result_u32)
     }};
 }
 

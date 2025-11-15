@@ -10,7 +10,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{GpuContext, PIXEL_ADJUST_WGSL};
+use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, PIXEL_ADJUST_WGSL};
 
 const EPSILON: f32 = 1e-6;
 
@@ -69,10 +69,7 @@ impl GpuPixelAdjust {
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
         let pixel_count = (width as usize) * (height as usize);
-        let mut data_u32: Vec<u32> = Vec::with_capacity(pixel_count * 4);
-        for byte in rgba.as_raw() {
-            data_u32.push(*byte as u32);
-        }
+        let data_u32 = pack_rgba_pixels(rgba.as_raw());
 
         let device = self.context.device();
         let queue = self.context.queue();
@@ -144,7 +141,8 @@ impl GpuPixelAdjust {
         encoder.copy_buffer_to_buffer(&storage_buffer, 0, &readback, 0, buffer_size_bytes);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let out_bytes = gpu_readback!(readback, device, data_u32.len(), "pixel adjust")?;
+        let out_pixels = gpu_readback!(readback, device, data_u32.len(), "pixel adjust")?;
+        let out_bytes = unpack_rgba_pixels(&out_pixels);
 
         let image =
             RgbaImage::from_raw(width, height, out_bytes).context("failed to build RGBA image")?;

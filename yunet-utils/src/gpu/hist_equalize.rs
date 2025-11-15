@@ -5,7 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{GpuContext, HIST_EQUALIZE_WGSL};
+use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, HIST_EQUALIZE_WGSL};
 use crate::{gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
 gpu_uniforms!(HistogramUniforms, 3, {
@@ -124,8 +124,7 @@ impl GpuHistogramEqualizer {
             return Ok(image.clone());
         }
 
-        let mut data_u32 = Vec::with_capacity(pixel_count * 4);
-        data_u32.extend(rgba.as_raw().iter().map(|b| *b as u32));
+        let data_u32 = pack_rgba_pixels(rgba.as_raw());
 
         let (lut_buffer, pixel_buffer) =
             self.build_histogram_and_lut(&data_u32, pixel_count as u32)?;
@@ -269,7 +268,7 @@ impl GpuHistogramEqualizer {
         let queue = self.context.queue();
         let pixel_count = (width as usize * height as usize) as u32;
         let buffer_size =
-            (pixel_count as usize * 4 * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+            (pixel_count as usize * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
         let uniform = LutUniforms {
             pixel_count,
@@ -323,8 +322,10 @@ impl GpuHistogramEqualizer {
         encoder.copy_buffer_to_buffer(&pixel_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let expected_len = (pixel_count as usize) * 4;
-        let bytes = gpu_readback!(readback, device, expected_len, "histogram equalization")?;
+        let expected_len = pixel_count as usize;
+        let packed =
+            gpu_readback!(readback, device, expected_len, "histogram equalization")?;
+        let bytes = unpack_rgba_pixels(&packed);
 
         let result =
             RgbaImage::from_raw(width, height, bytes).context("failed to build equalized image")?;

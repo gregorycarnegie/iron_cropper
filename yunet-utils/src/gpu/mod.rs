@@ -516,6 +516,30 @@ impl GpuContext {
     }
 }
 
+/// Pack little-endian RGBA bytes into a single `u32` per pixel.
+///
+/// Each returned element stores the four 8-bit color channels in the order
+/// `R | G << 8 | B << 16 | A << 24`.
+pub fn pack_rgba_pixels(bytes: &[u8]) -> Vec<u32> {
+    debug_assert!(
+        bytes.len() % 4 == 0,
+        "RGBA buffer must have a multiple of 4 elements"
+    );
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
+
+/// Expand packed RGBA pixels back into a `Vec<u8>` buffer.
+pub fn unpack_rgba_pixels(packed: &[u32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(packed.len() * 4);
+    for value in packed {
+        bytes.extend(value.to_le_bytes());
+    }
+    bytes
+}
+
 /// Tracks GPU initialization failures and reasons for CPU fallback.
 #[derive(Debug, Error)]
 pub enum GpuInitError {

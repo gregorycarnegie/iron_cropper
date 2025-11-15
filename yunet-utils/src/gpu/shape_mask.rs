@@ -11,7 +11,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{GpuContext, SHAPE_MASK_WGSL};
+use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, SHAPE_MASK_WGSL};
 
 const MAX_POINTS: usize = 512;
 
@@ -72,9 +72,7 @@ impl GpuShapeMask {
         }
 
         let rgba = image.to_rgba8();
-        let pixel_count = (width as usize) * (height as usize);
-        let mut pixels_u32 = Vec::with_capacity(pixel_count * 4);
-        pixels_u32.extend(rgba.as_raw().iter().map(|b| *b as u32));
+        let pixels_u32 = pack_rgba_pixels(rgba.as_raw());
 
         let device = self.context.device();
         let queue = self.context.queue();
@@ -149,7 +147,8 @@ impl GpuShapeMask {
         encoder.copy_buffer_to_buffer(&storage, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
-        let out_bytes = gpu_readback!(readback, device, pixels_u32.len(), "shape mask")?;
+        let out_pixels = gpu_readback!(readback, device, pixels_u32.len(), "shape mask")?;
+        let out_bytes = unpack_rgba_pixels(&out_pixels);
 
         let masked = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build masked image")?;

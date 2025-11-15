@@ -58,22 +58,25 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         return;
     }
 
-    let dst = (y * params.width + x) * 4u;
+    let dst = y * params.width + x;
     let coverage = coverage_for_pixel(x, y);
+    let pixel = pixels[dst];
+    let r = f32(pixel & 0xFFu);
+    let g = f32((pixel >> 8u) & 0xFFu);
+    let b = f32((pixel >> 16u) & 0xFFu);
+    let a = (pixel >> 24u) & 0xFFu;
 
     if (coverage <= 0.0) {
-        pixels[dst + 0u] = 0u;
-        pixels[dst + 1u] = 0u;
-        pixels[dst + 2u] = 0u;
-        pixels[dst + 3u] = 0u;
+        pixels[dst] = 0u;
     } else if (coverage >= 0.999) {
         // Keep original pixel but ensure alpha is opaque
-        pixels[dst + 3u] = 255u;
+        pixels[dst] = (pixel & 0x00FFFFFFu) | (255u << 24u);
     } else {
         let alpha = clamp(coverage * 255.0, 0.0, 255.0);
-        pixels[dst + 3u] = u32(round(alpha));
-        pixels[dst + 0u] = u32(clamp(round(f32(pixels[dst + 0u]) * coverage), 0.0, 255.0));
-        pixels[dst + 1u] = u32(clamp(round(f32(pixels[dst + 1u]) * coverage), 0.0, 255.0));
-        pixels[dst + 2u] = u32(clamp(round(f32(pixels[dst + 2u]) * coverage), 0.0, 255.0));
+        let a_out = u32(round(alpha)) & 0xFFu;
+        let r_out = u32(clamp(round(r * coverage), 0.0, 255.0)) & 0xFFu;
+        let g_out = u32(clamp(round(g * coverage), 0.0, 255.0)) & 0xFFu;
+        let b_out = u32(clamp(round(b * coverage), 0.0, 255.0)) & 0xFFu;
+        pixels[dst] = r_out | (g_out << 8u) | (b_out << 16u) | (a_out << 24u);
     }
 }
