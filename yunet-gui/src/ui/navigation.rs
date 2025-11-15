@@ -152,7 +152,7 @@ impl YuNetApp {
             self.clear_crop_preview_cache();
             if !self.preview.detections.is_empty() {
                 for idx in 0..self.preview.detections.len() {
-                    let _ = self.crop_preview_texture_for(&ui.ctx(), idx);
+                    let _ = self.crop_preview_texture_for(ui.ctx(), idx);
                 }
             }
             ui.ctx().request_repaint();

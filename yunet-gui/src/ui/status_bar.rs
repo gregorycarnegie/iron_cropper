@@ -35,8 +35,8 @@ impl YuNetApp {
                             );
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if self.can_export_selected() {
-                                if ui
+                            if self.can_export_selected()
+                                && ui
                                     .add(
                                         Button::new(
                                             RichText::new("Export selected")
@@ -49,9 +49,8 @@ impl YuNetApp {
                                         .corner_radius(CornerRadius::same(22)),
                                     )
                                     .clicked()
-                                {
-                                    self.export_selected_faces();
-                                }
+                            {
+                                self.export_selected_faces();
                             }
                             self.draw_status_badge(ui, palette);
                         });
