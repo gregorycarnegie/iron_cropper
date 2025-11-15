@@ -1,69 +1,59 @@
 //! Status bar UI components for the YuNet GUI.
 
 use egui::{
-    Align, Button, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke,
-    TopBottomPanel, Ui, Vec2,
+    Align, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke,
+    TopBottomPanel, Ui,
 };
 
 use crate::{GpuStatusMode, YuNetApp, theme};
 
 impl YuNetApp {
-    /// Renders the top hero/status bar with quick stats and actions.
+    /// Renders the slim bottom status bar with stats and status badge.
     pub fn show_status_bar(&mut self, ctx: &egui::Context) {
         let palette = theme::palette();
-        TopBottomPanel::top("yunet_status_bar")
+        TopBottomPanel::bottom("yunet_status_bar")
             .frame(
                 egui::Frame::new()
                     .fill(palette.canvas)
                     .stroke(Stroke::new(1.0, palette.outline))
-                    .inner_margin(Margin::symmetric(22, 16)),
+                    .inner_margin(Margin::symmetric(16, 8)),
             )
             .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new("Face Crop Studio")
-                                    .size(28.0)
-                                    .strong()
-                                    .color(Color32::WHITE),
-                            );
-                            ui.label(
-                                RichText::new("Batch-perfect crops with YuNet precision")
-                                    .color(palette.subtle_text),
-                            );
-                        });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if self.can_export_selected()
-                                && ui
-                                    .add(
-                                        Button::new(
-                                            RichText::new("Export selected")
-                                                .strong()
-                                                .color(palette.panel_dark),
-                                        )
-                                        .fill(palette.accent)
-                                        .min_size(Vec2::new(170.0, 42.0))
-                                        .stroke(Stroke::NONE)
-                                        .corner_radius(CornerRadius::same(22)),
-                                    )
-                                    .clicked()
-                            {
-                                self.export_selected_faces();
-                            }
-                            self.draw_status_badge(ui, palette);
-                        });
+                ui.horizontal(|ui| {
+                    // Left side: status chips
+                    self.status_chip(
+                        ui,
+                        palette,
+                        format!("Faces {}", self.preview.detections.len()),
+                        palette.accent,
+                    );
+                    self.status_chip(
+                        ui,
+                        palette,
+                        format!("Selected {}", self.selected_faces.len()),
+                        if self.selected_faces.is_empty() {
+                            palette.subtle_text
+                        } else {
+                            palette.success
+                        },
+                    );
+                    self.status_chip(
+                        ui,
+                        palette,
+                        format!("Batch {}", self.batch_files.len()),
+                        if self.batch_files.is_empty() {
+                            palette.subtle_text
+                        } else {
+                            palette.warning
+                        },
+                    );
+                    let (gpu_text, gpu_color) = self.gpu_status_chip(palette);
+                    self.status_chip(ui, palette, gpu_text, gpu_color);
+
+                    // Right side: status badge
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        self.draw_status_badge(ui, palette);
                     });
-
-                    if let Some(err) = &self.last_error {
-                        ui.colored_label(palette.danger, err);
-                    } else {
-                        ui.label(RichText::new(&self.status_line).color(palette.subtle_text));
-                    }
-
-                    ui.add_space(4.0);
-                    self.draw_status_chips(ui, palette);
                 });
             });
     }
@@ -94,39 +84,6 @@ impl YuNetApp {
                     ui.label(RichText::new(label).size(15.0).strong());
                 });
             });
-    }
-
-    fn draw_status_chips(&self, ui: &mut Ui, palette: theme::Palette) {
-        ui.horizontal_wrapped(|ui| {
-            self.status_chip(
-                ui,
-                palette,
-                format!("Faces {}", self.preview.detections.len()),
-                palette.accent,
-            );
-            self.status_chip(
-                ui,
-                palette,
-                format!("Selected {}", self.selected_faces.len()),
-                if self.selected_faces.is_empty() {
-                    palette.subtle_text
-                } else {
-                    palette.success
-                },
-            );
-            self.status_chip(
-                ui,
-                palette,
-                format!("Batch {}", self.batch_files.len()),
-                if self.batch_files.is_empty() {
-                    palette.subtle_text
-                } else {
-                    palette.warning
-                },
-            );
-            let (gpu_text, gpu_color) = self.gpu_status_chip(palette);
-            self.status_chip(ui, palette, gpu_text, gpu_color);
-        });
     }
 
 
