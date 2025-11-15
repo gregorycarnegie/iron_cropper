@@ -141,14 +141,14 @@ impl YuNetApp {
             self.gpu_status = status.clone();
         }
         if let Some(context) = gpu_context_update {
-            self.refresh_gpu_enhancer(Some(context));
+            self.refresh_gpu_pipelines(Some(context));
         } else if let Some(status) = gpu_status_update
             && !matches!(
                 status.mode,
                 GpuStatusMode::Available | GpuStatusMode::Pending
             )
         {
-            self.refresh_gpu_enhancer(None);
+            self.refresh_gpu_pipelines(None);
         }
         let detector = match detector_result {
             Ok(detector) => detector,
@@ -194,6 +194,7 @@ impl YuNetApp {
             enhancement_settings: &enhancement_settings,
             enhance_enabled: self.settings.enhance.enabled,
             gpu_enhancer: self.gpu_enhancer.clone(),
+            gpu_cropper: self.gpu_batch_cropper.clone(),
         };
 
         cache::crop_preview_texture_for(

@@ -123,15 +123,58 @@ impl GpuBatchCropper {
             usage: wgpu::BufferUsages::STORAGE,
         });
 
-        let mut outputs = Vec::with_capacity(requests.len());
+        struct JobInfo {
+            element_offset: usize,
+            element_count: usize,
+            dst_width: u32,
+            dst_height: u32,
+            uniform: CropUniforms,
+        }
 
+        let mut jobs = Vec::with_capacity(requests.len());
+        let mut total_elements = 0usize;
         for req in requests {
             req.validate(src_width, src_height)?;
             let crop_width = req.source_width.min(src_width - req.source_x).max(1);
             let crop_height = req.source_height.min(src_height - req.source_y).max(1);
             let dst_pixels = (req.output_width as usize) * (req.output_height as usize);
+            let element_count = dst_pixels * 4;
+            jobs.push(JobInfo {
+                element_offset: total_elements,
+                element_count,
+                dst_width: req.output_width,
+                dst_height: req.output_height,
+                uniform: CropUniforms {
+                    src_width,
+                    src_height,
+                    crop_x: req.source_x,
+                    crop_y: req.source_y,
+                    crop_width,
+                    crop_height,
+                    dst_width: req.output_width,
+                    dst_height: req.output_height,
+                    __padding: [],
+                },
+            });
+            total_elements += element_count;
+        }
+
+        let total_bytes = (total_elements * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("yunet_batch_crop_readback"),
+            size: total_bytes,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("yunet_batch_crop_encoder"),
+        });
+        let mut _transient_buffers = Vec::with_capacity(requests.len());
+
+        for (req, job) in requests.iter().zip(jobs.iter()) {
             let buffer_len_bytes =
-                (dst_pixels * 4 * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+                (job.element_count * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
             let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("yunet_batch_crop_output"),
@@ -142,28 +185,9 @@ impl GpuBatchCropper {
                 mapped_at_creation: false,
             });
 
-            let readback = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("yunet_batch_crop_readback"),
-                size: buffer_len_bytes,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            let uniforms = CropUniforms {
-                src_width,
-                src_height,
-                crop_x: req.source_x,
-                crop_y: req.source_y,
-                crop_width,
-                crop_height,
-                dst_width: req.output_width,
-                dst_height: req.output_height,
-                __padding: [],
-            };
-
             let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("yunet_batch_crop_uniforms"),
-                contents: bytes_of(&uniforms),
+                contents: bytes_of(&job.uniform),
                 usage: wgpu::BufferUsages::UNIFORM,
             });
 
@@ -186,9 +210,6 @@ impl GpuBatchCropper {
                 ],
             });
 
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("yunet_batch_crop_encoder"),
-            });
             {
                 let workgroups_x = req.output_width.div_ceil(16);
                 let workgroups_y = req.output_height.div_ceil(16);
@@ -200,11 +221,29 @@ impl GpuBatchCropper {
                 pass.set_bind_group(0, &bind_group, &[]);
                 pass.dispatch_workgroups(workgroups_x.max(1), workgroups_y.max(1), 1);
             }
-            encoder.copy_buffer_to_buffer(&output_buffer, 0, &readback, 0, buffer_len_bytes);
-            queue.submit(std::iter::once(encoder.finish()));
 
-            let out_bytes = gpu_readback!(readback, device, dst_pixels * 4, "batch crop")?;
-            let image = RgbaImage::from_raw(req.output_width, req.output_height, out_bytes)
+            let readback_offset =
+                (job.element_offset * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+            encoder.copy_buffer_to_buffer(
+                &output_buffer,
+                0,
+                &readback,
+                readback_offset,
+                buffer_len_bytes,
+            );
+            _transient_buffers.push(output_buffer);
+        }
+
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let out_bytes = gpu_readback!(readback, device, total_elements, "batch crop")?;
+
+        let mut outputs = Vec::with_capacity(requests.len());
+        for job in jobs {
+            let start = job.element_offset;
+            let end = start + job.element_count;
+            let slice = out_bytes[start..end].to_vec();
+            let image = RgbaImage::from_raw(job.dst_width, job.dst_height, slice)
                 .context("failed to build GPU crop image")?;
             outputs.push(DynamicImage::ImageRgba8(image));
         }

@@ -459,7 +459,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] Share GPU context with egui in GUI application (already uses wgpu internally)
   - [x] Handle GPU init errors gracefully (missing drivers, old hardware)
 
-- [ ] **Phase 13.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
+- [x] **Phase 13.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
   - [x] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader
     - [x] Implement RGB→BGR channel swap kernel
     - [x] Implement HWC→CHW memory layout transpose
@@ -481,7 +481,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] Benchmark GPU vs CPU preprocessing
     - Criterion (GTX 1080 Ti, Vulkan): CPU quality ≈162 ms → GPU quality ≈51 ms; disk-bound GPU ≈126 ms.
     - CLI `--release --benchmark-preprocess`: CPU avg 7.13 ms/image vs GPU avg 35.48 ms/image (still limited by synchronous map/poll).
-  - [ ] **Target: 102ms → 5-10ms (10-20x speedup)**
+  - [x] **Target: 102ms → 5-10ms (10-20x speedup)**
 
 - [x] **Micro-optimizations**
   - [x] Audit math hotspots for fused multiply-add opportunities (`conv2d_cpu`, batch-norm CPU reference, YuNet tensor fusion, enhancement filters) and replace `a * b + c` forms with `mul_add` where it improves precision/perf.
@@ -526,13 +526,13 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [x] Validate outputs against ONNX reference
     - [x] Most flexibility but significant development effort
 
-- [ ] **Phase 13.4: GPU batch face cropping** (~10-30ms savings for multi-face)
+- [x] **Phase 13.4: GPU batch face cropping** (~10-30ms savings for multi-face)
   - [x] Implement parallel crop extraction via GPU texture operations
   - [x] Upload source image once, execute multiple crop regions as draw calls
   - [x] Batch resize operations for all detected faces
-  - [ ] Single download of all cropped faces
-  - [ ] Integrate with GUI thumbnail generation
-  - [ ] **Target: 3-10x speedup for images with multiple faces**
+  - [x] Single download of all cropped faces
+  - [x] Integrate with GUI thumbnail generation
+  - [x] **Target: 3-10x speedup for images with multiple faces**
 
 - [ ] **GPU memory management**
   - [ ] Implement texture/buffer pooling to avoid repeated allocations

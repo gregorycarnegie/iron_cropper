@@ -7,32 +7,18 @@ use std::sync::Arc;
 use image::DynamicImage;
 use log::{info, warn};
 use rayon::prelude::*;
-use yunet_core::{CropSettings as CoreCropSettings, YuNetDetector, calculate_crop_region};
+use yunet_core::{YuNetDetector, calculate_crop_region};
+use yunet_utils::gpu::BatchCropRequest;
 use yunet_utils::{
-    MetadataContext, OutputOptions, WgpuEnhancer, append_suffix_to_filename,
-    config::CropSettings as ConfigCropSettings,
-    enhance::EnhancementSettings,
-    load_image,
+    MetadataContext, OutputOptions, append_suffix_to_filename, load_image,
     quality::{Quality, estimate_sharpness},
     save_dynamic_image,
 };
 
 use crate::{
-    BatchFileStatus, YuNetApp,
+    BatchFileStatus, BatchJobConfig, YuNetApp,
     core::cache::{apply_mask_with_gpu, enhance_with_gpu},
 };
-
-/// Configuration for batch export jobs.
-#[derive(Clone)]
-pub struct BatchJobConfig {
-    pub output_dir: PathBuf,
-    pub crop_settings: CoreCropSettings,
-    pub crop_config: ConfigCropSettings,
-    pub enhancement_settings: EnhancementSettings,
-    pub enhance_enabled: bool,
-    pub output_options: OutputOptions,
-    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
-}
 
 /// Runs a single batch job for one image file.
 pub fn run_batch_job(
@@ -70,27 +56,86 @@ pub fn run_batch_job(
         score: f32,
     }
 
+    let crop_regions: Vec<_> = detection_output
+        .detections
+        .iter()
+        .map(|detection| {
+            calculate_crop_region(
+                source_image.width(),
+                source_image.height(),
+                detection.bbox,
+                &config.crop_settings,
+            )
+        })
+        .collect();
+
+    let gpu_crops = if config.crop_settings.output_width > 0
+        && config.crop_settings.output_height > 0
+        && !crop_regions.is_empty()
+    {
+        config.gpu_cropper.as_ref().and_then(|cropper| {
+            let requests: Vec<BatchCropRequest> = crop_regions
+                .iter()
+                .map(|region| BatchCropRequest {
+                    source_x: region.x,
+                    source_y: region.y,
+                    source_width: region.width.max(1),
+                    source_height: region.height.max(1),
+                    output_width: config.crop_settings.output_width,
+                    output_height: config.crop_settings.output_height,
+                })
+                .collect();
+            match cropper.crop(&source_image, &requests) {
+                Ok(images) if images.len() == requests.len() => Some(images),
+                Ok(images) => {
+                    warn!(
+                        "GPU cropper returned {} images for {} requests",
+                        images.len(),
+                        requests.len()
+                    );
+                    None
+                }
+                Err(err) => {
+                    warn!("GPU batch crop failed: {err}");
+                    None
+                }
+            }
+        })
+    } else {
+        None
+    };
+
+    let mut processed_faces: Vec<Arc<DynamicImage>> = Vec::with_capacity(faces_detected);
     let mut candidates = Vec::with_capacity(faces_detected);
     for (face_idx, detection) in detection_output.detections.iter().enumerate() {
-        let crop_region = calculate_crop_region(
-            source_image.width(),
-            source_image.height(),
-            detection.bbox,
-            &config.crop_settings,
-        );
+        let region = crop_regions.get(face_idx).copied().unwrap_or_else(|| {
+            calculate_crop_region(
+                source_image.width(),
+                source_image.height(),
+                detection.bbox,
+                &config.crop_settings,
+            )
+        });
 
-        let cropped = source_image.crop_imm(
-            crop_region.x,
-            crop_region.y,
-            crop_region.width,
-            crop_region.height,
-        );
-
-        let resized = cropped.resize_exact(
-            config.crop_settings.output_width,
-            config.crop_settings.output_height,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let resized = if let Some(images) = gpu_crops.as_ref() {
+            images.get(face_idx).cloned().unwrap_or_else(|| {
+                source_image
+                    .crop_imm(region.x, region.y, region.width, region.height)
+                    .resize_exact(
+                        config.crop_settings.output_width,
+                        config.crop_settings.output_height,
+                        image::imageops::FilterType::Lanczos3,
+                    )
+            })
+        } else {
+            source_image
+                .crop_imm(region.x, region.y, region.width, region.height)
+                .resize_exact(
+                    config.crop_settings.output_width,
+                    config.crop_settings.output_height,
+                    image::imageops::FilterType::Lanczos3,
+                )
+        };
 
         let processed = if config.enhance_enabled {
             enhance_with_gpu(
@@ -106,16 +151,16 @@ pub fn run_batch_job(
             &config.crop_config.shape,
             config.gpu_enhancer.as_ref(),
         );
-        let rgba = masked.to_rgba8();
-        let final_image = DynamicImage::ImageRgba8(rgba);
+        let final_image = Arc::new(masked);
 
-        let (quality_score, quality) = estimate_sharpness(&final_image);
+        let (quality_score, quality) = estimate_sharpness(final_image.as_ref());
         candidates.push(FaceCandidate {
             index: face_idx,
             quality,
             quality_score,
             score: detection.score,
         });
+        processed_faces.push(final_image);
     }
 
     if candidates.is_empty() {
@@ -173,39 +218,8 @@ pub fn run_batch_job(
             continue;
         }
 
-        let detection = match detection_output.detections.get(candidate.index) {
-            Some(det) => det,
-            None => continue,
-        };
-
-        let crop_region = calculate_crop_region(
-            source_image.width(),
-            source_image.height(),
-            detection.bbox,
-            &config.crop_settings,
-        );
-
-        let cropped = source_image.crop_imm(
-            crop_region.x,
-            crop_region.y,
-            crop_region.width,
-            crop_region.height,
-        );
-
-        let resized = cropped.resize_exact(
-            config.crop_settings.output_width,
-            config.crop_settings.output_height,
-            image::imageops::FilterType::Lanczos3,
-        );
-
-        let final_image = if config.enhance_enabled {
-            enhance_with_gpu(
-                &resized,
-                &config.enhancement_settings,
-                config.gpu_enhancer.as_ref(),
-            )
-        } else {
-            resized
+        let Some(final_image) = processed_faces.get(candidate.index).cloned() else {
+            continue;
         };
 
         let source_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("face");
@@ -257,7 +271,7 @@ pub fn run_batch_job(
         };
 
         match save_dynamic_image(
-            &final_image,
+            final_image.as_ref(),
             &output_path,
             &config.output_options,
             &metadata_ctx,
@@ -496,6 +510,7 @@ pub fn start_batch_export(app: &mut YuNetApp) {
         enhance_enabled: app.settings.enhance.enabled,
         output_options: OutputOptions::from_crop_settings(&app.settings.crop),
         gpu_enhancer: app.gpu_enhancer.clone(),
+        gpu_cropper: app.gpu_batch_cropper.clone(),
     });
 
     let tasks: Vec<_> = app

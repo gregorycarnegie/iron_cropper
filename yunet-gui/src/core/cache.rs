@@ -8,7 +8,7 @@ use image::DynamicImage;
 use log::warn;
 use yunet_core::{CropSettings as CoreCropSettings, PositioningMode, calculate_crop_region};
 use yunet_utils::{
-    WgpuEnhancer, apply_shape_mask,
+    BatchCropRequest, GpuBatchCropper, WgpuEnhancer, apply_shape_mask,
     config::CropSettings as ConfigCropSettings,
     enhance::{EnhancementSettings, apply_enhancements},
     load_image,
@@ -30,6 +30,7 @@ pub struct CropPreviewRequest<'a> {
     pub enhancement_settings: &'a EnhancementSettings,
     pub enhance_enabled: bool,
     pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
+    pub gpu_cropper: Option<Arc<GpuBatchCropper>>,
 }
 
 pub fn enhance_with_gpu(
@@ -63,6 +64,7 @@ pub fn ensure_crop_preview_entry(
         enhancement_settings,
         enhance_enabled,
         gpu_enhancer,
+        gpu_cropper,
     } = request;
 
     let signature = enhancement_signature(enhancement_settings);
@@ -107,17 +109,57 @@ pub fn ensure_crop_preview_entry(
 
     let bbox = detection.active_bbox();
     let crop_region = calculate_crop_region(img.width(), img.height(), bbox, crop_settings);
-    let cropped = img.crop_imm(
-        crop_region.x,
-        crop_region.y,
-        crop_region.width,
-        crop_region.height,
-    );
-    let resized = cropped.resize_exact(
-        crop_settings.output_width,
-        crop_settings.output_height,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let cpu_crop = || {
+        img.crop_imm(
+            crop_region.x,
+            crop_region.y,
+            crop_region.width,
+            crop_region.height,
+        )
+        .resize_exact(
+            crop_settings.output_width,
+            crop_settings.output_height,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+
+    let resized = if crop_settings.output_width > 0
+        && crop_settings.output_height > 0
+        && gpu_cropper.is_some()
+    {
+        let request = BatchCropRequest {
+            source_x: crop_region.x,
+            source_y: crop_region.y,
+            source_width: crop_region.width.max(1),
+            source_height: crop_region.height.max(1),
+            output_width: crop_settings.output_width,
+            output_height: crop_settings.output_height,
+        };
+        match gpu_cropper.as_ref().and_then(|cropper| {
+            match cropper.crop(img.as_ref(), &[request]) {
+                Ok(mut images) => {
+                    if images.len() == 1 {
+                        images.pop()
+                    } else {
+                        warn!(
+                            "GPU cropper returned {} preview images (expected 1)",
+                            images.len()
+                        );
+                        None
+                    }
+                }
+                Err(err) => {
+                    warn!("GPU preview crop failed: {err}; falling back to CPU path.");
+                    None
+                }
+            }
+        }) {
+            Some(image) => image,
+            None => cpu_crop(),
+        }
+    } else {
+        cpu_crop()
+    };
     let processed = if enhance_enabled {
         enhance_with_gpu(&resized, enhancement_settings, gpu_enhancer.as_ref())
     } else {

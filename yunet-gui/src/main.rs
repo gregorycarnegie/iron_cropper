@@ -25,8 +25,18 @@ pub use types::{
 pub use yunet_utils::gpu::{GpuStatusIndicator, GpuStatusMode};
 
 use yunet_utils::{
-    WgpuEnhancer, config::default_settings_path, gpu::GpuContext, init_logging, quality::Quality,
+    WgpuEnhancer,
+    config::default_settings_path,
+    gpu::{GpuBatchCropper, GpuContext},
+    init_logging,
+    quality::Quality,
 };
+
+type GpuPipelineInit = (
+    Option<Arc<GpuContext>>,
+    Option<Arc<WgpuEnhancer>>,
+    Option<Arc<GpuBatchCropper>>,
+);
 
 /// Main entry point for the GUI application.
 fn main() -> eframe::Result<()> {
@@ -142,7 +152,8 @@ impl YuNetApp {
 
         let (initial_gpu_status, initial_gpu_context, detector_result) =
             build_detector(&settings, shared_gpu_context);
-        let (gpu_context, gpu_enhancer) = YuNetApp::init_gpu_enhancer(initial_gpu_context);
+        let (gpu_context, gpu_enhancer, gpu_batch_cropper) =
+            YuNetApp::init_gpu_pipelines(initial_gpu_context);
         let detector = match detector_result {
             Ok(detector) => {
                 info!("Loaded YuNet model from configuration");
@@ -175,6 +186,7 @@ impl YuNetApp {
             gpu_status: initial_gpu_status,
             gpu_context,
             gpu_enhancer,
+            gpu_batch_cropper,
             detector,
             job_tx,
             job_rx,
@@ -204,33 +216,40 @@ impl YuNetApp {
         }
     }
 
-    fn init_gpu_enhancer(
-        context: Option<Arc<GpuContext>>,
-    ) -> (Option<Arc<GpuContext>>, Option<Arc<WgpuEnhancer>>) {
+    fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineInit {
         if let Some(ctx) = context {
-            match WgpuEnhancer::new(ctx.clone()) {
+            let enhancer = match WgpuEnhancer::new(ctx.clone()) {
                 Ok(enhancer) => {
                     info!(
                         "GPU enhancer ready on '{}' ({:?})",
                         ctx.adapter_info().name,
                         ctx.adapter_info().backend
                     );
-                    (Some(ctx), Some(Arc::new(enhancer)))
+                    Some(Arc::new(enhancer))
                 }
                 Err(err) => {
                     warn!("Failed to initialize GPU enhancer: {err}");
-                    (Some(ctx), None)
+                    None
                 }
-            }
+            };
+            let cropper = match GpuBatchCropper::new(ctx.clone()) {
+                Ok(cropper) => Some(Arc::new(cropper)),
+                Err(err) => {
+                    warn!("Failed to initialize GPU batch cropper: {err}");
+                    None
+                }
+            };
+            (Some(ctx), enhancer, cropper)
         } else {
-            (None, None)
+            (None, None, None)
         }
     }
 
-    pub(crate) fn refresh_gpu_enhancer(&mut self, context: Option<Arc<GpuContext>>) {
-        let (ctx, enhancer) = Self::init_gpu_enhancer(context);
+    pub(crate) fn refresh_gpu_pipelines(&mut self, context: Option<Arc<GpuContext>>) {
+        let (ctx, enhancer, cropper) = Self::init_gpu_pipelines(context);
         self.gpu_context = ctx;
         self.gpu_enhancer = enhancer;
+        self.gpu_batch_cropper = cropper;
     }
 }
 

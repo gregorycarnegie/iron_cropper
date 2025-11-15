@@ -13,7 +13,7 @@ use yunet_utils::{
     OutputOptions, WgpuEnhancer,
     config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
     enhance::EnhancementSettings,
-    gpu::{GpuContext, GpuStatusIndicator},
+    gpu::{GpuBatchCropper, GpuContext, GpuStatusIndicator},
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
         MappingReadOptions,
@@ -53,6 +53,7 @@ pub struct BatchJobConfig {
     pub enhance_enabled: bool,
     pub output_options: OutputOptions,
     pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
+    pub gpu_cropper: Option<Arc<GpuBatchCropper>>,
 }
 
 /// Fingerprint of enhancement settings for cache invalidation.
@@ -124,6 +125,8 @@ pub struct YuNetApp {
     pub gpu_context: Option<Arc<GpuContext>>,
     /// Shared GPU enhancer used for crop previews/exports.
     pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
+    /// Shared GPU cropper for face previews/exports.
+    pub gpu_batch_cropper: Option<Arc<GpuBatchCropper>>,
     /// The face detector instance.
     pub detector: Option<Arc<yunet_core::YuNetDetector>>,
     /// Sender for submitting detection jobs to a background thread.
