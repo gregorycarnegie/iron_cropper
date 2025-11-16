@@ -5,6 +5,7 @@ use bytemuck::{Pod, Zeroable, bytes_of};
 use wgpu::util::DeviceExt;
 use yunet_utils::gpu::GpuContext;
 
+use super::memory::GpuBufferPool;
 use super::tensor::GpuTensor;
 
 const CONV2D_WGSL: &str = include_str!("conv2d.wgsl");
@@ -30,6 +31,7 @@ const UPSAMPLE_WORKGROUP_Y: u32 = 8;
 #[derive(Debug)]
 pub struct GpuInferenceOps {
     context: Arc<GpuContext>,
+    buffer_pool: Arc<GpuBufferPool>,
     conv2d: Conv2dPipeline,
     batch_norm: BatchNormPipeline,
     activation: ActivationPipeline,
@@ -42,6 +44,7 @@ impl GpuInferenceOps {
     /// Create the GPU pipelines from an existing [`GpuContext`].
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
+        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
         Ok(Self {
             conv2d: Conv2dPipeline::new(device)?,
             batch_norm: BatchNormPipeline::new(device)?,
@@ -49,6 +52,7 @@ impl GpuInferenceOps {
             max_pool: MaxPoolPipeline::new(device)?,
             add: AddPipeline::new(device)?,
             upsample2x: Upsample2xPipeline::new(device)?,
+            buffer_pool,
             context,
         })
     }
@@ -58,7 +62,13 @@ impl GpuInferenceOps {
     where
         D: Into<Vec<usize>>,
     {
-        GpuTensor::from_slice(self.context.clone(), dims, data, label)
+        GpuTensor::from_slice_with_pool(
+            self.context.clone(),
+            Some(self.buffer_pool.clone()),
+            dims,
+            data,
+            label,
+        )
     }
 
     /// Download a tensor back to host memory.
@@ -91,7 +101,14 @@ impl GpuInferenceOps {
         self.ensure_same_context(weights, "conv2d weights")?;
         self.ensure_same_context(bias, "conv2d bias")?;
         self.conv2d
-            .execute(&self.context, input, weights, bias, config)
+            .execute(
+                &self.context,
+                &self.buffer_pool,
+                input,
+                weights,
+                bias,
+                config,
+            )
     }
 
     /// Convenience wrapper that uploads host slices, runs Conv2D, and downloads the result.
@@ -190,7 +207,8 @@ impl GpuInferenceOps {
     /// Max pool on GPU tensors.
     pub fn max_pool_tensor(&self, tensor: &GpuTensor, config: &MaxPoolConfig) -> Result<GpuTensor> {
         self.ensure_same_context(tensor, "max_pool tensor")?;
-        self.max_pool.execute(&self.context, tensor, config)
+        self.max_pool
+            .execute(&self.context, &self.buffer_pool, tensor, config)
     }
 
     /// Element-wise addition of two tensors.
@@ -203,13 +221,15 @@ impl GpuInferenceOps {
             lhs.shape().dims(),
             rhs.shape().dims()
         );
-        self.add.execute(&self.context, lhs, rhs)
+        self.add
+            .execute(&self.context, &self.buffer_pool, lhs, rhs)
     }
 
     /// Nearest-neighbour 2x upsample (spatial dimensions doubled).
     pub fn resize2x_tensor(&self, tensor: &GpuTensor) -> Result<GpuTensor> {
         self.ensure_same_context(tensor, "resize tensor")?;
-        self.upsample2x.execute(&self.context, tensor)
+        self.upsample2x
+            .execute(&self.context, &self.buffer_pool, tensor)
     }
 }
 
@@ -261,6 +281,7 @@ impl Conv2dPipeline {
     fn execute(
         &self,
         context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
         input: &GpuTensor,
         weights: &GpuTensor,
         bias: &GpuTensor,
@@ -270,8 +291,9 @@ impl Conv2dPipeline {
         let queue = context.queue();
         let uniforms = Conv2dUniforms::from(config);
         let uniform_buffer = create_uniform_buffer(device, "yunet_conv2d_uniforms", &uniforms);
-        let output = GpuTensor::uninitialized(
+        let output = GpuTensor::uninitialized_with_pool(
             context.clone(),
+            Some(pool.clone()),
             config.output_shape_dims(),
             Some("yunet_conv2d_output"),
         )?;
@@ -581,13 +603,15 @@ impl MaxPoolPipeline {
     fn execute(
         &self,
         context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
         tensor: &GpuTensor,
         config: &MaxPoolConfig,
     ) -> Result<GpuTensor> {
         let device = context.device();
         let queue = context.queue();
-        let output = GpuTensor::uninitialized(
+        let output = GpuTensor::uninitialized_with_pool(
             context.clone(),
+            Some(pool.clone()),
             config.output_dims().to_vec(),
             Some("yunet_max_pool_output"),
         )?;
@@ -687,11 +711,13 @@ impl AddPipeline {
     fn execute(
         &self,
         context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
         lhs: &GpuTensor,
         rhs: &GpuTensor,
     ) -> Result<GpuTensor> {
-        let output = GpuTensor::uninitialized(
+        let output = GpuTensor::uninitialized_with_pool(
             context.clone(),
+            Some(pool.clone()),
             lhs.shape().dims().to_vec(),
             Some("yunet_add_output"),
         )?;
@@ -786,7 +812,12 @@ impl Upsample2xPipeline {
         })
     }
 
-    fn execute(&self, context: &Arc<GpuContext>, tensor: &GpuTensor) -> Result<GpuTensor> {
+    fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
+        tensor: &GpuTensor,
+    ) -> Result<GpuTensor> {
         let dims = tensor.shape().dims();
         anyhow::ensure!(
             dims.len() == 4,
@@ -803,7 +834,12 @@ impl Upsample2xPipeline {
         let width = dims[3] as u32;
         let output_dims = [dims[0], dims[1], dims[2] * 2, dims[3] * 2];
         let output =
-            GpuTensor::uninitialized(context.clone(), output_dims, Some("yunet_resize2x_output"))?;
+            GpuTensor::uninitialized_with_pool(
+                context.clone(),
+                Some(pool.clone()),
+                output_dims,
+                Some("yunet_resize2x_output"),
+            )?;
         let uniforms = UpsampleUniforms {
             input_width: width,
             input_height: height,

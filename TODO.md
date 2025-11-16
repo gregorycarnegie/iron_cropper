@@ -535,7 +535,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] **Target: 3-10x speedup for images with multiple faces**
 
 - [ ] **GPU memory management**
-  - [ ] Implement texture/buffer pooling to avoid repeated allocations
+  - [x] Implement texture/buffer pooling to avoid repeated allocations (`GpuBufferPool` in `yunet-core/src/gpu`)
   - [ ] Add memory usage monitoring and limits
   - [ ] Handle out-of-memory scenarios gracefully
   - [ ] Optimize CPU→GPU transfer patterns (use staging buffers)

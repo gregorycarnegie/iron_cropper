@@ -14,14 +14,14 @@
     "preset": "idcard",
     "output_width": 332,
     "output_height": 498,
-    "face_height_pct": 60.0,
+    "face_height_pct": 45.0,
     "positioning_mode": "center",
     "vertical_offset": -0.0,
     "horizontal_offset": 0.0,
-    "output_format": "png",
+    "output_format": "jpeg",
     "jpeg_quality": 90,
     "png_compression": "default",
-    "webp_quality": 90,
+    "webp_quality": 7,
     "auto_detect_format": true,
     "metadata": {
       "mode": "preserve",
@@ -36,7 +36,12 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "ellipse"
+      "kind": "polygon",
+      "sides": 6,
+      "rotation_deg": 0.0,
+      "corner_style": {
+        "style": "sharp"
+      }
     }
   },
   "enhance": {
