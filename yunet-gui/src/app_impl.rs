@@ -1,7 +1,13 @@
 //! Additional YuNetApp implementation methods that delegate to module functions.
 
 use crate::{GpuStatusMode, YuNetApp};
-use egui::Context as EguiContext;
+use anyhow::{Context, anyhow};
+#[cfg(not(target_arch = "wasm32"))]
+use arboard::{Clipboard, Error as ClipboardError};
+use egui::{Context as EguiContext, DroppedFile, Event};
+use image::{DynamicImage, RgbaImage};
+use std::path::{Path, PathBuf};
+use tempfile::Builder;
 
 impl YuNetApp {
     /// Polls the worker thread for completed detection jobs.
@@ -205,6 +211,199 @@ impl YuNetApp {
         )
     }
 
+    /// Consumes clipboard paste events and file drops to load images quickly.
+    pub(crate) fn process_import_payloads(&mut self, ctx: &EguiContext) {
+        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+        if !dropped_files.is_empty() {
+            let handled = self.handle_dropped_images(dropped_files);
+            ctx.input_mut(|i| i.raw.dropped_files.clear());
+            if handled {
+                return;
+            }
+        }
+
+        if ctx.wants_keyboard_input() {
+            return;
+        }
+
+        let events = ctx.input(|i| i.events.clone());
+        for event in events {
+            match event {
+                Event::Paste(text) => {
+                    if self.handle_paste_text(&text) {
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_dropped_images(&mut self, files: Vec<DroppedFile>) -> bool {
+        if files.is_empty() {
+            return false;
+        }
+        for file in files {
+            match self.try_process_dropped_file(&file) {
+                Ok(true) => return true,
+                Ok(false) => continue,
+                Err(err) => {
+                    self.show_error("Drop failed", err.to_string());
+                    return true;
+                }
+            }
+        }
+        self.show_error(
+            "Unsupported drop",
+            "Only image files can be dropped or pasted in this version.",
+        );
+        false
+    }
+
+    fn try_process_dropped_file(&mut self, file: &DroppedFile) -> anyhow::Result<bool> {
+        if let Some(path) = file.path.as_ref() {
+            if Self::is_supported_image_path(path) {
+                self.start_detection(path.to_path_buf());
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        if let Some(bytes) = file.bytes.as_deref() {
+            let label = if file.name.is_empty() {
+                None
+            } else {
+                Some(file.name.as_str())
+            };
+            self.consume_image_bytes(bytes, label)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn handle_paste_text(&mut self, text: &str) -> bool {
+        for candidate in Self::paths_from_clipboard_text(text) {
+            if Self::is_supported_image_path(&candidate) {
+                self.start_detection(candidate);
+                return true;
+            }
+        }
+        match self.try_paste_image_from_clipboard() {
+            Ok(true) => true,
+            Ok(false) => false,
+            Err(err) => {
+                self.show_error("Paste failed", err.to_string());
+                true
+            }
+        }
+    }
+
+    fn consume_image_bytes(&mut self, bytes: &[u8], label: Option<&str>) -> anyhow::Result<()> {
+        let image = image::load_from_memory(bytes).with_context(|| {
+            format!(
+                "Failed to decode dropped image {}",
+                label.unwrap_or_default()
+            )
+        })?;
+        self.persist_and_start_from_dynamic(image)
+    }
+
+    fn persist_and_start_from_dynamic(&mut self, image: DynamicImage) -> anyhow::Result<()> {
+        let path = self.persist_clipboard_image(&image)?;
+        self.start_detection(path);
+        Ok(())
+    }
+
+    fn persist_clipboard_image(&mut self, image: &DynamicImage) -> anyhow::Result<PathBuf> {
+        let temp = Builder::new()
+            .prefix("iron_cropper_clip_")
+            .suffix(".png")
+            .tempfile()
+            .context("Failed to create temporary file for clipboard image")?;
+        image
+            .save(temp.path())
+            .context("Failed to encode clipboard image")?;
+        let temp_path = temp.into_temp_path();
+        let path_buf = temp_path.to_path_buf();
+        self.clipboard_temp_images.push(temp_path);
+        if self.clipboard_temp_images.len() > MAX_CLIPBOARD_IMAGES {
+            self.clipboard_temp_images.remove(0);
+        }
+        Ok(path_buf)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn try_paste_image_from_clipboard(&mut self) -> anyhow::Result<bool> {
+        let mut clipboard =
+            Clipboard::new().context("Clipboard access is unavailable on this platform")?;
+        match clipboard.get_image() {
+            Ok(image) => {
+                let width = image.width as u32;
+                let height = image.height as u32;
+                let rgba = image.bytes.into_owned();
+                let buffer = RgbaImage::from_raw(width, height, rgba)
+                    .context("Clipboard image had unexpected dimensions")?;
+                let dynamic = DynamicImage::ImageRgba8(buffer);
+                self.persist_and_start_from_dynamic(dynamic)?;
+                Ok(true)
+            }
+            Err(ClipboardError::ContentNotAvailable) => Ok(false),
+            Err(err) => Err(anyhow!("Failed to read clipboard image: {err}")),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn try_paste_image_from_clipboard(&mut self) -> anyhow::Result<bool> {
+        Ok(false)
+    }
+
+    fn paths_from_clipboard_text(text: &str) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        if let Some(path) = Self::normalize_clipboard_path(text) {
+            paths.push(path);
+        }
+        for line in text.lines() {
+            if let Some(path) = Self::normalize_clipboard_path(line) {
+                paths.push(path);
+            }
+        }
+        paths
+    }
+
+    fn normalize_clipboard_path(fragment: &str) -> Option<PathBuf> {
+        let trimmed = fragment.trim().trim_matches(['\"', '\'']).trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let without_scheme = if let Some(rest) = trimmed.strip_prefix("file://") {
+            if cfg!(windows) {
+                rest.trim_start_matches('/')
+            } else {
+                rest
+            }
+        } else {
+            trimmed
+        };
+        let candidate = PathBuf::from(without_scheme);
+        if candidate.exists() {
+            Some(candidate)
+        } else {
+            None
+        }
+    }
+
+    fn is_supported_image_path(path: &Path) -> bool {
+        if !path.is_file() {
+            return false;
+        }
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| {
+                let lower = ext.to_ascii_lowercase();
+                matches!(lower.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "webp")
+            })
+            .unwrap_or(false)
+    }
+
     /// Handles keyboard shortcuts.
     pub(crate) fn handle_shortcuts(&mut self, ctx: &EguiContext) {
         use crate::interaction::shortcuts;
@@ -332,3 +531,5 @@ impl YuNetApp {
         }
     }
 }
+
+const MAX_CLIPBOARD_IMAGES: usize = 8;

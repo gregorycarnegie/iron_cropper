@@ -219,6 +219,7 @@ impl YuNetApp {
             manual_box_tool_enabled: false,
             manual_box_draft: None,
             active_bbox_drag: None,
+            clipboard_temp_images: Vec::new(),
         }
     }
 
@@ -261,6 +262,7 @@ impl YuNetApp {
 
 impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        self.process_import_payloads(ctx);
         self.poll_worker(ctx);
         self.show_status_bar(ctx);
         self.show_navigation_panel(ctx);

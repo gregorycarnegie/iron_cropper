@@ -8,6 +8,7 @@ use std::{
 
 use egui::{Context as EguiContext, Rect, TextureHandle};
 use image::DynamicImage;
+use tempfile::TempPath;
 use yunet_core::{BoundingBox, CropSettings as CoreCropSettings, Detection};
 use yunet_utils::{
     OutputOptions, WgpuEnhancer,
@@ -181,6 +182,8 @@ pub struct YuNetApp {
     pub manual_box_draft: Option<ManualBoxDraft>,
     /// Currently active drag handle for adjusting a bounding box.
     pub active_bbox_drag: Option<ActiveBoxDrag>,
+    /// Temporary clipboard/dropped images persisted to disk.
+    pub clipboard_temp_images: Vec<TempPath>,
 }
 
 /// Indicates whether a bounding box originated from the detector or the user.
