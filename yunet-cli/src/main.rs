@@ -424,10 +424,7 @@ impl CliGpuRuntime {
                 return None;
             }
             let (source_x, source_y, source_width, source_height) =
-                match region.in_bounds_rect(img_w, img_h) {
-                    Some(rect) => rect,
-                    None => return None,
-                };
+                region.in_bounds_rect(img_w, img_h)?;
             jobs.push(BatchCropRequest {
                 source_x,
                 source_y,
@@ -1480,6 +1477,7 @@ mod tests {
             mapping_format: None,
             mapping_sql_table: None,
             mapping_sql_query: None,
+            crop_fill_color: None,
         };
         let enh = build_enhancement_settings(&args).expect("should build");
         assert_eq!(enh.unsharp_amount, 0.9);
@@ -1557,6 +1555,7 @@ mod tests {
             mapping_format: None,
             mapping_sql_table: None,
             mapping_sql_query: None,
+            crop_fill_color: None,
         };
         let enh = build_enhancement_settings(&args).expect("should build");
         // explicit override should win
@@ -1676,6 +1675,7 @@ mod tests {
             mapping_format: None,
             mapping_sql_table: None,
             mapping_sql_query: None,
+            crop_fill_color: None,
         };
 
         let enh = build_enhancement_settings(&args).expect("enh settings");
@@ -1993,14 +1993,15 @@ fn parse_rgb_value(token: &str) -> Result<u8, String> {
 }
 
 fn parse_alpha_value(token: &str) -> Result<u8, String> {
-    let normalized = if token.ends_with('%') {
-        let pct = token[..token.len() - 1]
+    let trimmed = token.trim();
+    let normalized = if let Some(stripped) = trimmed.strip_suffix('%') {
+        let pct = stripped
             .trim()
             .parse::<f32>()
             .map_err(|_| format!("invalid alpha percentage '{}'", token))?;
         pct / 100.0
     } else {
-        let value: f32 = token
+        let value: f32 = trimmed
             .parse()
             .map_err(|_| format!("invalid alpha value '{}'", token))?;
         if value > 1.0 { value / 255.0 } else { value }

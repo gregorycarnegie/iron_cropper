@@ -522,7 +522,7 @@ impl GpuContext {
 /// `R | G << 8 | B << 16 | A << 24`.
 pub fn pack_rgba_pixels(bytes: &[u8]) -> Vec<u32> {
     debug_assert!(
-        bytes.len() % 4 == 0,
+        bytes.len().is_multiple_of(4),
         "RGBA buffer must have a multiple of 4 elements"
     );
     bytes

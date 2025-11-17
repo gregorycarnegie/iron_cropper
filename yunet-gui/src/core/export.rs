@@ -343,6 +343,7 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
         app.show_error("Export failed", "No image loaded");
         return;
     };
+    let source_image = source_image.as_ref();
 
     // Ask user to pick output directory
     let Some(output_dir) = FileDialog::new().pick_folder() else {
@@ -378,7 +379,7 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
 
         let mut detection_for_crop = det.detection.clone();
         detection_for_crop.bbox = det.active_bbox();
-        let resized = crop_face_from_image(&source_image, &detection_for_crop, &crop_settings);
+        let resized = crop_face_from_image(source_image, &detection_for_crop, &crop_settings);
 
         let final_image = if app.settings.enhance.enabled {
             enhance_with_gpu(&resized, &enhancement_settings, app.gpu_enhancer.as_ref())
