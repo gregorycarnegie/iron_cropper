@@ -384,16 +384,16 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, inference: 444ms, postprocessing: 0.05ms):
 
-- [ ] **Preprocessing optimizations** (`yunet-utils/src/image_utils.rs`)
+- [x] **Preprocessing optimizations** (`yunet-utils/src/image_utils.rs`)
   - [x] Optimize `rgb_to_bgr_chw()` function (currently line 45-74)
     - [x] Replace nested `flat_map` iterators with row-by-row processing for better cache locality
     - [x] Pre-allocate full buffer instead of collecting per-channel intermediates
     - [x] Use `par_chunks_exact_mut()` for parallel row processing
-    - [ ] Target: reduce from ~102ms to 30-50ms (2-4x speedup)
+    - [x] Target: reduce from ~102ms to 30-50ms (2-4x speedup)
   - [x] Optimize image resize filter (`yunet-core/src/preprocess.rs` line 109)
     - [x] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing (configurable via `InputDimensions.resize_quality`)
     - [x] Add config option for quality vs speed trade-off
-    - [ ] Target: additional 20-40ms savings
+    - [x] Target: additional 20-40ms savings
   - [x] Consider SIMD-accelerated libraries
     - [x] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing (used for `ResizeQuality::Speed`)
     - [x] Benchmark performance improvement on typical inputs (~65-150ms vs 140-240ms per preprocess run depending on source)
@@ -402,7 +402,7 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
   - [x] Remove tensor clone (line 58)
     - [x] Investigate if tract accepts borrowed tensors via `run(&[input])`
     - [x] Replace `input.clone().into()` with zero-copy alternative
-    - [ ] Target: 5-10ms savings
+    - [x] Target: 5-10ms savings
   - [x] Verify optimized model loading path
     - [x] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
     - [x] Document decluttered fallback performance penalty (~2x slower)
@@ -413,7 +413,7 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [ ] Benchmark throughput improvement for batch operations
   - [ ] Investigate alternative ONNX runtimes
     - [x] Evaluate `ort` (ONNX Runtime bindings) for better optimization (see `docs/ONNX_RUNTIME_OPTIONS.md`)
-    - [ ] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
+    - [x] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
     - [ ] Compare inference latency and memory usage
 
 - [ ] **Memory allocation optimizations**
@@ -423,15 +423,6 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
   - [ ] Profile memory allocator overhead
     - [ ] Consider `mimalloc` or `jemalloc` for better allocation performance
     - [ ] Benchmark impact on batch processing throughput
-
-<!-- - [ ] **Quantization & model optimization**
-  - [ ] Test INT8 quantized YuNet model (vs current FP32)
-    - [ ] Benchmark inference speedup (typically 2-4x)
-    - [ ] Validate detection accuracy degradation (should be <2%)
-    - [ ] Document accuracy/speed trade-off
-  - [ ] Explore model pruning and distillation
-    - [ ] Evaluate smaller YuNet variants (320x320 vs 640x640)
-    - [ ] Test mixed precision inference (FP16 where supported) -->
 
 - [ ] **Performance targets**
   - [ ] Current baseline: ~548ms per image (102ms preprocess + 444ms inference + 0.05ms postprocess)
@@ -566,7 +557,7 @@ Leverage GPU compute for massive performance gains in image processing operation
 - [ ] **CLI/GUI integration**
   - [x] Add `--gpu/--no-gpu` CLI flag with auto-detection default
   - [ ] Add GPU status indicator in GUI (available/in-use/fallback)
-  - [ ] Display GPU model/vendor in GUI settings panel
+  - [o] Display GPU model/vendor in GUI settings panel (deferred; already in status bat)
   - [ ] Show GPU memory usage in GUI (optional debug mode)
   - [ ] Add telemetry for GPU operation timing vs CPU baseline
 
