@@ -1,8 +1,6 @@
 //! Main configuration panel orchestration.
 
-use egui::{
-    Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Stroke, Ui,
-};
+use egui::{Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Stroke, Ui};
 
 use crate::YuNetApp;
 use crate::theme;
@@ -128,7 +126,6 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                 });
         });
 }
-
 
 fn show_gpu_section(
     app: &mut YuNetApp,

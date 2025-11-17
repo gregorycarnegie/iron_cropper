@@ -11,7 +11,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, SHAPE_MASK_WGSL};
+use super::{GpuContext, SHAPE_MASK_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const MAX_POINTS: usize = 512;
 

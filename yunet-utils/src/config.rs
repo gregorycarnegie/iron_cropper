@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
-use crate::{gpu::GpuContextOptions, quality::Quality, shape::CropShape};
+use crate::{color::RgbaColor, gpu::GpuContextOptions, quality::Quality, shape::CropShape};
 
 /// Shared detection parameters that should mirror YuNet defaults.
 ///
@@ -127,6 +127,8 @@ pub struct CropSettings {
     pub vertical_offset: f32,
     /// Horizontal offset for custom positioning (-1.0 to 1.0)
     pub horizontal_offset: f32,
+    /// Background color applied when the crop extends outside the source image bounds.
+    pub fill_color: RgbaColor,
     /// Output format: "png", "jpeg", or "webp"
     pub output_format: String,
     /// JPEG quality (1-100, only used when format is jpeg)
@@ -190,6 +192,7 @@ impl Default for CropSettings {
             positioning_mode: "center".to_string(),
             vertical_offset: 0.0,
             horizontal_offset: 0.0,
+            fill_color: RgbaColor::default(),
             output_format: "png".to_string(),
             jpeg_quality: 90,
             png_compression: "default".to_string(),

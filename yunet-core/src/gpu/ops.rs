@@ -100,15 +100,14 @@ impl GpuInferenceOps {
         self.ensure_same_context(input, "conv2d input")?;
         self.ensure_same_context(weights, "conv2d weights")?;
         self.ensure_same_context(bias, "conv2d bias")?;
-        self.conv2d
-            .execute(
-                &self.context,
-                &self.buffer_pool,
-                input,
-                weights,
-                bias,
-                config,
-            )
+        self.conv2d.execute(
+            &self.context,
+            &self.buffer_pool,
+            input,
+            weights,
+            bias,
+            config,
+        )
     }
 
     /// Convenience wrapper that uploads host slices, runs Conv2D, and downloads the result.
@@ -221,8 +220,7 @@ impl GpuInferenceOps {
             lhs.shape().dims(),
             rhs.shape().dims()
         );
-        self.add
-            .execute(&self.context, &self.buffer_pool, lhs, rhs)
+        self.add.execute(&self.context, &self.buffer_pool, lhs, rhs)
     }
 
     /// Nearest-neighbour 2x upsample (spatial dimensions doubled).
@@ -833,13 +831,12 @@ impl Upsample2xPipeline {
         let height = dims[2] as u32;
         let width = dims[3] as u32;
         let output_dims = [dims[0], dims[1], dims[2] * 2, dims[3] * 2];
-        let output =
-            GpuTensor::uninitialized_with_pool(
-                context.clone(),
-                Some(pool.clone()),
-                output_dims,
-                Some("yunet_resize2x_output"),
-            )?;
+        let output = GpuTensor::uninitialized_with_pool(
+            context.clone(),
+            Some(pool.clone()),
+            output_dims,
+            Some("yunet_resize2x_output"),
+        )?;
         let uniforms = UpsampleUniforms {
             input_width: width,
             input_height: height,

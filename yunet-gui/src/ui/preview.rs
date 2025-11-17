@@ -57,9 +57,7 @@ impl YuNetApp {
                 ui.allocate_ui(vec2(width, detection_allocation), |ui| {
                     ui.set_max_height(detection_allocation);
                     ui.set_clip_rect(ui.max_rect());
-                    crate::ui::config::detections::show_detection_carousel(
-                        self, ctx, ui, palette,
-                    );
+                    crate::ui::config::detections::show_detection_carousel(self, ctx, ui, palette);
                 });
             });
     }
@@ -144,13 +142,18 @@ impl YuNetApp {
         };
 
         painter.rect_filled(overlay_rect, 16.0, fill);
-        painter.rect_stroke(overlay_rect, 16.0, Stroke::new(1.0, palette.outline), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            overlay_rect,
+            16.0,
+            Stroke::new(1.0, palette.outline),
+            egui::StrokeKind::Outside,
+        );
 
         let content_rect = overlay_rect.shrink2(vec2(14.0, 10.0));
         let mut child_ui = ui.new_child(
             UiBuilder::new()
                 .max_rect(content_rect)
-                .layout(Layout::top_down(Align::Min))
+                .layout(Layout::top_down(Align::Min)),
         );
         child_ui.set_clip_rect(content_rect);
         {

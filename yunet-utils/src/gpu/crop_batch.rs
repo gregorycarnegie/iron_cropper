@@ -9,7 +9,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{pack_rgba_pixels, unpack_rgba_pixels, CROP_WGSL, GpuContext};
+use super::{CROP_WGSL, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
 
 gpu_uniforms!(CropUniforms, 0, {
     src_width: u32,
@@ -111,12 +111,8 @@ impl GpuBatchCropper {
         );
 
         let source_data = pack_rgba_pixels(rgba.as_raw());
-        let source_buffer_size =
-            (source_data.len() * std::mem::size_of::<u32>()) as u64;
-        let max_binding = self
-            .context
-            .limits()
-            .max_storage_buffer_binding_size as u64;
+        let source_buffer_size = (source_data.len() * std::mem::size_of::<u32>()) as u64;
+        let max_binding = self.context.limits().max_storage_buffer_binding_size as u64;
         anyhow::ensure!(
             source_buffer_size <= max_binding,
             "Source image too large for GPU batch cropping ({:.2} MB exceeds {:.2} MB WebGPU buffer binding limit). Image dimensions: {}x{}. Use CPU cropping for large images.",

@@ -51,6 +51,18 @@ cargo run -p yunet-cli -- \
 
 Starts with the `vivid` preset and overrides the saturation and brightness sliders for the current invocation.
 
+## Pad Crops With Custom Color
+
+```bash
+cargo run -p yunet-cli -- \
+  --input portraits/outdoor.png \
+  --crop \
+  --output-dir crops/ \
+  --crop-fill-color "hsv(210, 65%, 35%)"
+```
+
+`--crop-fill-color` accepts `#RRGGBB`/`#RRGGBBAA`, `rgb(r,g,b)`, `rgba(r,g,b,a)`, or `hsv(h,s,v)` tokens. Any portion of the crop that extends beyond the source image is padded with the chosen color (defaults to solid black).
+
 ## Batch Pipeline with Metadata
 
 ```bash

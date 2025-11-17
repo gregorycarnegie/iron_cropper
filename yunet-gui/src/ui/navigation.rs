@@ -2,7 +2,7 @@
 
 use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, SidePanel, Slider, Stroke, Ui};
 
-use crate::{theme, YuNetApp};
+use crate::{YuNetApp, theme};
 
 impl YuNetApp {
     /// Renders the left panel with common settings and actions.
@@ -39,11 +39,17 @@ impl YuNetApp {
 
                         ui.horizontal(|ui| {
                             let export_enabled = self.can_export_selected();
-                            if ui.add_enabled(export_enabled, egui::Button::new("Export selected")).clicked() {
+                            if ui
+                                .add_enabled(export_enabled, egui::Button::new("Export selected"))
+                                .clicked()
+                            {
                                 self.export_selected_faces();
                             }
                             let batch_enabled = !self.batch_files.is_empty();
-                            if ui.add_enabled(batch_enabled, egui::Button::new("Run batch")).clicked() {
+                            if ui
+                                .add_enabled(batch_enabled, egui::Button::new("Run batch"))
+                                .clicked()
+                            {
                                 self.start_batch_export();
                             }
                         });
@@ -62,8 +68,18 @@ impl YuNetApp {
                         // Stats
                         ui.heading("Status");
                         ui.add_space(8.0);
-                        self.nav_stat(ui, palette, "Detections", format!("{}", self.preview.detections.len()));
-                        self.nav_stat(ui, palette, "Selected", format!("{}", self.selected_faces.len()));
+                        self.nav_stat(
+                            ui,
+                            palette,
+                            "Detections",
+                            format!("{}", self.preview.detections.len()),
+                        );
+                        self.nav_stat(
+                            ui,
+                            palette,
+                            "Selected",
+                            format!("{}", self.selected_faces.len()),
+                        );
                         self.nav_stat(
                             ui,
                             palette,
@@ -160,7 +176,10 @@ impl YuNetApp {
 
         ui.add_enabled_ui(self.settings.enhance.enabled, |ui| {
             let mut background_blur = self.settings.enhance.background_blur;
-            if ui.checkbox(&mut background_blur, "Background blur").changed() {
+            if ui
+                .checkbox(&mut background_blur, "Background blur")
+                .changed()
+            {
                 self.settings.enhance.background_blur = background_blur;
                 self.persist_settings_with_feedback();
                 self.clear_crop_preview_cache();

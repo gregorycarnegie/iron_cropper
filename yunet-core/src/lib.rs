@@ -20,7 +20,9 @@ pub mod preprocess;
 /// Standard crop size presets for face crops.
 pub mod presets;
 
-pub use crate::cropper::{CropRegion, CropSettings, PositioningMode, calculate_crop_region};
+pub use crate::cropper::{
+    CropRegion, CropSettings, FillColor, PositioningMode, calculate_crop_region,
+};
 pub use crate::face_cropper::crop_face_from_image;
 pub use crate::presets::{CropPreset, preset_by_name, standard_presets};
 pub use detector::{DetectionOutput, YuNetDetector};

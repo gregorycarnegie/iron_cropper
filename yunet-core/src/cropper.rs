@@ -2,9 +2,13 @@
 //!
 //! Implements a scale-based approach where the source crop region is computed
 //! from a desired face height percentage of the output image. The crop region
-//! preserves the output aspect ratio and is clamped to the image boundaries.
+//! preserves the output aspect ratio and records any padding required when the region extends past the image boundaries.
 
 use crate::postprocess::BoundingBox;
+use yunet_utils::color::RgbaColor;
+
+/// Alias exported alongside [`CropSettings`] so downstream crates don't need to depend on `yunet_utils::color`.
+pub type FillColor = RgbaColor;
 
 /// How to position the face within the crop region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,19 +39,63 @@ pub struct CropSettings {
     /// Vertical offset used only for `Custom` mode. Range expected -1.0..=1.0
     /// where negative moves the face upward and positive moves it downward.
     pub vertical_offset: f32,
+    /// Background fill color for areas that fall outside the source image.
+    pub fill_color: FillColor,
 }
 
 /// Integer crop region in source image coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CropRegion {
-    /// Top-left x coordinate.
-    pub x: u32,
-    /// Top-left y coordinate.
-    pub y: u32,
-    /// Width of the crop region.
+    /// Top-left x coordinate (may extend outside the source image).
+    pub x: i32,
+    /// Top-left y coordinate (may extend outside the source image).
+    pub y: i32,
+    /// Width of the crop region before any padding is applied.
     pub width: u32,
-    /// Height of the crop region.
+    /// Height of the crop region before any padding is applied.
     pub height: u32,
+    /// Number of pixels that need to be padded on the left.
+    pub pad_left: u32,
+    /// Number of pixels that need to be padded on the top.
+    pub pad_top: u32,
+    /// Number of pixels that need to be padded on the right.
+    pub pad_right: u32,
+    /// Number of pixels that need to be padded on the bottom.
+    pub pad_bottom: u32,
+}
+
+impl CropRegion {
+    /// Returns true if any padding is required to realize this crop.
+    pub fn requires_padding(&self) -> bool {
+        self.pad_left > 0 || self.pad_top > 0 || self.pad_right > 0 || self.pad_bottom > 0
+    }
+
+    /// Width of the sub-rectangle that actually intersects the source image.
+    pub fn in_bounds_width(&self) -> u32 {
+        self.width
+            .saturating_sub(self.pad_left.saturating_add(self.pad_right))
+    }
+
+    /// Height of the sub-rectangle that actually intersects the source image.
+    pub fn in_bounds_height(&self) -> u32 {
+        self.height
+            .saturating_sub(self.pad_top.saturating_add(self.pad_bottom))
+    }
+
+    /// Returns the in-bounds rectangle (x, y, width, height) in source coordinates, if any.
+    pub fn in_bounds_rect(&self, img_w: u32, img_h: u32) -> Option<(u32, u32, u32, u32)> {
+        let start_x = self.x.max(0) as u32;
+        let start_y = self.y.max(0) as u32;
+        let max_w = img_w.saturating_sub(start_x);
+        let max_h = img_h.saturating_sub(start_y);
+        let width = self.in_bounds_width().min(max_w);
+        let height = self.in_bounds_height().min(max_h);
+        if width == 0 || height == 0 {
+            None
+        } else {
+            Some((start_x, start_y, width, height))
+        }
+    }
 }
 
 impl Default for CropSettings {
@@ -59,6 +107,7 @@ impl Default for CropSettings {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         }
     }
 }
@@ -71,7 +120,7 @@ impl Default for CropSettings {
 ///    occupies the requested percentage of the output height.
 /// 3. Derive the source crop width that preserves the requested output aspect ratio.
 /// 4. Shift the crop center according to [`PositioningMode`], applying clamped custom offsets.
-/// 5. Clamp the crop rectangle to the image bounds and return integer coordinates.
+/// 5. Record padding for portions of the rectangle that fall outside the source image.
 ///
 /// # Arguments
 /// - `img_w`, `img_h`: source image dimensions in pixels.
@@ -166,9 +215,6 @@ pub fn calculate_crop_region(
     settings: &CropSettings,
 ) -> CropRegion {
     // Safety clamps and early guards
-    let img_w_f = img_w as f32;
-    let img_h_f = img_h as f32;
-
     let face_h = face_bbox.height.max(1.0);
     let face_cx = face_bbox.x + face_bbox.width / 2.0;
     let face_cy = face_bbox.y + face_bbox.height / 2.0;
@@ -178,24 +224,13 @@ pub fn calculate_crop_region(
     // Source region height (in source pixels) so that after resizing the face
     // will occupy `face_height_pct` percent of the output height.
     // Derived from: (face_h / src_region_h) = face_height_pct/100
-    let mut src_h = face_h * (100.0 / face_height_pct);
+    let src_h = face_h * (100.0 / face_height_pct);
 
     // Maintain output aspect ratio for width.
     let out_w = settings.output_width as f32;
     let out_h = settings.output_height as f32;
     let aspect = if out_h > 0.0 { out_w / out_h } else { 1.0 };
-    let mut src_w = src_h * aspect;
-
-    // If requested source width/height exceed image bounds, clamp and adjust
-    if src_w > img_w_f {
-        src_w = img_w_f;
-        // adjust src_h to preserve aspect
-        src_h = src_w / aspect;
-    }
-    if src_h > img_h_f {
-        src_h = img_h_f;
-        src_w = src_h * aspect;
-    }
+    let src_w = src_h * aspect;
 
     // Determine crop center based on positioning mode
     let mut cx = face_cx;
@@ -220,34 +255,35 @@ pub fn calculate_crop_region(
     }
 
     // Compute top-left corner from center
-    let mut left = cx - src_w / 2.0;
-    let mut top = cy - src_h / 2.0;
+    let left = cx - src_w / 2.0;
+    let top = cy - src_h / 2.0;
 
-    // Clamp to image bounds
-    if left < 0.0 {
-        left = 0.0;
-    }
-    if top < 0.0 {
-        top = 0.0;
-    }
-    if left + src_w > img_w_f {
-        left = (img_w_f - src_w).max(0.0);
-    }
-    if top + src_h > img_h_f {
-        top = (img_h_f - src_h).max(0.0);
-    }
+    let x = left.round() as i32;
+    let y = top.round() as i32;
+    let width = src_w.round().clamp(1.0, u32::MAX as f32).max(1.0) as u32;
+    let height = src_h.round().clamp(1.0, u32::MAX as f32).max(1.0) as u32;
 
-    // Round to integers and ensure inside image
-    let x = left.round().max(0.0).min(img_w_f).floor() as u32;
-    let y = top.round().max(0.0).min(img_h_f).floor() as u32;
-    let width = src_w.round().max(1.0).min((img_w - x) as f32).floor() as u32;
-    let height = src_h.round().max(1.0).min((img_h - y) as f32).floor() as u32;
+    let x_i = x as i64;
+    let y_i = y as i64;
+    let width_i = width as i64;
+    let height_i = height as i64;
+    let img_w_i = img_w as i64;
+    let img_h_i = img_h as i64;
+
+    let pad_left = (-x_i).max(0) as u32;
+    let pad_top = (-y_i).max(0) as u32;
+    let pad_right = (x_i + width_i - img_w_i).max(0) as u32;
+    let pad_bottom = (y_i + height_i - img_h_i).max(0) as u32;
 
     CropRegion {
         x,
         y,
         width,
         height,
+        pad_left,
+        pad_top,
+        pad_right,
+        pad_bottom,
     }
 }
 
@@ -273,12 +309,15 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
         // face_h = 200, src_h = 200 * (100/50) = 400, aspect=1 -> src_w=400
         assert_eq!(crop.width, 400);
         assert_eq!(crop.height, 400);
+        assert_eq!(crop.pad_left, 0);
+        assert_eq!(crop.pad_top, 0);
         // center at (500,500) => top-left = (300,300)
         assert_eq!(crop.x, 300);
         assert_eq!(crop.y, 300);
@@ -302,12 +341,13 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
-        // src_h = 100 * (100/30) ~= 333 -> will clamp if exceeds img_h
-        assert!(crop.y == 0 || crop.y + crop.height <= img_h);
-        assert!(crop.x + crop.width <= img_w);
+        let rect = crop.in_bounds_rect(img_w, img_h).expect("rect");
+        assert!(rect.0 + rect.2 <= img_w);
+        assert!(rect.1 + rect.3 <= img_h);
     }
 
     #[test]
@@ -361,6 +401,7 @@ mod tests {
             positioning_mode: PositioningMode::Custom,
             horizontal_offset: 0.5,
             vertical_offset: -0.5,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
@@ -398,13 +439,15 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
-        assert_eq!(crop.x, 0, "crop should clamp to left edge");
-        assert_eq!(crop.y, 0, "crop should clamp to top edge");
-        assert!(crop.width <= img_w);
-        assert!(crop.height <= img_h);
+        assert!(crop.pad_left > 0, "should record left padding");
+        assert!(crop.pad_top > 0, "should record top padding");
+        let rect = crop.in_bounds_rect(img_w, img_h).expect("in-bounds rect");
+        assert_eq!(rect.0, 0, "in-bounds x should be clamped to 0");
+        assert_eq!(rect.1, 0, "in-bounds y should be clamped to 0");
     }
 
     #[test]
@@ -425,17 +468,43 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
-        assert!(
-            crop.x + crop.width <= img_w,
-            "crop should not extend past right edge"
-        );
-        assert!(
-            crop.y + crop.height <= img_h,
-            "crop should not extend past bottom edge"
-        );
+        assert!(crop.pad_bottom > 0, "should record bottom padding");
+        let rect = crop.in_bounds_rect(img_w, img_h).expect("in-bounds rect");
+        assert!(rect.0 + rect.2 <= img_w);
+        assert!(rect.1 + rect.3 <= img_h);
+    }
+
+    #[test]
+    fn records_padding_information() {
+        let img_w = 200;
+        let img_h = 200;
+        let face = BoundingBox {
+            x: 0.0,
+            y: 150.0,
+            width: 60.0,
+            height: 60.0,
+        };
+
+        let settings = CropSettings {
+            output_width: 160,
+            output_height: 160,
+            face_height_pct: 60.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+            fill_color: FillColor::default(),
+        };
+
+        let crop = calculate_crop_region(img_w, img_h, face, &settings);
+        assert!(crop.requires_padding());
+        assert!(crop.pad_top > 0 || crop.pad_bottom > 0);
+        let (cx, cy, cw, ch) = crop.in_bounds_rect(img_w, img_h).expect("rect");
+        assert!(cx + cw <= img_w);
+        assert!(cy + ch <= img_h);
     }
 
     #[test]
@@ -456,6 +525,7 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);
@@ -485,6 +555,7 @@ mod tests {
             positioning_mode: PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: FillColor::default(),
         };
 
         let crop = calculate_crop_region(img_w, img_h, face, &settings);

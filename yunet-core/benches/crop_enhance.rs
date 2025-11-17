@@ -2,7 +2,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use image::{DynamicImage, RgbaImage};
 use std::hint::black_box;
 use yunet_core::{
-    BoundingBox, CropSettings, Detection, Landmark, PositioningMode, crop_face_from_image,
+    BoundingBox, CropSettings, Detection, FillColor, Landmark, PositioningMode,
+    crop_face_from_image,
 };
 use yunet_utils::{EnhancementSettings, apply_enhancements};
 
@@ -49,6 +50,7 @@ fn crop_settings() -> CropSettings {
         positioning_mode: PositioningMode::Center,
         horizontal_offset: 0.0,
         vertical_offset: 0.0,
+        fill_color: FillColor::default(),
     }
 }
 

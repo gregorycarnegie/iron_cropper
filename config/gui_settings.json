@@ -18,7 +18,13 @@
     "positioning_mode": "center",
     "vertical_offset": -0.0,
     "horizontal_offset": 0.0,
-    "output_format": "jpeg",
+    "fill_color": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "output_format": "png",
     "jpeg_quality": 90,
     "png_compression": "default",
     "webp_quality": 7,
@@ -36,12 +42,8 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 0.0,
-      "corner_style": {
-        "style": "sharp"
-      }
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.12
     }
   },
   "enhance": {

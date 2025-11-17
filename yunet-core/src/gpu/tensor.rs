@@ -172,12 +172,7 @@ impl GpuTensor {
     pub fn duplicate(&self, label: Option<&str>) -> Result<Self> {
         let dims = self.shape().dims().to_vec();
         let pool = self.inner.pool.clone();
-        let clone = Self::uninitialized_with_pool(
-            self.context().clone(),
-            pool,
-            dims,
-            label,
-        )?;
+        let clone = Self::uninitialized_with_pool(self.context().clone(), pool, dims, label)?;
         let size_bytes = self.inner.size_bytes;
         let mut encoder =
             self.context()
@@ -230,9 +225,7 @@ impl GpuTensor {
         let usage = tensor_usage();
         let buffer = if let Some(pool_ref) = pool.as_ref() {
             let buffer = pool_ref.acquire(size_bytes, usage, label);
-            context
-                .queue()
-                .write_buffer(&buffer, 0, cast_slice(data));
+            context.queue().write_buffer(&buffer, 0, cast_slice(data));
             buffer
         } else {
             context
@@ -329,9 +322,9 @@ fn read_buffer(
 
 #[cfg(test)]
 mod tests {
+    use super::super::memory::GpuBufferPool;
     use super::*;
     use std::sync::Arc;
-    use super::super::memory::GpuBufferPool;
     use yunet_utils::gpu::{GpuAvailability, GpuContextOptions};
 
     fn test_context() -> Option<Arc<GpuContext>> {

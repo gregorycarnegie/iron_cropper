@@ -10,7 +10,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, PIXEL_ADJUST_WGSL};
+use super::{GpuContext, PIXEL_ADJUST_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const EPSILON: f32 = 1e-6;
 

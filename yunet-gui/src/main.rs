@@ -44,9 +44,7 @@ fn main() -> eframe::Result<()> {
     let mut options = NativeOptions::default();
 
     // Set initial window size to avoid scrunched UI on first launch
-    options.viewport = options
-        .viewport
-        .with_inner_size([1280.0, 800.0]);
+    options.viewport = options.viewport.with_inner_size([1280.0, 800.0]);
 
     if let Some(icon) = load_app_icon() {
         options.viewport = options.viewport.with_icon(Arc::new(icon));
@@ -183,6 +181,7 @@ impl YuNetApp {
         let crop_history_index = crop_history.len() - 1;
         let metadata_tags_input =
             YuNetApp::format_metadata_tags(&settings.crop.metadata.custom_tags);
+        let crop_fill_hex_input = YuNetApp::format_fill_color_hex(settings.crop.fill_color);
 
         Self {
             settings,
@@ -209,6 +208,7 @@ impl YuNetApp {
             selected_faces: Default::default(),
             crop_history,
             crop_history_index,
+            crop_fill_hex_input,
             metadata_tags_input,
             batch_files: Vec::new(),
             batch_current_index: None,

@@ -6,7 +6,10 @@ use std::sync::Arc;
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
 use image::DynamicImage;
 use log::warn;
-use yunet_core::{CropSettings as CoreCropSettings, PositioningMode, calculate_crop_region};
+use yunet_core::{
+    CropSettings as CoreCropSettings, FillColor, PositioningMode, calculate_crop_region,
+    crop_face_from_image,
+};
 use yunet_utils::{
     BatchCropRequest, GpuBatchCropper, WgpuEnhancer, apply_shape_mask,
     config::CropSettings as ConfigCropSettings,
@@ -78,6 +81,7 @@ pub fn ensure_crop_preview_entry(
         face_height_bits: crop_settings.face_height_pct.to_bits(),
         horizontal_bits: crop_settings.horizontal_offset.to_bits(),
         vertical_bits: crop_settings.vertical_offset.to_bits(),
+        fill_color_bits: pack_fill_color(crop_settings.fill_color),
         shape: shape_signature(crop_config),
         enhancement: signature,
         enhance_enabled,
@@ -109,34 +113,30 @@ pub fn ensure_crop_preview_entry(
 
     let bbox = detection.active_bbox();
     let crop_region = calculate_crop_region(img.width(), img.height(), bbox, crop_settings);
-    let cpu_crop = || {
-        img.crop_imm(
-            crop_region.x,
-            crop_region.y,
-            crop_region.width,
-            crop_region.height,
-        )
-        .resize_exact(
-            crop_settings.output_width,
-            crop_settings.output_height,
-            image::imageops::FilterType::Lanczos3,
-        )
+    let detection_for_crop = {
+        let mut det = detection.detection.clone();
+        det.bbox = bbox;
+        det
     };
+    let cpu_crop = || crop_face_from_image(img.as_ref(), &detection_for_crop, crop_settings);
 
     let resized = if crop_settings.output_width > 0
         && crop_settings.output_height > 0
         && gpu_cropper.is_some()
+        && !crop_region.requires_padding()
     {
-        let request = BatchCropRequest {
-            source_x: crop_region.x,
-            source_y: crop_region.y,
-            source_width: crop_region.width.max(1),
-            source_height: crop_region.height.max(1),
-            output_width: crop_settings.output_width,
-            output_height: crop_settings.output_height,
-        };
+        let bounds = crop_region
+            .in_bounds_rect(img.width(), img.height())
+            .map(|(x, y, w, h)| BatchCropRequest {
+                source_x: x,
+                source_y: y,
+                source_width: w.max(1),
+                source_height: h.max(1),
+                output_width: crop_settings.output_width,
+                output_height: crop_settings.output_height,
+            });
         match gpu_cropper.as_ref().and_then(|cropper| {
-            match cropper.crop(img.as_ref(), &[request]) {
+            bounds.and_then(|request| match cropper.crop(img.as_ref(), &[request]) {
                 Ok(mut images) => {
                     if images.len() == 1 {
                         images.pop()
@@ -152,7 +152,7 @@ pub fn ensure_crop_preview_entry(
                     warn!("GPU preview crop failed: {err}; falling back to CPU path.");
                     None
                 }
-            }
+            })
         }) {
             Some(image) => image,
             None => cpu_crop(),
@@ -259,6 +259,13 @@ fn positioning_mode_id(mode: PositioningMode) -> u8 {
         PositioningMode::RuleOfThirds => 1,
         PositioningMode::Custom => 2,
     }
+}
+
+fn pack_fill_color(color: FillColor) -> u32 {
+    ((color.alpha as u32) << 24)
+        | ((color.red as u32) << 16)
+        | ((color.green as u32) << 8)
+        | (color.blue as u32)
 }
 
 /// Creates a shape signature from crop settings for cache keying.

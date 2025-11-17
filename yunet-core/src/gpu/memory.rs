@@ -45,8 +45,16 @@ impl GpuBufferPool {
 
     pub fn recycle(&self, buffer: wgpu::Buffer, size: u64, usage: wgpu::BufferUsages) {
         match self.idle.lock() {
-            Ok(mut idle) => idle.push(BufferEntry { buffer, size, usage }),
-            Err(poisoned) => poisoned.into_inner().push(BufferEntry { buffer, size, usage }),
+            Ok(mut idle) => idle.push(BufferEntry {
+                buffer,
+                size,
+                usage,
+            }),
+            Err(poisoned) => poisoned.into_inner().push(BufferEntry {
+                buffer,
+                size,
+                usage,
+            }),
         }
     }
 
@@ -57,11 +65,7 @@ impl GpuBufferPool {
             .unwrap_or_else(|poisoned| poisoned.into_inner().len())
     }
 
-    fn take_best_fit(
-        &self,
-        size: u64,
-        usage: wgpu::BufferUsages,
-    ) -> Option<BufferEntry> {
+    fn take_best_fit(&self, size: u64, usage: wgpu::BufferUsages) -> Option<BufferEntry> {
         let mut idle = match self.idle.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),

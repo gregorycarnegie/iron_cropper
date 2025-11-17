@@ -1,7 +1,8 @@
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use tempfile::tempdir;
 use yunet_core::{
-    BoundingBox, CropSettings, Detection, Landmark, PositioningMode, crop_face_from_image,
+    BoundingBox, CropSettings, Detection, FillColor, Landmark, PositioningMode,
+    crop_face_from_image,
 };
 use yunet_utils::{
     EnhancementSettings, MetadataContext, OutputOptions, Quality, QualityFilter,
@@ -95,6 +96,7 @@ fn full_crop_workflow_selects_best_quality_face() {
         positioning_mode: PositioningMode::Center,
         horizontal_offset: 0.0,
         vertical_offset: 0.0,
+        fill_color: FillColor::default(),
     };
 
     let cfg_crop = build_app_crop_settings(&core_settings);

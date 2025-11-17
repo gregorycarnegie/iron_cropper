@@ -5,7 +5,7 @@
 
 use crate::cropper::{CropRegion, CropSettings, calculate_crop_region};
 use crate::postprocess::Detection;
-use image::{DynamicImage, GenericImageView, imageops::FilterType};
+use image::{DynamicImage, GenericImageView, Rgba, RgbaImage, imageops::FilterType};
 
 /// Crop a face from `img` according to `detection` and `settings`.
 ///
@@ -19,29 +19,53 @@ pub fn crop_face_from_image(
 
     let region: CropRegion = calculate_crop_region(img_w, img_h, detection.bbox, settings);
 
-    // Use an immutable crop view then convert to owned image buffer.
-    let sub =
-        image::imageops::crop_imm(img, region.x, region.y, region.width, region.height).to_image();
+    let canvas_width = region.width.max(1);
+    let canvas_height = region.height.max(1);
+    let fill = Rgba([
+        settings.fill_color.red,
+        settings.fill_color.green,
+        settings.fill_color.blue,
+        settings.fill_color.alpha,
+    ]);
+    let mut canvas = RgbaImage::from_pixel(canvas_width, canvas_height, fill);
 
-    // If output dimensions are zero, return the raw crop as DynamicImage.
+    if let Some((src_x, src_y, src_w, src_h)) = region.in_bounds_rect(img_w, img_h) {
+        if src_w > 0 && src_h > 0 {
+            let sub = image::imageops::crop_imm(img, src_x, src_y, src_w, src_h).to_image();
+            let offset_x = region.pad_left.min(canvas_width.saturating_sub(1));
+            let offset_y = region.pad_top.min(canvas_height.saturating_sub(1));
+            for y in 0..sub.height() {
+                for x in 0..sub.width() {
+                    let dest_x = offset_x + x;
+                    let dest_y = offset_y + y;
+                    if dest_x < canvas_width && dest_y < canvas_height {
+                        let pixel = sub.get_pixel(x, y);
+                        canvas.put_pixel(dest_x, dest_y, *pixel);
+                    }
+                }
+            }
+        }
+    }
+
+    // If output dimensions are zero, return the raw (possibly padded) crop as DynamicImage.
     if settings.output_width == 0 || settings.output_height == 0 {
-        return DynamicImage::ImageRgba8(sub);
+        return DynamicImage::ImageRgba8(canvas);
     }
 
     let resized = image::imageops::resize(
-        &DynamicImage::ImageRgba8(sub),
+        &DynamicImage::ImageRgba8(canvas),
         settings.output_width,
         settings.output_height,
         FilterType::Lanczos3,
     );
 
-    image::DynamicImage::ImageRgba8(resized)
+    DynamicImage::ImageRgba8(resized)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cropper::CropSettings;
+    use crate::cropper::{CropSettings, FillColor};
     use crate::postprocess::BoundingBox;
     use image::{DynamicImage, Rgba, RgbaImage};
 
@@ -82,10 +106,50 @@ mod tests {
             positioning_mode: crate::cropper::PositioningMode::Center,
             horizontal_offset: 0.0,
             vertical_offset: 0.0,
+            fill_color: crate::cropper::FillColor::default(),
         };
 
         let out = crop_face_from_image(&img_dyn, &detection, &settings);
         assert_eq!(out.width(), 200);
         assert_eq!(out.height(), 300);
+    }
+
+    #[test]
+    fn pads_with_fill_color_when_region_extends() {
+        let img = RgbaImage::from_pixel(32, 32, Rgba([40, 50, 60, 255]));
+        let img_dyn = DynamicImage::ImageRgba8(img);
+        let detection = Detection {
+            bbox: BoundingBox {
+                x: -5.0,
+                y: -5.0,
+                width: 20.0,
+                height: 20.0,
+            },
+            landmarks: [
+                crate::postprocess::Landmark { x: 0.0, y: 0.0 },
+                crate::postprocess::Landmark { x: 0.0, y: 0.0 },
+                crate::postprocess::Landmark { x: 0.0, y: 0.0 },
+                crate::postprocess::Landmark { x: 0.0, y: 0.0 },
+                crate::postprocess::Landmark { x: 0.0, y: 0.0 },
+            ],
+            score: 0.8,
+        };
+        let settings = CropSettings {
+            output_width: 16,
+            output_height: 16,
+            face_height_pct: 80.0,
+            positioning_mode: crate::cropper::PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+            fill_color: FillColor::opaque(200, 10, 50),
+        };
+
+        let out = crop_face_from_image(&img_dyn, &detection, &settings).to_rgba8();
+        assert_eq!(out.width(), 16);
+        assert_eq!(out.height(), 16);
+        let top_left = out.get_pixel(0, 0);
+        assert_eq!(top_left[0], 200);
+        assert_eq!(top_left[1], 10);
+        assert_eq!(top_left[2], 50);
     }
 }

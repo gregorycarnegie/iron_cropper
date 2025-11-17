@@ -27,7 +27,7 @@ use yunet_core::{
 use yunet_utils::{
     BatchCropRequest, CropShape, EnhancementSettings, GpuAvailability, GpuBatchCropper, GpuContext,
     GpuContextOptions, GpuContextPool, GpuPoolError, MetadataContext, OutputOptions, Quality,
-    QualityFilter, WgpuEnhancer, append_suffix_to_filename, apply_enhancements,
+    QualityFilter, RgbaColor, WgpuEnhancer, append_suffix_to_filename, apply_enhancements,
     apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
@@ -35,13 +35,13 @@ use yunet_utils::{
     },
     configure_telemetry, estimate_sharpness,
     gpu::{GpuStatusIndicator, GpuStatusMode},
-    init_logging, load_image,
+    hsv_to_rgb, init_logging, load_image,
     mapping::ColumnSelector,
     mapping::MappingFormat,
     mapping::MappingReadOptions,
     mapping::detect_format as detect_mapping_format,
     mapping::load_mapping_entries,
-    normalize_path, save_dynamic_image,
+    normalize_path, parse_hex_color, save_dynamic_image,
 };
 
 /// Run YuNet face detection over images or directories.
@@ -159,6 +159,10 @@ struct DetectArgs {
     /// Vertical offset for custom positioning (fraction -1.0..1.0).
     #[arg(long, default_value_t = 0.0)]
     vertical_offset: f32,
+
+    /// Fill color for areas outside the source image when crops extend past the image edges (accepts #RRGGBB, rgb(), hsv()).
+    #[arg(long, value_name = "COLOR")]
+    crop_fill_color: Option<String>,
 
     /// Output image format for saved crops: png, jpeg, webp
     #[arg(long, default_value = "png")]
@@ -416,11 +420,19 @@ impl CliGpuRuntime {
         let mut jobs = Vec::with_capacity(detections.len());
         for det in detections {
             let region = calculate_crop_region(img_w, img_h, det.bbox, settings);
+            if region.requires_padding() {
+                return None;
+            }
+            let (source_x, source_y, source_width, source_height) =
+                match region.in_bounds_rect(img_w, img_h) {
+                    Some(rect) => rect,
+                    None => return None,
+                };
             jobs.push(BatchCropRequest {
-                source_x: region.x,
-                source_y: region.y,
-                source_width: region.width.max(1),
-                source_height: region.height.max(1),
+                source_x,
+                source_y,
+                source_width: source_width.max(1),
+                source_height: source_height.max(1),
                 output_width: settings.output_width,
                 output_height: settings.output_height,
             });
@@ -1787,6 +1799,12 @@ fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     settings.crop.horizontal_offset = args.horizontal_offset;
     settings.crop.vertical_offset = args.vertical_offset;
     settings.crop.positioning_mode = args.positioning_mode.replace('_', "-");
+    if let Some(ref fill) = args.crop_fill_color {
+        match parse_fill_color_spec(fill) {
+            Ok(color) => settings.crop.fill_color = color,
+            Err(err) => warn!("failed to parse --crop-fill-color '{}': {}", fill, err),
+        }
+    }
     settings.crop.output_format = args.output_format.to_ascii_lowercase();
     settings.crop.jpeg_quality = args.jpeg_quality;
     if let Some(ref compression) = args.png_compression {
@@ -1850,6 +1868,7 @@ fn build_core_crop_settings(cfg: &ConfigCropSettings) -> CropSettings {
         positioning_mode: parse_positioning_mode(&cfg.positioning_mode),
         horizontal_offset: cfg.horizontal_offset,
         vertical_offset: cfg.vertical_offset,
+        fill_color: cfg.fill_color,
     }
 }
 
@@ -1876,6 +1895,152 @@ fn parse_metadata_tags_args(entries: &[String]) -> BTreeMap<String, String> {
         }
     }
     map
+}
+
+fn parse_fill_color_spec(raw: &str) -> Result<RgbaColor, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("fill color value is empty".to_string());
+    }
+
+    if let Some(color) = parse_hex_color(trimmed) {
+        return Ok(color);
+    }
+    if let Some(args) = parse_fn_args(trimmed, "rgb") {
+        let (r, g, b) = parse_rgb_components(&args)?;
+        let alpha = args
+            .get(3)
+            .map(|value| parse_alpha_value(value))
+            .transpose()?
+            .unwrap_or(255);
+        return Ok(RgbaColor {
+            red: r,
+            green: g,
+            blue: b,
+            alpha,
+        });
+    }
+    if let Some(args) = parse_fn_args(trimmed, "hsv") {
+        if args.len() < 3 {
+            return Err("hsv() requires three values: hue,saturation,value".to_string());
+        }
+        let hue = parse_hue_value(args[0])?;
+        let sat = parse_percentage_value(args[1])?;
+        let val = parse_percentage_value(args[2])?;
+        let (r, g, b) = hsv_to_rgb(hue, sat, val);
+        return Ok(RgbaColor::opaque(r, g, b));
+    }
+
+    if trimmed.contains(',') {
+        let parts: Vec<_> = trimmed
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if parts.len() >= 3 {
+            let (r, g, b) = parse_rgb_components(&parts)?;
+            return Ok(RgbaColor::opaque(r, g, b));
+        }
+    }
+
+    Err(format!(
+        "unrecognized fill color format '{}'; expected #RRGGBB, rgb(), or hsv()",
+        trimmed
+    ))
+}
+
+fn parse_fn_args<'a>(input: &'a str, name: &str) -> Option<Vec<&'a str>> {
+    let trimmed = input.trim();
+    let open = trimmed.find('(')?;
+    let close = trimmed.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    if !trimmed[..open].trim().eq_ignore_ascii_case(name) {
+        return None;
+    }
+    let inner = &trimmed[open + 1..close];
+    let args = inner
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+    if args.is_empty() { None } else { Some(args) }
+}
+
+fn parse_rgb_components(parts: &[&str]) -> Result<(u8, u8, u8), String> {
+    if parts.len() < 3 {
+        return Err("expected three values for rgb()".to_string());
+    }
+    Ok((
+        parse_rgb_value(parts[0])?,
+        parse_rgb_value(parts[1])?,
+        parse_rgb_value(parts[2])?,
+    ))
+}
+
+fn parse_rgb_value(token: &str) -> Result<u8, String> {
+    let value: f32 = token
+        .parse()
+        .map_err(|_| format!("invalid RGB component '{}'", token))?;
+    if !(0.0..=255.0).contains(&value) {
+        return Err(format!(
+            "RGB component '{}' must be between 0 and 255",
+            token
+        ));
+    }
+    Ok(value.round() as u8)
+}
+
+fn parse_alpha_value(token: &str) -> Result<u8, String> {
+    let normalized = if token.ends_with('%') {
+        let pct = token[..token.len() - 1]
+            .trim()
+            .parse::<f32>()
+            .map_err(|_| format!("invalid alpha percentage '{}'", token))?;
+        pct / 100.0
+    } else {
+        let value: f32 = token
+            .parse()
+            .map_err(|_| format!("invalid alpha value '{}'", token))?;
+        if value > 1.0 { value / 255.0 } else { value }
+    };
+    Ok((normalized.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
+fn parse_hue_value(token: &str) -> Result<f32, String> {
+    let mut raw = token.trim().to_string();
+    if raw.len() >= 3 && raw[raw.len() - 3..].eq_ignore_ascii_case("deg") {
+        raw.truncate(raw.len() - 3);
+        raw = raw.trim_end().to_string();
+    }
+    if raw.ends_with('°') {
+        raw.pop();
+        raw = raw.trim_end().to_string();
+    }
+    let value: f32 = raw
+        .parse()
+        .map_err(|_| format!("invalid hue '{}'", token))?;
+    Ok(value.rem_euclid(360.0))
+}
+
+fn parse_percentage_value(token: &str) -> Result<f32, String> {
+    let trimmed = token.trim();
+    if let Some(stripped) = trimmed.strip_suffix('%') {
+        let pct = stripped
+            .trim()
+            .parse::<f32>()
+            .map_err(|_| format!("invalid percentage '{}'", token))?;
+        return Ok((pct / 100.0).clamp(0.0, 1.0));
+    }
+    let value: f32 = trimmed
+        .parse()
+        .map_err(|_| format!("invalid component '{}'", token))?;
+    if value > 1.0 {
+        Ok((value / 100.0).clamp(0.0, 1.0))
+    } else {
+        Ok(value.clamp(0.0, 1.0))
+    }
 }
 
 /// Collect all image paths from a file or directory.

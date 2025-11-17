@@ -16,6 +16,7 @@ The desktop app bundles a full crop workflow on top of YuNet detection so you ca
 - **Positioning mode** – Choose between Center, Rule of Thirds, or Custom. When Custom is active the horizontal/vertical sliders appear; arrow keys nudge by 0.05 (hold *Shift* for 0.1). Values are clamped to ±1.0 and updates are undoable.
 - **Undo / Redo** – `Ctrl+Z` to step back through crop changes, `Ctrl+Y` or `Ctrl+Shift+Z` to redo. The application keeps a bounded history of the last 100 adjustments.
 - **Overlay toggle** – Enable the overlay checkbox in the preview to visualize the calculated crop region. The overlay auto-updates as you tweak settings.
+- **Fill color padding** – If the crop extends past the source image, the empty pixels are filled with the configured color. Use the color picker, hex input, or RGB/HSV spinners to override the default black padding.
 
 ## Face Selection & Quality
 

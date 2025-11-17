@@ -98,6 +98,7 @@ pub struct CropPreviewKey {
     pub face_height_bits: u32,
     pub horizontal_bits: u32,
     pub vertical_bits: u32,
+    pub fill_color_bits: u32,
     pub shape: ShapeSignature,
     pub enhancement: EnhancementSignature,
     pub enhance_enabled: bool,
@@ -158,6 +159,8 @@ pub struct YuNetApp {
     /// Undo/redo stack for crop configuration.
     pub crop_history: Vec<ConfigCropSettings>,
     pub crop_history_index: usize,
+    /// Hex text field backing the fill color editor.
+    pub crop_fill_hex_input: String,
     /// Editable metadata tags input cached for the UI.
     pub metadata_tags_input: String,
     /// Batch mode state.

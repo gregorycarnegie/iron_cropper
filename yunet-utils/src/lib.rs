@@ -1,5 +1,7 @@
 //! Common helpers shared across YuNet crates.
 
+/// Shared color utilities.
+pub mod color;
 /// Application configuration and settings management.
 pub mod config;
 /// Image enhancement utilities (unsharp mask, contrast, exposure, etc.)
@@ -29,6 +31,7 @@ use std::path::Path;
 use anyhow::Result;
 use log::LevelFilter;
 
+pub use color::{RgbaColor, hsv_to_rgb, parse_hex_color, rgb_to_hsv};
 pub use enhance::{EnhancementSettings, WgpuEnhancer, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,

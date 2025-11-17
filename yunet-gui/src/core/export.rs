@@ -7,7 +7,7 @@ use std::sync::Arc;
 use image::DynamicImage;
 use log::{info, warn};
 use rayon::prelude::*;
-use yunet_core::{YuNetDetector, calculate_crop_region};
+use yunet_core::{YuNetDetector, calculate_crop_region, crop_face_from_image};
 use yunet_utils::gpu::BatchCropRequest;
 use yunet_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename, load_image,
@@ -69,20 +69,26 @@ pub fn run_batch_job(
         })
         .collect();
 
+    let gpu_allowed = crop_regions.iter().all(|region| !region.requires_padding());
     let gpu_crops = if config.crop_settings.output_width > 0
         && config.crop_settings.output_height > 0
         && !crop_regions.is_empty()
+        && gpu_allowed
     {
         config.gpu_cropper.as_ref().and_then(|cropper| {
             let requests: Vec<BatchCropRequest> = crop_regions
                 .iter()
-                .map(|region| BatchCropRequest {
-                    source_x: region.x,
-                    source_y: region.y,
-                    source_width: region.width.max(1),
-                    source_height: region.height.max(1),
-                    output_width: config.crop_settings.output_width,
-                    output_height: config.crop_settings.output_height,
+                .filter_map(|region| {
+                    region
+                        .in_bounds_rect(source_image.width(), source_image.height())
+                        .map(|(x, y, w, h)| BatchCropRequest {
+                            source_x: x,
+                            source_y: y,
+                            source_width: w.max(1),
+                            source_height: h.max(1),
+                            output_width: config.crop_settings.output_width,
+                            output_height: config.crop_settings.output_height,
+                        })
                 })
                 .collect();
             match cropper.crop(&source_image, &requests) {
@@ -108,33 +114,12 @@ pub fn run_batch_job(
     let mut processed_faces: Vec<Arc<DynamicImage>> = Vec::with_capacity(faces_detected);
     let mut candidates = Vec::with_capacity(faces_detected);
     for (face_idx, detection) in detection_output.detections.iter().enumerate() {
-        let region = crop_regions.get(face_idx).copied().unwrap_or_else(|| {
-            calculate_crop_region(
-                source_image.width(),
-                source_image.height(),
-                detection.bbox,
-                &config.crop_settings,
-            )
-        });
-
         let resized = if let Some(images) = gpu_crops.as_ref() {
             images.get(face_idx).cloned().unwrap_or_else(|| {
-                source_image
-                    .crop_imm(region.x, region.y, region.width, region.height)
-                    .resize_exact(
-                        config.crop_settings.output_width,
-                        config.crop_settings.output_height,
-                        image::imageops::FilterType::Lanczos3,
-                    )
+                crop_face_from_image(&source_image, detection, &config.crop_settings)
             })
         } else {
-            source_image
-                .crop_imm(region.x, region.y, region.width, region.height)
-                .resize_exact(
-                    config.crop_settings.output_width,
-                    config.crop_settings.output_height,
-                    image::imageops::FilterType::Lanczos3,
-                )
+            crop_face_from_image(&source_image, detection, &config.crop_settings)
         };
 
         let processed = if config.enhance_enabled {
@@ -348,7 +333,6 @@ pub fn run_batch_export(
 /// Exports selected faces from the preview to disk.
 pub fn export_selected_faces(app: &mut YuNetApp) {
     use rfd::FileDialog;
-    use yunet_core::calculate_crop_region;
 
     if app.selected_faces.is_empty() {
         app.show_error("Export failed", "No faces selected for export");
@@ -392,25 +376,9 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
             continue;
         };
 
-        let crop_region = calculate_crop_region(
-            source_image.width(),
-            source_image.height(),
-            det.active_bbox(),
-            &crop_settings,
-        );
-
-        let cropped = source_image.crop_imm(
-            crop_region.x,
-            crop_region.y,
-            crop_region.width,
-            crop_region.height,
-        );
-
-        let resized = cropped.resize_exact(
-            crop_settings.output_width,
-            crop_settings.output_height,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let mut detection_for_crop = det.detection.clone();
+        detection_for_crop.bbox = det.active_bbox();
+        let resized = crop_face_from_image(&source_image, &detection_for_crop, &crop_settings);
 
         let final_image = if app.settings.enhance.enabled {
             enhance_with_gpu(&resized, &enhancement_settings, app.gpu_enhancer.as_ref())

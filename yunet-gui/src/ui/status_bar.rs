@@ -1,8 +1,7 @@
 //! Status bar UI components for the YuNet GUI.
 
 use egui::{
-    Align, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke,
-    TopBottomPanel, Ui,
+    Align, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke, TopBottomPanel, Ui,
 };
 
 use crate::{GpuStatusMode, YuNetApp, theme};
@@ -85,7 +84,6 @@ impl YuNetApp {
                 });
             });
     }
-
 
     pub(crate) fn status_chip(
         &self,

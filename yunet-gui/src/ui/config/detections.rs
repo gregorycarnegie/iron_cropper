@@ -28,82 +28,83 @@ pub fn show_detection_carousel(
                     .id_salt("detections_panel_scroll")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Detected faces").strong());
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let enabled = app.preview.texture.is_some();
-                                let label = if app.manual_box_tool_enabled {
-                                    "Exit draw mode"
-                                } else {
-                                    "Draw manual box"
-                                };
-                                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
-                                    app.manual_box_tool_enabled = !app.manual_box_tool_enabled;
-                                    if !app.manual_box_tool_enabled {
-                                        app.manual_box_draft = None;
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Detected faces").strong());
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    let enabled = app.preview.texture.is_some();
+                                    let label = if app.manual_box_tool_enabled {
+                                        "Exit draw mode"
+                                    } else {
+                                        "Draw manual box"
+                                    };
+                                    if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                                        app.manual_box_tool_enabled = !app.manual_box_tool_enabled;
+                                        if !app.manual_box_tool_enabled {
+                                            app.manual_box_draft = None;
+                                        }
                                     }
-                                }
-                            });
-                        });
-
-                        if app.preview.detections.is_empty() {
-                            ui.add_space(24.0);
-                            if app.is_busy {
-                                ui.label("Running detection…");
-                            } else {
-                                ui.label("No faces detected yet.");
-                            }
-                            return;
-                        }
-
-                        ui.add_space(6.0);
-                        ScrollArea::horizontal()
-                            .id_salt("detections_carousel")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    render_detections_strip(app, ctx, ui, palette);
                                 });
                             });
 
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("Select all").clicked() {
-                                app.selected_faces = (0..app.preview.detections.len()).collect();
+                            if app.preview.detections.is_empty() {
+                                ui.add_space(24.0);
+                                if app.is_busy {
+                                    ui.label("Running detection…");
+                                } else {
+                                    ui.label("No faces detected yet.");
+                                }
+                                return;
                             }
-                            if ui.button("Deselect").clicked() {
-                                app.selected_faces.clear();
-                            }
-                            if ui.button("Refresh thumbnails").clicked() {
-                                for idx in 0..app.preview.detections.len() {
-                                    if app.preview.detections[idx].thumbnail.is_some() {
-                                        app.refresh_detection_thumbnail_at(ctx, idx);
+
+                            ui.add_space(6.0);
+                            ScrollArea::horizontal()
+                                .id_salt("detections_carousel")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        render_detections_strip(app, ctx, ui, palette);
+                                    });
+                                });
+
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                if ui.button("Select all").clicked() {
+                                    app.selected_faces =
+                                        (0..app.preview.detections.len()).collect();
+                                }
+                                if ui.button("Deselect").clicked() {
+                                    app.selected_faces.clear();
+                                }
+                                if ui.button("Refresh thumbnails").clicked() {
+                                    for idx in 0..app.preview.detections.len() {
+                                        if app.preview.detections[idx].thumbnail.is_some() {
+                                            app.refresh_detection_thumbnail_at(ctx, idx);
+                                        }
                                     }
                                 }
-                            }
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.checkbox(&mut app.show_crop_overlay, "Show crop guides");
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    ui.checkbox(&mut app.show_crop_overlay, "Show crop guides");
+                                });
                             });
-                        });
 
-                        let total = app.preview.detections.len() as f32;
-                        let selected = app.selected_faces.len() as f32;
-                        let ratio = if total.abs() < f32::EPSILON {
-                            0.0
-                        } else {
-                            selected / total
-                        };
-                        ui.add(
-                            ProgressBar::new(ratio)
-                                .desired_width(ui.available_width())
-                                .text(format!(
-                                    "{} of {} faces selected",
-                                    selected as usize, total as usize
-                                )),
-                        );
+                            let total = app.preview.detections.len() as f32;
+                            let selected = app.selected_faces.len() as f32;
+                            let ratio = if total.abs() < f32::EPSILON {
+                                0.0
+                            } else {
+                                selected / total
+                            };
+                            ui.add(
+                                ProgressBar::new(ratio)
+                                    .desired_width(ui.available_width())
+                                    .text(format!(
+                                        "{} of {} faces selected",
+                                        selected as usize, total as usize
+                                    )),
+                            );
+                        });
                     });
-                });
             });
     });
 }

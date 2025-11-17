@@ -5,9 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{
-    pack_rgba_pixels, unpack_rgba_pixels, BILATERAL_FILTER_WGSL, GpuContext,
-};
+use super::{BILATERAL_FILTER_WGSL, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };

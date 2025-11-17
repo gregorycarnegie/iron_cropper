@@ -3,7 +3,7 @@ use std::fs;
 use image::DynamicImage;
 use tempfile::tempdir;
 
-use yunet_core::{BoundingBox, CropSettings, Detection, crop_face_from_image};
+use yunet_core::{BoundingBox, CropSettings, Detection, FillColor, crop_face_from_image};
 use yunet_utils::{EnhancementSettings, apply_enhancements};
 
 #[test]
@@ -44,6 +44,7 @@ fn cli_like_crop_and_enhance_saves_file() {
         positioning_mode: yunet_core::PositioningMode::Center,
         horizontal_offset: 0.0,
         vertical_offset: 0.0,
+        fill_color: FillColor::default(),
     };
 
     let cropped = crop_face_from_image(&dyn_img, &det, &settings);

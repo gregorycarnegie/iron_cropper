@@ -5,7 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{pack_rgba_pixels, unpack_rgba_pixels, GpuContext, HIST_EQUALIZE_WGSL};
+use super::{GpuContext, HIST_EQUALIZE_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 use crate::{gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
 gpu_uniforms!(HistogramUniforms, 3, {
@@ -323,8 +323,7 @@ impl GpuHistogramEqualizer {
         queue.submit(std::iter::once(encoder.finish()));
 
         let expected_len = pixel_count as usize;
-        let packed =
-            gpu_readback!(readback, device, expected_len, "histogram equalization")?;
+        let packed = gpu_readback!(readback, device, expected_len, "histogram equalization")?;
         let bytes = unpack_rgba_pixels(&packed);
 
         let result =

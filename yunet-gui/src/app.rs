@@ -3,8 +3,7 @@ use egui::{Color32, RichText, Sense, Ui, vec2};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use yunet_core::{CropSettings as CoreCropSettings, PositioningMode, preset_by_name};
-use yunet_utils::enhance::EnhancementSettings;
-use yunet_utils::quality::Quality;
+use yunet_utils::{RgbaColor, enhance::EnhancementSettings, quality::Quality};
 
 impl YuNetApp {
     pub(crate) fn quality_legend(&self, ui: &mut Ui, palette: crate::theme::Palette) {
@@ -102,6 +101,7 @@ impl YuNetApp {
             positioning_mode,
             horizontal_offset: self.settings.crop.horizontal_offset,
             vertical_offset: self.settings.crop.vertical_offset,
+            fill_color: self.settings.crop.fill_color,
         }
     }
 
@@ -143,6 +143,30 @@ impl YuNetApp {
             .map(|(k, v)| format!("{k}={v}"))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    pub(crate) fn format_fill_color_hex(color: RgbaColor) -> String {
+        if color.alpha != 255 {
+            format!(
+                "#{:02X}{:02X}{:02X}{:02X}",
+                color.red, color.green, color.blue, color.alpha
+            )
+        } else {
+            format!("#{:02X}{:02X}{:02X}", color.red, color.green, color.blue)
+        }
+    }
+
+    pub(crate) fn refresh_fill_color_hex_input(&mut self) {
+        self.crop_fill_hex_input = Self::format_fill_color_hex(self.settings.crop.fill_color);
+    }
+
+    pub(crate) fn set_fill_color(&mut self, color: RgbaColor) -> bool {
+        if self.settings.crop.fill_color == color {
+            return false;
+        }
+        self.settings.crop.fill_color = color;
+        self.refresh_fill_color_hex_input();
+        true
     }
 
     pub(crate) fn display_with_output_ext(raw: &str, ext: &str) -> String {
@@ -187,6 +211,7 @@ impl YuNetApp {
         self.crop_history_index -= 1;
         self.settings.crop = self.crop_history[self.crop_history_index].clone();
         self.clear_crop_preview_cache();
+        self.refresh_fill_color_hex_input();
         self.persist_settings_with_feedback();
         self.apply_quality_rules_to_preview();
         self.refresh_metadata_tags_input();
@@ -199,6 +224,7 @@ impl YuNetApp {
         self.crop_history_index += 1;
         self.settings.crop = self.crop_history[self.crop_history_index].clone();
         self.clear_crop_preview_cache();
+        self.refresh_fill_color_hex_input();
         self.persist_settings_with_feedback();
         self.apply_quality_rules_to_preview();
         self.refresh_metadata_tags_input();
@@ -355,5 +381,4 @@ impl YuNetApp {
             info!("Loaded {loaded} images for batch processing");
         }
     }
-
 }

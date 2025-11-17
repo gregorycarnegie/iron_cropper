@@ -16,7 +16,8 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 ## Crop Features Overview
 
 - **Preset sizing** – LinkedIn, Passport, Instagram, ID Card, Avatar, Headshot, plus an explicit “Custom” mode.
-- **Face height targeting** – Configure how large the face should appear in the final crop (10–100%). The cropper preserves the requested aspect ratio and clamps within source bounds.
+- **Face height targeting** – Configure how large the face should appear in the final crop (10–100%). The cropper preserves the requested aspect ratio and records any padding needed so crops can extend beyond the source image without distortion.
+- **Padding color control** – Empty pixels introduced by out-of-bounds crops are filled with a configurable color (CLI `--crop-fill-color`, GUI color picker/hex/RGB/HSV inputs). Black remains the default.
 - **Positioning modes** – Center, Rule of Thirds, or fully custom offsets with keyboard nudges and undo/redo support.
 - **Quality automation** – Laplacian-variance scoring categorises crops into Low/Medium/High. Filters can auto-select the sharpest face, skip soft captures, and append quality suffixes.
 - **Enhancement pipeline** – Optional post-crop adjustments (auto color, exposure, brightness, contrast, saturation, sharpening, skin smoothing, red-eye removal, and portrait background blur) with both CPU (pure Rust) and GPU (WGSL compute shaders) implementations.
