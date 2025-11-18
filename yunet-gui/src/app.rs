@@ -381,4 +381,30 @@ impl YuNetApp {
             info!("Loaded {loaded} images for batch processing");
         }
     }
+
+    /// Enqueues additional image paths for batch processing, deduplicating existing entries.
+    pub(crate) fn enqueue_batch_images(&mut self, paths: Vec<PathBuf>) -> usize {
+        use crate::types::{BatchFile, BatchFileStatus};
+
+        let mut added = 0;
+        for path in paths {
+            if self
+                .batch_files
+                .iter()
+                .any(|existing| existing.path == path)
+            {
+                continue;
+            }
+            self.batch_files.push(BatchFile {
+                path,
+                status: BatchFileStatus::Pending,
+                output_override: None,
+            });
+            added += 1;
+        }
+        if added > 0 {
+            self.batch_current_index = None;
+        }
+        added
+    }
 }

@@ -6,7 +6,11 @@ use anyhow::{Context, anyhow};
 use arboard::{Clipboard, Error as ClipboardError};
 use egui::{Context as EguiContext, DroppedFile, Event};
 use image::{DynamicImage, RgbaImage};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    fs,
+    path::{Path, PathBuf},
+};
 use tempfile::Builder;
 
 impl YuNetApp {
@@ -255,13 +259,17 @@ impl YuNetApp {
         }
         self.show_error(
             "Unsupported drop",
-            "Only image files can be dropped or pasted in this version.",
+            "Drop files, folders, or clipboard images to load content.",
         );
         false
     }
 
     fn try_process_dropped_file(&mut self, file: &DroppedFile) -> anyhow::Result<bool> {
         if let Some(path) = file.path.as_ref() {
+            if path.is_dir() {
+                let images = Self::collect_images_from_directory(path)?;
+                return Ok(self.enqueue_batch_paths(images));
+            }
             if Self::is_supported_image_path(path) {
                 self.start_detection(path.to_path_buf());
                 return Ok(true);
@@ -281,12 +289,47 @@ impl YuNetApp {
     }
 
     fn handle_paste_text(&mut self, text: &str) -> bool {
+        let mut file_paths = Vec::new();
+        let mut dir_paths = Vec::new();
         for candidate in Self::paths_from_clipboard_text(text) {
-            if Self::is_supported_image_path(&candidate) {
-                self.start_detection(candidate);
+            if candidate.is_dir() {
+                dir_paths.push(candidate);
+            } else if Self::is_supported_image_path(&candidate) {
+                file_paths.push(candidate);
+            }
+        }
+
+        if !dir_paths.is_empty() {
+            let mut aggregated = Vec::new();
+            for dir in dir_paths {
+                match Self::collect_images_from_directory(&dir) {
+                    Ok(mut images) => aggregated.append(&mut images),
+                    Err(err) => {
+                        self.show_error(
+                            "Paste failed",
+                            format!("Failed to inspect {}: {err}", dir.display()),
+                        );
+                        return true;
+                    }
+                }
+            }
+            if self.enqueue_batch_paths(aggregated) {
                 return true;
             }
         }
+
+        if file_paths.len() > 1 {
+            if self.enqueue_batch_paths(file_paths) {
+                return true;
+            }
+            return false;
+        }
+
+        if let Some(single) = file_paths.into_iter().next() {
+            self.start_detection(single);
+            return true;
+        }
+
         match self.try_paste_image_from_clipboard() {
             Ok(true) => true,
             Ok(false) => false,
@@ -329,6 +372,46 @@ impl YuNetApp {
             self.clipboard_temp_images.remove(0);
         }
         Ok(path_buf)
+    }
+
+    fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> bool {
+        if paths.is_empty() {
+            return false;
+        }
+        let added = self.enqueue_batch_images(paths);
+        if added > 0 {
+            let total = self.batch_files.len();
+            self.show_success(format!(
+                "Added {added} file(s) to the batch queue ({} total)",
+                total
+            ));
+            true
+        } else {
+            self.show_success("All dropped files were already in the batch queue.");
+            false
+        }
+    }
+
+    fn collect_images_from_directory(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+        let mut images = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(dir.to_path_buf());
+
+        while let Some(current) = queue.pop_front() {
+            let entries = fs::read_dir(&current)
+                .with_context(|| format!("Failed to read directory {}", current.display()))?;
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    queue.push_back(path);
+                } else if Self::is_supported_image_path(&path) {
+                    images.push(path);
+                }
+            }
+        }
+
+        Ok(images)
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -313,7 +313,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 - [ ] **Clipboard & drag-and-drop enhancements**
   - [x] Phase 1: Allow pasting or dragging a single image into the preview to auto-load and run detection.
-  - [ ] Phase 2: Handle folder drops/clipboard paths by enqueueing their supported image contents into the batch queue.
+  - [x] Phase 2: Handle folder drops/clipboard paths by enqueueing their supported image contents into the batch queue.
   - [ ] Phase 3: Accept data-table files (CSV/XLSX/etc.) via clipboard or drag/drop to seed the mapping/import workflow.
 
 ### Phase 9: Testing & Documentation
