@@ -24,14 +24,10 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let b = f32((pixel >> 16u) & 0xFFu);
     let a = (pixel >> 24u) & 0xFFu;
 
-    let avg_gb = (g + b) * 0.5 + 1e-6;
+    let avg_gb = fma((g + b), 0.5, 1e-6);
     let ratio = r / avg_gb;
 
-    var out_r = r;
-    if (ratio > params.threshold && r > params.min_red) {
-        out_r = avg_gb;
-    }
-
+    let out_r = select(r, avg_gb, ratio > params.threshold && r > params.min_red);
     let r_new = u32(clamp(round(out_r), 0.0, 255.0)) & 0xFFu;
     let g_new = u32(clamp(round(g), 0.0, 255.0)) & 0xFFu;
     let b_new = u32(clamp(round(b), 0.0, 255.0)) & 0xFFu;

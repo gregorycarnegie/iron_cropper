@@ -17,10 +17,5 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     let value = tensor[idx];
-
-    if (params.mode == MODE_RELU) {
-        tensor[idx] = max(value, 0.0);
-    } else {
-        tensor[idx] = 1.0 / (1.0 + exp(-value));
-    }
+    tensor[idx] = select(1.0 / (1.0 + exp(-value)), max(value, 0.0), params.mode == MODE_RELU);
 }

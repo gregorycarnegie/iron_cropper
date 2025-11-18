@@ -70,7 +70,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         + local_ic * params.kernel_height * params.kernel_width
                         + ky * params.kernel_width
                         + kx;
-                    acc = acc + input_tensor[input_index] * weights[weight_index];
+                    acc = fma(input_tensor[input_index], weights[weight_index], acc);
                 }
 
                 kx = kx + 1u;

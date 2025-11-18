@@ -82,7 +82,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 
         let sample_idx = u32(sample_y) * params.width + u32(sample_x);
         let sample = load_pixel(sample_idx);
-        accum = accum + sample.xyz * weight;
+        accum = fma(sample.xyz, vec3<f32>(weight), accum);
         weight_sum = weight_sum + weight;
     }
 

@@ -81,19 +81,14 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
             let color_weight = exp(-(dot(diff, diff)) / sigma_color_term);
 
             let weight = spatial_weight * color_weight;
-            accum = accum + sample.xyz * weight;
+            accum = fma(sample.xyz, vec3<f32>(weight), accum);
             weight_sum = weight_sum + weight;
 
             dx = dx + 1;
         }
         dy = dy + 1;
     }
-
-    var filtered = center.xyz;
-    if (weight_sum > 1e-5) {
-        filtered = accum / weight_sum;
-    }
-
+    let filtered = select(center.xyz, accum / weight_sum, weight_sum > 1e-5);
     let amount = clamp(params.amount, 0.0, 1.0);
     let blended = mix(center.xyz, filtered, amount);
     store_pixel(dst_index, vec4<f32>(blended, center.w));

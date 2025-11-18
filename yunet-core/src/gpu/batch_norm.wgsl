@@ -32,5 +32,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let gamma_value = gamma[channel];
     let beta_value = beta[channel];
     let inv_std = inverseSqrt(var_value + params.epsilon);
-    tensor[index] = (value - mean_value) * inv_std * gamma_value + beta_value;
+    let normalized = (value - mean_value) * inv_std;
+    tensor[index] = fma(normalized, gamma_value, beta_value);
 }

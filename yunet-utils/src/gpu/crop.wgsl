@@ -72,8 +72,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         fy = f32(global_id.y) / dst_span_y;
     }
 
-    let src_x = f32(params.crop_x) + fx * crop_span_x;
-    let src_y = f32(params.crop_y) + fy * crop_span_y;
+    let src_x = fma(fx, crop_span_x, f32(params.crop_x));
+    let src_y = fma(fy, crop_span_y, f32(params.crop_y));
 
     let base_x = u32(floor(src_x));
     let base_y = u32(floor(src_y));

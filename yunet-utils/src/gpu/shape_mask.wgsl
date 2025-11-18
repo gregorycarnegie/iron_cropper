@@ -26,10 +26,8 @@ fn point_in_polygon(p : vec2<f32>) -> bool {
         let pj = polygon_points[j];
         let intersects =
             ((pi.y > p.y) != (pj.y > p.y)) &&
-            (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y) + pi.x);
-        if (intersects) {
-            inside = !inside;
-        }
+            (p.x < fma((pj.x - pi.x), (p.y - pi.y) / (pj.y - pi.y), pi.x));
+        inside = select(inside, !inside, intersects);
         j = i;
         i = i + 1u;
     }
@@ -41,7 +39,7 @@ fn coverage_for_pixel(x : u32, y : u32) -> f32 {
     let inv = 1.0 / f32(samples);
     var covered = 0.0;
     for (var i : u32 = 0u; i < samples; i = i + 1u) {
-        let offset = vec2<f32>(f32(i & 1u), f32((i >> 1u) & 1u)) * 0.5 + vec2<f32>(0.25, 0.25);
+        let offset = fma(vec2<f32>(f32(i & 1u), f32((i >> 1u) & 1u)), vec2<f32>(0.5), vec2<f32>(0.25));
         let sample = vec2<f32>(f32(x), f32(y)) + offset;
         if (point_in_polygon(sample)) {
             covered = covered + inv;

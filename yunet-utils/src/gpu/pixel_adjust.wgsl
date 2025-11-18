@@ -45,19 +45,19 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     // Contrast (normalized around 0.5)
     let contrast = params.contrast_factor;
     if (abs(contrast - 1.0) > 0.00001) {
-        r = clamp255(((r / 255.0 - 0.5) * contrast + 0.5) * 255.0);
-        g = clamp255(((g / 255.0 - 0.5) * contrast + 0.5) * 255.0);
-        b = clamp255(((b / 255.0 - 0.5) * contrast + 0.5) * 255.0);
+        r = clamp255(fma(fma(r, 1.0/255.0, -0.5), contrast, 0.5) * 255.0);
+        g = clamp255(fma(fma(g, 1.0/255.0, -0.5), contrast, 0.5) * 255.0);
+        b = clamp255(fma(fma(b, 1.0/255.0, -0.5), contrast, 0.5) * 255.0);
     }
 
     // Saturation adjustment
     let saturation = params.saturation;
     if (abs(saturation - 1.0) > 0.00001) {
-        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        let gray = fma(0.299, r, fma(0.587, g, 0.114 * b));
         let inv = 1.0 - saturation;
-        r = clamp255(gray * inv + r * saturation);
-        g = clamp255(gray * inv + g * saturation);
-        b = clamp255(gray * inv + b * saturation);
+        r = clamp255(fma(gray, inv, r * saturation));
+        g = clamp255(fma(gray, inv, g * saturation));
+        b = clamp255(fma(gray, inv, b * saturation));
     }
 
     let r_u32 = u32(round(r)) & 0xFFu;

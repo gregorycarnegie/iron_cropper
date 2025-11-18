@@ -44,13 +44,8 @@ fn store_pixel(idx : u32, value : vec4<f32>) {
 
 fn compute_blend(px : vec2<f32>, size : vec2<f32>) -> f32 {
     let dist = length(px / size);
-    if (dist < MASK_SMOOTH_INNER) {
-        return 0.0;
-    }
-    if (dist > MASK_SMOOTH_OUTER) {
-        return 1.0;
-    }
-    return (dist - MASK_SMOOTH_INNER) / (MASK_SMOOTH_OUTER - MASK_SMOOTH_INNER);
+    let smooth_range = (dist - MASK_SMOOTH_INNER) / (MASK_SMOOTH_OUTER - MASK_SMOOTH_INNER);
+    return clamp(smooth_range, 0.0, 1.0);
 }
 
 @compute @workgroup_size(16, 16, 1)

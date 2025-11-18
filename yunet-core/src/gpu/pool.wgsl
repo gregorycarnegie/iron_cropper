@@ -41,9 +41,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 continue;
             }
             let value = input_tensor[index(oc, u32(iy), u32(ix))];
-            if (value > max_val) {
-                max_val = value;
-            }
+            max_val = select(max_val, value, value > max_val);
         }
     }
 
