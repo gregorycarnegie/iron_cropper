@@ -13,13 +13,18 @@ use crate::{
 use super::{GpuContext, PIXEL_ADJUST_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const EPSILON: f32 = 1e-6;
+const FLAG_EXPOSURE: u32 = 1 << 0;
+const FLAG_BRIGHTNESS: u32 = 1 << 1;
+const FLAG_CONTRAST: u32 = 1 << 2;
+const FLAG_SATURATION: u32 = 1 << 3;
 
-gpu_uniforms!(PixelAdjustUniforms, 3, {
+gpu_uniforms!(PixelAdjustUniforms, 2, {
     exposure_multiplier: f32,
     brightness_offset: f32,
-    contrast: f32,
+    contrast_factor: f32,
     saturation: f32,
     pixel_count: u32,
+    flags: u32,
 });
 
 #[derive(Clone)]
@@ -51,10 +56,7 @@ impl GpuPixelAdjust {
     }
 
     pub fn needs_adjustment(settings: &EnhancementSettings) -> bool {
-        settings.exposure_stops.abs() >= EPSILON
-            || settings.brightness != 0
-            || (settings.contrast - 1.0).abs() >= EPSILON
-            || (settings.saturation - 1.0).abs() >= EPSILON
+        Self::activity(settings).has_any()
     }
 
     pub fn apply(
@@ -62,7 +64,8 @@ impl GpuPixelAdjust {
         image: &DynamicImage,
         settings: &EnhancementSettings,
     ) -> Result<DynamicImage> {
-        if !Self::needs_adjustment(settings) {
+        let activity = Self::activity(settings);
+        if !activity.has_any() {
             return Ok(image.clone());
         }
 
@@ -78,21 +81,22 @@ impl GpuPixelAdjust {
             label: Some("yunet_pixel_adjust_storage"),
             contents: cast_slice(&data_u32),
             usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
 
         let uniforms = PixelAdjustUniforms {
-            exposure_multiplier: if settings.exposure_stops.abs() < EPSILON {
-                1.0
-            } else {
+            exposure_multiplier: if activity.exposure {
                 2f32.powf(settings.exposure_stops)
+            } else {
+                1.0
             },
             brightness_offset: settings.brightness as f32,
-            contrast: settings.contrast.clamp(0.5, 2.0),
+            contrast_factor: settings.contrast.clamp(0.5, 2.0),
             saturation: settings.saturation.clamp(0.0, 2.5),
             pixel_count: pixel_count as u32,
-            __padding: [0; 3],
+            flags: activity.flags(),
+            __padding: [0; 2],
         };
 
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -152,4 +156,46 @@ impl GpuPixelAdjust {
 
 fn div_ceil(value: u32, divisor: u32) -> u32 {
     value.div_ceil(divisor)
+}
+
+#[derive(Clone, Copy)]
+struct AdjustmentActivity {
+    exposure: bool,
+    brightness: bool,
+    contrast: bool,
+    saturation: bool,
+}
+
+impl AdjustmentActivity {
+    fn has_any(&self) -> bool {
+        self.exposure || self.brightness || self.contrast || self.saturation
+    }
+
+    fn flags(&self) -> u32 {
+        let mut flags = 0;
+        if self.exposure {
+            flags |= FLAG_EXPOSURE;
+        }
+        if self.brightness {
+            flags |= FLAG_BRIGHTNESS;
+        }
+        if self.contrast {
+            flags |= FLAG_CONTRAST;
+        }
+        if self.saturation {
+            flags |= FLAG_SATURATION;
+        }
+        flags
+    }
+}
+
+impl GpuPixelAdjust {
+    fn activity(settings: &EnhancementSettings) -> AdjustmentActivity {
+        AdjustmentActivity {
+            exposure: settings.exposure_stops.abs() >= EPSILON,
+            brightness: settings.brightness != 0,
+            contrast: (settings.contrast - 1.0).abs() >= EPSILON,
+            saturation: (settings.saturation - 1.0).abs() >= EPSILON,
+        }
+    }
 }

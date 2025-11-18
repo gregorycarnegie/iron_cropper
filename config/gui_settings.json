@@ -11,13 +11,13 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "idcard",
-    "output_width": 332,
-    "output_height": 498,
-    "face_height_pct": 22.0,
+    "preset": "instagram",
+    "output_width": 1080,
+    "output_height": 1080,
+    "face_height_pct": 66.0,
     "positioning_mode": "center",
-    "vertical_offset": -0.0,
-    "horizontal_offset": 0.0,
+    "vertical_offset": -0.13,
+    "horizontal_offset": 0.15,
     "fill_color": {
       "red": 0,
       "green": 0,
@@ -42,12 +42,8 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 7,
-      "rotation_deg": 10.0,
-      "corner_style": {
-        "style": "sharp"
-      }
+      "kind": "chamfered_rectangle",
+      "size_pct": 0.165
     }
   },
   "enhance": {

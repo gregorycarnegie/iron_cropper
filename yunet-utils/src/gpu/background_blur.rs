@@ -60,6 +60,7 @@ impl GpuBackgroundBlur {
             anyhow::bail!("background blur images must have matching dimensions");
         }
 
+        let mask_size = mask_size.clamp(0.3, 1.0);
         let sharp_u32 = pack_rgba_pixels(sharp_rgba.as_raw());
         let blur_u32 = pack_rgba_pixels(blur_rgba.as_raw());
 
@@ -80,9 +81,7 @@ impl GpuBackgroundBlur {
         let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("yunet_background_blur_output"),
             size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let readback = device.create_buffer(&wgpu::BufferDescriptor {

@@ -13,12 +13,11 @@ use crate::{
 const MAX_RADIUS: u32 = 12;
 const MAX_KERNEL_SIZE: usize = (MAX_RADIUS as usize * 2) + 1;
 
-gpu_uniforms!(BlurUniforms, 3, {
+gpu_uniforms!(BlurUniforms, 0, {
     width: u32,
     height: u32,
     radius: u32,
     direction: u32,
-    kernel_size: u32,
 });
 
 #[derive(Clone)]
@@ -57,7 +56,6 @@ impl GpuGaussianBlur {
             return Ok(image.clone());
         }
         let radius = radius.clamp(1, MAX_RADIUS as i32) as u32;
-        let kernel_size = radius * 2 + 1;
         let weights = build_kernel(radius);
 
         let rgba = image.to_rgba8();
@@ -77,16 +75,14 @@ impl GpuGaussianBlur {
             label: Some("yunet_gaussian_blur_input"),
             contents: cast_slice(&data_u32),
             usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
         });
 
         let temp_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("yunet_gaussian_blur_temp"),
             size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
 
@@ -107,8 +103,7 @@ impl GpuGaussianBlur {
             height,
             radius,
             direction: 0,
-            kernel_size,
-            __padding: [0; 3],
+            __padding: [],
         };
         let horizontal_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_gaussian_blur_uniform_horizontal"),

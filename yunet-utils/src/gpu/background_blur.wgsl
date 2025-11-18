@@ -59,8 +59,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     let idx = y * params.width + x;
     let sharp = vec2<f32>(f32(x), f32(y));
     let half = vec2<f32>(f32(params.width) * 0.5, f32(params.height) * 0.5);
-    let mask_size = clamp(params.mask_size, 0.3, 1.0);
-    let radii = half * mask_size;
+    let radii = half * params.mask_size;
     let blend = compute_blend(sharp - half, radii);
 
     let sharp_px = unpack_pixel(sharp_pixels[idx]);
