@@ -23,7 +23,7 @@ Iron Cropper is a Rust workspace that wraps the YuNet face detector with determi
 - **Enhancement pipeline** – Optional post-crop adjustments (auto color, exposure, brightness, contrast, saturation, sharpening, skin smoothing, red-eye removal, and portrait background blur) with both CPU (pure Rust) and GPU (WGSL compute shaders) implementations.
 - **Metadata & export** – Preserve, strip, or customise metadata. Exports support PNG, JPEG (with quality controls), and WebP.
 - **Batch processing** – Both CLI and GUI support multi-image workflows with status tracking, filenames derived from templates, and quality-aware selection.
-- **Clipboard & drag-and-drop import** – Drop/paste a single image to preview instantly, or drop a folder/clipboard path list to enqueue its supported images for batch export.
+- **Clipboard & drag-and-drop import** – Drop/paste a single image to preview instantly, drop a folder/clipboard path list to enqueue its supported images for batch export, or drop CSV/XLSX/Parquet/SQLite tables to seed the mapping workflow.
 
 ## GPU Acceleration
 

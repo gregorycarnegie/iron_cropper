@@ -407,4 +407,19 @@ impl YuNetApp {
         }
         added
     }
+
+    /// Loads a mapping file into the mapping import workflow.
+    pub(crate) fn load_mapping_file(&mut self, path: PathBuf) {
+        let already_loaded = self
+            .mapping
+            .file_path
+            .as_ref()
+            .is_some_and(|current| current == &path);
+        self.mapping.set_file(path.clone());
+        if already_loaded {
+            self.show_success(format!("Mapping file reloaded from {}", path.display()));
+        } else {
+            self.show_success(format!("Loaded mapping file from {}", path.display()));
+        }
+    }
 }

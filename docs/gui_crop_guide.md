@@ -43,6 +43,7 @@ When **Enable enhancements** is ticked, the crop output is routed through the pu
 
 - Use **Load multiple…** to enqueue a directory of images. The batch table tracks progress (Pending/Processing/Completed/Failed) and displays per-image stats.
 - Drag-and-drop a folder from your file explorer (or paste a folder path from the clipboard) to append its supported images to the batch queue without opening the dialog.
+- Drop a CSV/XLSX/Parquet/SQLite mapping file (or paste its path) to auto-populate the Mapping Import panel so you can combine spreadsheet data with batch exports immediately.
 - Start the batch export from the footer once rules are configured. Progress updates stream live in the status bar.
 
 By combining these surfaces you can rapidly iterate on crop framing, dial in enhancement presets, and export the most flattering results without leaving the app. For deeper technical details see `ARCHITECTURE.md` and the inline documentation in `yunet-core/src/cropper.rs`.

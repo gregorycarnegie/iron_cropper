@@ -270,6 +270,10 @@ impl YuNetApp {
                 let images = Self::collect_images_from_directory(path)?;
                 return Ok(self.enqueue_batch_paths(images));
             }
+            if Self::is_supported_mapping_path(path) {
+                self.load_mapping_from_path(path.to_path_buf())?;
+                return Ok(true);
+            }
             if Self::is_supported_image_path(path) {
                 self.start_detection(path.to_path_buf());
                 return Ok(true);
@@ -290,12 +294,15 @@ impl YuNetApp {
 
     fn handle_paste_text(&mut self, text: &str) -> bool {
         let mut file_paths = Vec::new();
+        let mut mapping_paths = Vec::new();
         let mut dir_paths = Vec::new();
         for candidate in Self::paths_from_clipboard_text(text) {
             if candidate.is_dir() {
                 dir_paths.push(candidate);
             } else if Self::is_supported_image_path(&candidate) {
                 file_paths.push(candidate);
+            } else if Self::is_supported_mapping_path(&candidate) {
+                mapping_paths.push(candidate);
             }
         }
 
@@ -316,6 +323,16 @@ impl YuNetApp {
             if self.enqueue_batch_paths(aggregated) {
                 return true;
             }
+        }
+
+        if let Some(mapping) = mapping_paths.into_iter().next() {
+            if let Err(err) = self.load_mapping_from_path(mapping.clone()) {
+                self.show_error(
+                    "Paste failed",
+                    format!("Failed to load mapping {}: {err}", mapping.display()),
+                );
+            }
+            return true;
         }
 
         if file_paths.len() > 1 {
@@ -412,6 +429,38 @@ impl YuNetApp {
         }
 
         Ok(images)
+    }
+
+    fn load_mapping_from_path(&mut self, path: PathBuf) -> anyhow::Result<()> {
+        self.load_mapping_file(path);
+        Ok(())
+    }
+
+    fn is_supported_mapping_path(path: &Path) -> bool {
+        if !path.is_file() {
+            return false;
+        }
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| {
+                matches!(
+                    ext.to_ascii_lowercase().as_str(),
+                    "csv"
+                        | "tsv"
+                        | "txt"
+                        | "dat"
+                        | "xlsx"
+                        | "xls"
+                        | "xlsm"
+                        | "ods"
+                        | "parquet"
+                        | "pq"
+                        | "db"
+                        | "sqlite"
+                        | "sqlite3"
+                )
+            })
+            .unwrap_or(false)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
