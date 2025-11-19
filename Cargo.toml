@@ -1,16 +1,11 @@
 [workspace]
-members = [
-    "yunet-core",
-    "yunet-utils",
-    "yunet-cli",
-    "yunet-gui",
-]
+members = ["yunet-core", "yunet-utils", "yunet-cli", "yunet-gui"]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.8.2"
+version = "0.8.3"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
@@ -23,10 +18,21 @@ egui = "0.33.2"
 egui_extras = "0.33.2"
 eframe = { version = "0.33.2", features = ["wgpu"] }
 env_logger = "0.11.8"
-image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp"] }
+image = { version = "0.25.9", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+] }
 log = "0.4.28"
 ndarray = { version = "0.17.1", features = ["rayon"] }
-parquet = { version = "57.0.0", default-features = false, features = ["arrow", "flate2", "flate2-zlib-rs", "lz4", "snap", "zstd"] }
+parquet = { version = "57.0.0", default-features = false, features = [
+    "arrow",
+    "flate2",
+    "flate2-zlib-rs",
+    "lz4",
+    "snap",
+    "zstd",
+] }
 rayon = "1.11.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }

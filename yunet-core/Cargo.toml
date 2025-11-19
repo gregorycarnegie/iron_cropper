@@ -36,3 +36,7 @@ harness = false
 [[bench]]
 name = "crop_enhance"
 harness = false
+
+[[bench]]
+name = "conv2d_benchmark"
+harness = false

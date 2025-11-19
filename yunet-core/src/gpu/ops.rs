@@ -46,7 +46,7 @@ impl GpuInferenceOps {
         let device = context.device();
         let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
         Ok(Self {
-            conv2d: Conv2dPipeline::new(device)?,
+            conv2d: Conv2dPipeline::new(device, CONV2D_WGSL, 4)?,
             batch_norm: BatchNormPipeline::new(device)?,
             activation: ActivationPipeline::new(device)?,
             max_pool: MaxPoolPipeline::new(device)?,
@@ -86,6 +86,32 @@ impl GpuInferenceOps {
 
     /// Execute a `Conv2D` layer using GPU-resident tensors.
     pub fn conv2d_tensor(
+        &self,
+        input: &GpuTensor,
+        weights: &GpuTensor,
+        bias: &GpuTensor,
+        config: &Conv2dConfig,
+    ) -> Result<GpuTensor> {
+        config.validate(
+            input.shape().elements(),
+            weights.shape().elements(),
+            bias.shape().elements(),
+        )?;
+        self.ensure_same_context(input, "conv2d input")?;
+        self.ensure_same_context(weights, "conv2d weights")?;
+        self.ensure_same_context(bias, "conv2d bias")?;
+        self.conv2d.execute(
+            &self.context,
+            &self.buffer_pool,
+            input,
+            weights,
+            bias,
+            config,
+        )
+    }
+
+    /// Execute a `Conv2D` layer using GPU-resident tensors with vectorized shader.
+    pub fn conv2d_vec4_tensor(
         &self,
         input: &GpuTensor,
         weights: &GpuTensor,
@@ -235,14 +261,18 @@ impl GpuInferenceOps {
 struct Conv2dPipeline {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    pixels_per_thread: u32,
 }
 
 impl Conv2dPipeline {
-    fn new(device: &wgpu::Device) -> Result<Self> {
+    fn new(device: &wgpu::Device, source: &str, pixels_per_thread: u32) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("yunet_conv2d_shader"),
-            source: wgpu::ShaderSource::Wgsl(CONV2D_WGSL.into()),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
         });
+        // Force compilation check (wgpu validates lazily, but we can try to catch it early or rely on pipeline creation)
+        // Actually, create_compute_pipeline will fail if shader is invalid.
+        // Let's wrap the pipeline creation in a match to print error.
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_conv2d_bgl"),
@@ -273,6 +303,7 @@ impl Conv2dPipeline {
         Ok(Self {
             pipeline,
             bind_group_layout,
+            pixels_per_thread,
         })
     }
 
@@ -335,7 +366,9 @@ impl Conv2dPipeline {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                config.output_width.div_ceil(CONV_WORKGROUP_X),
+                config
+                    .output_width
+                    .div_ceil(CONV_WORKGROUP_X * self.pixels_per_thread),
                 config.output_height.div_ceil(CONV_WORKGROUP_Y),
                 config.output_channels,
             );
@@ -996,6 +1029,7 @@ pub struct Conv2dConfig {
     pub groups: u32,
     pub output_width: u32,
     pub output_height: u32,
+    pub activation: Option<ActivationKind>,
 }
 
 impl Conv2dConfig {
@@ -1008,6 +1042,7 @@ impl Conv2dConfig {
         stride: SpatialDims,
         pad: SpatialDims,
         groups: u32,
+        activation: Option<ActivationKind>,
     ) -> Result<Self> {
         let Conv2dChannels {
             input: input_channels,
@@ -1067,6 +1102,7 @@ impl Conv2dConfig {
             groups,
             output_width,
             output_height,
+            activation,
         })
     }
 
@@ -1293,6 +1329,7 @@ struct Conv2dUniforms {
     pad_x: u32,
     pad_y: u32,
     groups: u32,
+    activation_mode: u32,
 }
 
 impl From<&Conv2dConfig> for Conv2dUniforms {
@@ -1311,6 +1348,13 @@ impl From<&Conv2dConfig> for Conv2dUniforms {
             pad_x: value.pad_x,
             pad_y: value.pad_y,
             groups: value.groups,
+            activation_mode: value
+                .activation
+                .map(|k| match k {
+                    ActivationKind::Relu => 1,
+                    ActivationKind::Sigmoid => 2,
+                })
+                .unwrap_or(0),
         }
     }
 }
@@ -1855,14 +1899,12 @@ mod tests {
             SpatialDims::new(2, 2),
             SpatialDims::new(1, 1),
             1,
+            Some(ActivationKind::Relu),
         )
         .expect("conv config");
-        let conv0 = ops
+        let relu0 = ops
             .conv2d_tensor(input, &conv0_weight, &conv0_bias, &conv_cfg)
             .expect("stage0 conv");
-        let relu0 = ops
-            .activation_tensor(&conv0, ActivationKind::Relu)
-            .expect("stage0 relu");
 
         let point_cfg = Conv2dConfig::new(
             1,
@@ -1872,6 +1914,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
             1,
+            None,
         )
         .unwrap();
         let point = ops
@@ -1886,12 +1929,10 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             16,
+            Some(ActivationKind::Relu),
         )
         .unwrap();
-        let depth = ops
-            .conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
-            .expect("stage0 depth");
-        ops.activation_tensor(&depth, ActivationKind::Relu)
+        ops.conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
     }
 
     fn run_backbone_features(
@@ -2010,6 +2051,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
             1,
+            None,
         )?;
         let reduced = ops.conv2d_tensor(input, &point_weight, &point_bias, &point_cfg)?;
 
@@ -2028,6 +2070,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             depth_out,
+            None,
         )?;
         ops.conv2d_tensor(&reduced, &depth_weight, &depth_bias, &depth_cfg)
     }
@@ -2075,6 +2118,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
             1,
+            None,
         )?;
         let point = ops.conv2d_tensor(input, point_weight, point_bias, &point_cfg)?;
 
@@ -2112,9 +2156,9 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(pad, pad),
             depth_out,
+            Some(ActivationKind::Relu),
         )?;
-        let depth = ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)?;
-        ops.activation_tensor(&depth, ActivationKind::Relu)
+        ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)
     }
 
     fn run_stage_block(
@@ -2193,6 +2237,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             2,
+            None,
         )
         .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
@@ -2312,6 +2357,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             2,
+            None,
         )
         .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
@@ -2840,5 +2886,191 @@ mod tests {
         for (node, tensor) in branch_checks {
             assert_tensor_matches(&model_path, node, tensor, &input_data);
         }
+    }
+
+    #[test]
+    fn conv2d_vec4_matches_standard() {
+        println!("Starting conv2d_vec4_matches_standard test");
+        let Some(ops) = gpu_ops() else {
+            eprintln!("Skipping conv2d_vec4 test (no adapter)");
+            return;
+        };
+
+        let batch = 1;
+        let input_channels = 16;
+        let output_channels = 32;
+        let width = 64;
+        let height = 64;
+        let kernel = 3;
+        let stride = 1;
+        let pad = 1;
+
+        let input_len = (batch * input_channels * width * height) as usize;
+        let input: Vec<f32> = (0..input_len).map(|i| (i % 100) as f32 / 100.0).collect();
+
+        let weight_len = (output_channels * input_channels * kernel * kernel) as usize;
+        let weights: Vec<f32> = (0..weight_len).map(|i| (i % 100) as f32 / 100.0).collect();
+
+        let bias_len = output_channels as usize;
+        let bias: Vec<f32> = (0..bias_len).map(|i| (i % 100) as f32 / 100.0).collect();
+
+        let config = Conv2dConfig::new(
+            batch,
+            Conv2dChannels::new(input_channels, output_channels),
+            SpatialDims::new(width, height),
+            SpatialDims::new(kernel, kernel),
+            SpatialDims::new(stride, stride),
+            SpatialDims::new(pad, pad),
+            1,
+            Some(ActivationKind::Relu),
+        )
+        .unwrap();
+
+        let input_gpu = ops
+            .upload_tensor(config.input_shape_dims(), &input, Some("input"))
+            .unwrap();
+        let weight_gpu = ops
+            .upload_tensor(config.weight_shape_dims(), &weights, Some("weights"))
+            .unwrap();
+        let bias_gpu = ops
+            .upload_tensor(config.bias_shape_dims(), &bias, Some("bias"))
+            .unwrap();
+
+        let standard_out = ops
+            .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+            .unwrap();
+        let vec4_out = ops
+            .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+            .unwrap();
+
+        let standard_vec = standard_out.to_vec().unwrap();
+        let vec4_vec = vec4_out.to_vec().unwrap();
+
+        assert_eq!(standard_vec.len(), vec4_vec.len(), "Output length mismatch");
+
+        let mut max_diff = 0.0f32;
+        let mut mismatch_count = 0;
+        for (i, (a, b)) in standard_vec.iter().zip(vec4_vec.iter()).enumerate() {
+            let diff = (a - b).abs();
+            if diff > max_diff {
+                max_diff = diff;
+            }
+            if diff > 1e-4 {
+                if mismatch_count < 10 {
+                    eprintln!(
+                        "Mismatch at index {}: standard={}, vec4={}, diff={}",
+                        i, a, b, diff
+                    );
+                }
+                mismatch_count += 1;
+            }
+        }
+
+        eprintln!("Total mismatches: {}", mismatch_count);
+        eprintln!("Max diff between standard and vec4: {}", max_diff);
+        assert!(
+            max_diff < 1e-4,
+            "Vectorized implementation output mismatch (max diff {})",
+            max_diff
+        );
+    }
+
+    #[test]
+    #[ignore] // Run with: cargo test -p yunet-core benchmark_conv2d_performance -- --ignored --nocapture
+    fn benchmark_conv2d_performance() {
+        use std::time::Instant;
+
+        let Some(ops) = gpu_ops() else {
+            eprintln!("Skipping benchmark (no GPU adapter)");
+            return;
+        };
+
+        let configs = vec![
+            ("stage0_conv", 1, 3, 16, 640, 640, 3, 2, 1, 1),
+            ("stage1_depth", 1, 32, 32, 160, 160, 3, 1, 1, 32),
+            ("stage2_point", 1, 32, 64, 160, 160, 1, 1, 0, 1),
+            ("head_depth", 1, 64, 64, 40, 40, 3, 1, 1, 64),
+        ];
+
+        println!("\n========== Conv2D Performance: Standard vs Vec4 ==========");
+
+        for (name, batch, in_ch, out_ch, width, height, kernel, stride, pad, groups) in configs {
+            let input_len = (batch * in_ch * width * height) as usize;
+            let input: Vec<f32> = (0..input_len).map(|i| (i % 100) as f32 / 100.0).collect();
+
+            let weight_len = if groups == 1 {
+                (out_ch * in_ch * kernel * kernel) as usize
+            } else {
+                (out_ch * kernel * kernel) as usize
+            };
+            let weights: Vec<f32> = (0..weight_len).map(|i| (i % 100) as f32 / 100.0).collect();
+            let bias: Vec<f32> = (0..out_ch).map(|i| (i % 100) as f32 / 100.0).collect();
+
+            let config = Conv2dConfig::new(
+                batch,
+                Conv2dChannels::new(in_ch, out_ch),
+                SpatialDims::new(width, height),
+                SpatialDims::new(kernel, kernel),
+                SpatialDims::new(stride, stride),
+                SpatialDims::new(pad, pad),
+                groups,
+                Some(ActivationKind::Relu),
+            )
+            .unwrap();
+
+            let input_gpu = ops
+                .upload_tensor(config.input_shape_dims(), &input, None)
+                .unwrap();
+            let weight_gpu = ops
+                .upload_tensor(config.weight_shape_dims(), &weights, None)
+                .unwrap();
+            let bias_gpu = ops
+                .upload_tensor(config.bias_shape_dims(), &bias, None)
+                .unwrap();
+
+            // Warmup
+            for _ in 0..5 {
+                let _ = ops
+                    .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+                    .unwrap();
+            }
+
+            // Benchmark standard
+            let iterations = 50;
+            let start = Instant::now();
+            for _ in 0..iterations {
+                let output = ops
+                    .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+                    .unwrap();
+                let _ = output.to_vec().unwrap();
+            }
+            let standard_avg = start.elapsed().as_micros() as f64 / iterations as f64;
+
+            // Warmup vec4
+            for _ in 0..5 {
+                let _ = ops
+                    .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+                    .unwrap();
+            }
+
+            // Benchmark vec4
+            let start = Instant::now();
+            for _ in 0..iterations {
+                let output = ops
+                    .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
+                    .unwrap();
+                let _ = output.to_vec().unwrap();
+            }
+            let vec4_avg = start.elapsed().as_micros() as f64 / iterations as f64;
+
+            let speedup_pct = (standard_avg / vec4_avg - 1.0) * 100.0;
+
+            println!(
+                "{:<15} Standard: {:>7.1}μs | Vec4: {:>7.1}μs | Speedup: {:>+5.1}%",
+                name, standard_avg, vec4_avg, speedup_pct
+            );
+        }
+
+        println!("==========================================================\n");
     }
 }
