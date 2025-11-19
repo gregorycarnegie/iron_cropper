@@ -38,7 +38,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let group_idx = oc / group_out;
     let input_channel_base = group_idx * group_in;
 
-    let weights_per_out = group_in * params.kernel_height * params.kernel_width;
+    let kernel_hw = params.kernel_height * params.kernel_width;
+    let weights_per_out = group_in * kernel_hw;
+    let input_plane = params.input_width * params.input_height;
+    let stride = vec2<i32>(i32(params.stride_x), i32(params.stride_y));
+    let pad = vec2<i32>(i32(params.pad_x), i32(params.pad_y));
+    let dims = vec2<i32>(i32(params.input_width), i32(params.input_height));
+    let start_xy = vec2<i32>(i32(ox), i32(oy)) * stride - pad;
 
     var acc = bias[oc];
 
@@ -48,28 +54,31 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             break;
         }
         let channel = input_channel_base + local_ic;
+        let channel_base = channel * input_plane;
+        let weight_channel_base = oc * weights_per_out + local_ic * kernel_hw;
 
         var ky: u32 = 0u;
         loop {
             if (ky >= params.kernel_height) {
                 break;
             }
+            let iy = start_xy.y + i32(ky);
+            if (iy < 0 || iy >= dims.y) {
+                ky = ky + 1u;
+                continue;
+            }
+            let input_row_base = channel_base + u32(iy) * params.input_width;
+            let weight_row_base = weight_channel_base + ky * params.kernel_width;
+
             var kx: u32 = 0u;
             loop {
                 if (kx >= params.kernel_width) {
                     break;
                 }
-
-                let ix = i32(ox * params.stride_x + kx) - i32(params.pad_x);
-                let iy = i32(oy * params.stride_y + ky) - i32(params.pad_y);
-
-                if (ix >= 0 && iy >= 0 && ix < i32(params.input_width) && iy < i32(params.input_height)) {
-                    let input_index =
-                        (channel * params.input_height + u32(iy)) * params.input_width + u32(ix);
-                    let weight_index = oc * weights_per_out
-                        + local_ic * params.kernel_height * params.kernel_width
-                        + ky * params.kernel_width
-                        + kx;
+                let ix = start_xy.x + i32(kx);
+                if (ix >= 0 && ix < dims.x) {
+                    let input_index = input_row_base + u32(ix);
+                    let weight_index = weight_row_base + kx;
                     acc = fma(input_tensor[input_index], weights[weight_index], acc);
                 }
 

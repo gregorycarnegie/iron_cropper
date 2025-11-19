@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "instagram",
-    "output_width": 1080,
-    "output_height": 1080,
+    "preset": "idcard",
+    "output_width": 332,
+    "output_height": 498,
     "face_height_pct": 66.0,
     "positioning_mode": "center",
     "vertical_offset": -0.13,
@@ -42,8 +42,8 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "chamfered_rectangle",
-      "size_pct": 0.165
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.12
     }
   },
   "enhance": {
