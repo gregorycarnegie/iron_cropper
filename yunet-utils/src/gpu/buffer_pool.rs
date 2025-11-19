@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use yunet_utils::gpu::GpuContext;
+use crate::gpu::GpuContext;
 
 struct BufferEntry {
     buffer: wgpu::Buffer,

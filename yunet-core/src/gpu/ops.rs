@@ -5,8 +5,8 @@ use bytemuck::{Pod, Zeroable, bytes_of};
 use wgpu::util::DeviceExt;
 use yunet_utils::gpu::GpuContext;
 
-use super::memory::GpuBufferPool;
 use super::tensor::GpuTensor;
+use yunet_utils::gpu::GpuBufferPool;
 
 const CONV2D_WGSL: &str = include_str!("conv2d.wgsl");
 const BATCH_NORM_WGSL: &str = include_str!("batch_norm.wgsl");

@@ -6,7 +6,7 @@ use bytemuck::cast_slice;
 use wgpu::util::DeviceExt;
 use yunet_utils::gpu::GpuContext;
 
-use super::memory::GpuBufferPool;
+use yunet_utils::gpu::GpuBufferPool;
 
 /// Describes the dimensionality of a GPU tensor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,9 +322,9 @@ fn read_buffer(
 
 #[cfg(test)]
 mod tests {
-    use super::super::memory::GpuBufferPool;
     use super::*;
     use std::sync::Arc;
+    use yunet_utils::gpu::GpuBufferPool;
     use yunet_utils::gpu::{GpuAvailability, GpuContextOptions};
 
     fn test_context() -> Option<Arc<GpuContext>> {

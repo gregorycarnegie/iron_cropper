@@ -4,7 +4,6 @@
 //! batch-norm, activations) as WGSL compute shaders. These building blocks
 //! will power the end-to-end YuNet port in subsequent increments.
 
-mod memory;
 pub mod ops;
 
 pub use ops::{ActivationKind, BatchNormConfig, Conv2dConfig, GpuInferenceOps};

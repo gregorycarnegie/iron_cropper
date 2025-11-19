@@ -39,6 +39,8 @@ pub mod hist_equalize;
 pub use hist_equalize::GpuHistogramEqualizer;
 pub mod crop_batch;
 pub use crop_batch::{BatchCropRequest, GpuBatchCropper};
+pub mod buffer_pool;
+pub use buffer_pool::GpuBufferPool;
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
