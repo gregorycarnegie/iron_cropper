@@ -44,6 +44,13 @@ cargo build --release -p yunet-cli
 2. **Model Execution** (model.rs): YuNetModel wraps tract-onnx SimplePlan, constrains input dimensions at load time, runs inference returning raw output tensor
 3. **Postprocessing** (postprocess.rs): Parses model output into Detection structs (bbox, landmarks, score), applies score thresholding and Non-Maximum Suppression (NMS), scales coordinates back to original image dimensions
 
+### GPU Acceleration (yunet-utils/src/gpu)
+
+- **Context Management**: `GpuContext` wraps wgpu adapter/device/queue.
+- **Buffer Pooling**: `GpuBufferPool` (in `yunet-utils`) reuses buffers to minimize allocation overhead.
+- **Compute Shaders**: WGSL shaders for preprocessing, enhancement, and custom YuNet inference ops (Conv2D, BatchNorm, etc.).
+- **Inference**: Custom WGPU implementation of YuNet available as an alternative to tract-onnx (Phase 13.3 Option C).
+
 ### Configuration System
 
 - `yunet-utils/src/config.rs` defines AppSettings with nested InputSettings and DetectionSettings structs

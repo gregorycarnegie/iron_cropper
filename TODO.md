@@ -412,14 +412,14 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Add logging to confirm `into_optimized()` succeeds (not falling back to `into_decluttered()`)
     - [x] Document decluttered fallback performance penalty (~2x slower)
     - [x] Investigate tract optimization failures and workarounds (root cause: upstream `face_detection_yunet_2023mar.onnx` encodes conflicting `Conv_0` shapes; workaround is to use the sanitized `_640` export with consistent spatial dims)
-  - [ ] Explore batch inference
+  <!-- - [ ] Explore batch inference
     - [ ] Implement multi-image batching (reshape to `[B, 3, H, W]`)
     - [ ] Add batch size parameter to model loading
-    - [ ] Benchmark throughput improvement for batch operations
-  - [ ] Investigate alternative ONNX runtimes
+    - [ ] Benchmark throughput improvement for batch operations -->
+  - [x] Investigate alternative ONNX runtimes
     - [x] Evaluate `ort` (ONNX Runtime bindings) for better optimization (see `docs/ONNX_RUNTIME_OPTIONS.md`)
     - [x] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
-    - [ ] Compare inference latency and memory usage
+    - [x] Compare inference latency and memory usage
 
 - [ ] **Memory allocation optimizations**
   - [ ] Reuse preprocessing buffers across batch operations
@@ -501,7 +501,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - Note: Further optimization to keep textures on GPU between operations would be Phase 13.4+ work
 
 - [x] **Phase 13.3: GPU-accelerated ONNX inference** (~300ms savings)
-  - [ ] **Option A: DirectML via ort crate** (Recommended for Windows, *deferred while Option C is active*)
+  <!-- - [ ] **Option A: DirectML via ort crate** (Recommended for Windows, *deferred while Option C is active*)
     - [ ] Add `ort = { version = "2.0", features = ["load-dynamic"] }` dependency
     - [ ] Add `ort = { version = "2.0", features = ["directml"] }` for Windows builds
     - [ ] Create `yunet-core/src/ort_model.rs` as alternative to tract
@@ -511,7 +511,7 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [ ] **Target: 444ms → 100-150ms (3-4x speedup on GPU)**
   - [ ] **Option B: Metal Performance Shaders** (macOS, *deferred while Option C is active*)
     - [ ] Use ort with CoreML execution provider
-    - [ ] Benchmark on Apple Silicon vs Intel Macs
+    - [ ] Benchmark on Apple Silicon vs Intel Macs -->
   - [x] **Option C: Custom WGPU YuNet implementation** (Future work)
     - [x] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
       - `yunet-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `yunet-core/src/gpu/*.wgsl`
@@ -531,7 +531,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] **Target: 3-10x speedup for images with multiple faces**
 
 - [ ] **GPU memory management**
-  - [x] Implement texture/buffer pooling to avoid repeated allocations (`GpuBufferPool` in `yunet-core/src/gpu`)
+  - [x] Implement texture/buffer pooling to avoid repeated allocations (`GpuBufferPool` in `yunet-utils/src/gpu`)
   - [ ] Add memory usage monitoring and limits
   - [ ] Handle out-of-memory scenarios gracefully
   - [ ] Optimize CPU→GPU transfer patterns (use staging buffers)
@@ -561,8 +561,8 @@ Leverage GPU compute for massive performance gains in image processing operation
 
 - [ ] **CLI/GUI integration**
   - [x] Add `--gpu/--no-gpu` CLI flag with auto-detection default
-  - [ ] Add GPU status indicator in GUI (available/in-use/fallback)
-  - [o] Display GPU model/vendor in GUI settings panel (deferred; already in status bat)
+  - [x] Add GPU status indicator in GUI (available/in-use/fallback)
+  - [x] Display GPU model/vendor in GUI settings panel (deferred; already in status bar)
   - [ ] Show GPU memory usage in GUI (optional debug mode)
   - [ ] Add telemetry for GPU operation timing vs CPU baseline
 

@@ -132,20 +132,6 @@ struct TensorInit {
 
 ## 6) Static vs. Dynamic Shapes
 
-- **Static** (recommended): lock input shape (YuNet model file suggests 640‑side). Advantages:
-  - Pre‑allocate all intermediate `GpuTensor`s; reuse across runs.
-  - Pre‑build one command buffer per pass; minimal per‑run CPU work.
-  - Easier fusion and kernel specialization.
-- **Dynamic** (supported path):
-  - Lightweight **shape inference** per op at runtime; allocate outputs on demand (with a shape→buffer cache).
-  - Recompute dispatch sizes from uniforms; reuse pipelines (no shader recompile).
-  - Watch allocator churn; consider pooling to avoid fragmentation.
-
----
-
-## 7) Performance Notes & Roadmap
-
-- **Tiling + shared memory** in Conv2D for higher arithmetic intensity.
 - **Vectorization** (4× loads/stores) and loop unrolling for inner kernel loops.
 - **Fusion opportunities**: Conv2D + Bias + BatchNorm + Activation in a single kernel reduces memory traffic.
 - **Precision**: optional FP16 path (weights & activations) with accumulate in f32 if needed for stability.
