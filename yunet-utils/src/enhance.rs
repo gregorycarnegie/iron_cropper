@@ -410,7 +410,7 @@ fn apply_red_eye_removal(img: &DynamicImage, threshold: f32) -> DynamicImage {
             let b = px[2] as f32;
 
             // Calculate red dominance: red / average(green, blue)
-            let avg_gb = (g + b) / 2.0 + EPSILON;
+            let avg_gb = (g + b).mul_add(0.5, EPSILON);
             let red_ratio = r / avg_gb;
 
             // If red is significantly dominant (typical red-eye has ratio > 1.5)
