@@ -1012,6 +1012,18 @@ impl From<(u32, u32)> for SpatialDims {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Conv2dOptions {
+    pub groups: u32,
+    pub activation: Option<ActivationKind>,
+}
+
+impl Conv2dOptions {
+    pub const fn new(groups: u32, activation: Option<ActivationKind>) -> Self {
+        Self { groups, activation }
+    }
+}
+
 /// Geometry for a convolution layer.
 #[derive(Debug, Clone)]
 pub struct Conv2dConfig {
@@ -1041,9 +1053,12 @@ impl Conv2dConfig {
         kernel: SpatialDims,
         stride: SpatialDims,
         pad: SpatialDims,
-        groups: u32,
-        activation: Option<ActivationKind>,
+        options: Conv2dOptions,
     ) -> Result<Self> {
+        let Conv2dOptions {
+            groups,
+            activation,
+        } = options;
         let Conv2dChannels {
             input: input_channels,
             output: output_channels,
@@ -1898,8 +1913,7 @@ mod tests {
             SpatialDims::new(3, 3),
             SpatialDims::new(2, 2),
             SpatialDims::new(1, 1),
-            1,
-            Some(ActivationKind::Relu),
+            Conv2dOptions::new(1, Some(ActivationKind::Relu)),
         )
         .expect("conv config");
         let relu0 = ops
@@ -1913,8 +1927,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
-            1,
-            None,
+            Conv2dOptions::new(1, None),
         )
         .unwrap();
         let point = ops
@@ -1928,8 +1941,7 @@ mod tests {
             SpatialDims::new(3, 3),
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
-            16,
-            Some(ActivationKind::Relu),
+            Conv2dOptions::new(16, Some(ActivationKind::Relu)),
         )
         .unwrap();
         ops.conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
@@ -2050,8 +2062,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
-            1,
-            None,
+            Conv2dOptions::new(1, None),
         )?;
         let reduced = ops.conv2d_tensor(input, &point_weight, &point_bias, &point_cfg)?;
 
@@ -2069,8 +2080,7 @@ mod tests {
             SpatialDims::new(3, 3),
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
-            depth_out,
-            None,
+            Conv2dOptions::new(depth_out, None),
         )?;
         ops.conv2d_tensor(&reduced, &depth_weight, &depth_bias, &depth_cfg)
     }
@@ -2117,8 +2127,7 @@ mod tests {
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
             SpatialDims::new(0, 0),
-            1,
-            None,
+            Conv2dOptions::new(1, None),
         )?;
         let point = ops.conv2d_tensor(input, point_weight, point_bias, &point_cfg)?;
 
@@ -2155,8 +2164,7 @@ mod tests {
             SpatialDims::new(depth_kernel_w, depth_kernel_h),
             SpatialDims::new(1, 1),
             SpatialDims::new(pad, pad),
-            depth_out,
-            Some(ActivationKind::Relu),
+            Conv2dOptions::new(depth_out, Some(ActivationKind::Relu)),
         )?;
         ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)
     }
@@ -2236,8 +2244,7 @@ mod tests {
             SpatialDims::new(3, 3),
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
-            2,
-            None,
+            Conv2dOptions::new(2, None),
         )
         .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
@@ -2356,8 +2363,7 @@ mod tests {
             SpatialDims::new(3, 3),
             SpatialDims::new(1, 1),
             SpatialDims::new(1, 1),
-            2,
-            None,
+            Conv2dOptions::new(2, None),
         )
         .unwrap();
         let input: Vec<f32> = (0..(4 * 4 * 4))
@@ -2921,8 +2927,7 @@ mod tests {
             SpatialDims::new(kernel, kernel),
             SpatialDims::new(stride, stride),
             SpatialDims::new(pad, pad),
-            1,
-            Some(ActivationKind::Relu),
+            Conv2dOptions::new(1, Some(ActivationKind::Relu)),
         )
         .unwrap();
 
@@ -3013,8 +3018,7 @@ mod tests {
                 SpatialDims::new(kernel, kernel),
                 SpatialDims::new(stride, stride),
                 SpatialDims::new(pad, pad),
-                groups,
-                Some(ActivationKind::Relu),
+                Conv2dOptions::new(groups, Some(ActivationKind::Relu)),
             )
             .unwrap();
 
