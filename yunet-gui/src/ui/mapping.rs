@@ -12,8 +12,23 @@ use yunet_utils::mapping::{MappingFormat, MappingPreview};
 use crate::{BatchFile, BatchFileStatus, YuNetApp, theme};
 
 impl YuNetApp {
-    /// Renders the mapping import panel UI.
-    pub fn show_mapping_panel(&mut self, ui: &mut Ui, palette: theme::Palette) {
+    /// Renders the mapping import window.
+    pub fn show_mapping_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.show_mapping_window;
+        egui::Window::new("Mapping Import")
+            .open(&mut open)
+            .resizable(true)
+            .default_width(600.0)
+            .default_height(500.0)
+            .show(ctx, |ui| {
+                let palette = theme::palette();
+                self.show_mapping_content(ui, palette);
+            });
+        self.show_mapping_window = open;
+    }
+
+    /// Renders the mapping import panel content.
+    pub fn show_mapping_content(&mut self, ui: &mut Ui, palette: theme::Palette) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 if ui.button("Select mapping file…").clicked()

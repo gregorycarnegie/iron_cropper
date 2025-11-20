@@ -221,6 +221,8 @@ impl YuNetApp {
             active_bbox_drag: None,
             clipboard_temp_images: Vec::new(),
             show_settings_window: false,
+            show_batch_window: false,
+            show_mapping_window: false,
         }
     }
 
@@ -272,6 +274,12 @@ impl App for YuNetApp {
 
         if self.show_settings_window {
             ui::settings_window::show_settings_window(self, ctx);
+        }
+        if self.show_batch_window {
+            ui::batch_window::show_batch_window(self, ctx);
+        }
+        if self.show_mapping_window {
+            self.show_mapping_window(ctx);
         }
 
         self.handle_shortcuts(ctx);

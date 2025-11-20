@@ -186,6 +186,10 @@ pub struct YuNetApp {
     pub clipboard_temp_images: Vec<TempPath>,
     /// Whether the settings window is open.
     pub show_settings_window: bool,
+    /// Whether the batch queue window is open.
+    pub show_batch_window: bool,
+    /// Whether the mapping import window is open.
+    pub show_mapping_window: bool,
 }
 
 /// Indicates whether a bounding box originated from the detector or the user.
