@@ -46,9 +46,6 @@ pub fn show_crop_section(
         *settings_changed = true;
     }
 
-    // Face height percentage
-    show_face_height_control(app, ui, settings_changed);
-
     // Positioning mode
     show_positioning_controls(app, ui, settings_changed);
 
@@ -325,22 +322,6 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     }
 
     changed
-}
-
-/// Shows the face height percentage slider.
-fn show_face_height_control(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bool) {
-    ui.add_space(6.0);
-    let mut face_pct = app.settings.crop.face_height_pct;
-    if ui
-        .add(Slider::new(&mut face_pct, 10.0..=100.0).text("Face height %"))
-        .on_hover_text(
-            "Controls how tall the detected face should be relative to the output height.",
-        )
-        .changed()
-    {
-        app.settings.crop.face_height_pct = face_pct;
-        *settings_changed = true;
-    }
 }
 
 /// Shows the positioning mode selector and custom offset controls.
