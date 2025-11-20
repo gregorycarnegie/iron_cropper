@@ -5,13 +5,13 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.8.3"
+version = "0.8.4"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
 anyhow = "1.0.100"
 calamine = "0.31.0"
-clap = { version = "4.5.52", features = ["derive"] }
+clap = { version = "4.5.53", features = ["derive"] }
 criterion = "0.7.0"
 csv = "1.4.0"
 egui = "0.33.2"

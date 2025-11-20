@@ -220,6 +220,7 @@ impl YuNetApp {
             manual_box_draft: None,
             active_bbox_drag: None,
             clipboard_temp_images: Vec::new(),
+            show_settings_window: false,
         }
     }
 
@@ -268,6 +269,10 @@ impl App for YuNetApp {
         self.show_navigation_panel(ctx);
         ui::config::panel::show_configuration_panel(self, ctx);
         self.show_preview(ctx);
+
+        if self.show_settings_window {
+            ui::settings_window::show_settings_window(self, ctx);
+        }
 
         self.handle_shortcuts(ctx);
 

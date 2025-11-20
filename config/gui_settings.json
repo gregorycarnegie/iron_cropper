@@ -14,7 +14,7 @@
     "preset": "idcard",
     "output_width": 332,
     "output_height": 498,
-    "face_height_pct": 66.0,
+    "face_height_pct": 70.0,
     "positioning_mode": "center",
     "vertical_offset": -0.13,
     "horizontal_offset": 0.15,

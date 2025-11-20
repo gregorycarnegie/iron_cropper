@@ -184,6 +184,8 @@ pub struct YuNetApp {
     pub active_bbox_drag: Option<ActiveBoxDrag>,
     /// Temporary clipboard/dropped images persisted to disk.
     pub clipboard_temp_images: Vec<TempPath>,
+    /// Whether the settings window is open.
+    pub show_settings_window: bool,
 }
 
 /// Indicates whether a bounding box originated from the detector or the user.
