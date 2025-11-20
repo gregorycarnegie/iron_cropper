@@ -6,15 +6,27 @@ use egui::{Context, Window};
 /// Shows the batch queue window.
 pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
     let mut open = app.show_batch_window;
-    Window::new("Batch Queue")
-        .open(&mut open)
-        .resizable(true)
-        .default_width(500.0)
-        .default_height(400.0)
-        .show(ctx, |ui| {
-            let palette = theme::palette();
-            show_batch_content(app, ui, palette);
-        });
+    ctx.show_viewport_immediate(
+        egui::ViewportId::from_hash_of("batch_viewport"),
+        egui::ViewportBuilder::default()
+            .with_title("Batch Queue")
+            .with_inner_size([500.0, 400.0]),
+        |ctx, class| {
+            assert!(
+                class == egui::ViewportClass::Immediate,
+                "This egui backend doesn't support multiple viewports"
+            );
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    open = false;
+                }
+
+                let palette = theme::palette();
+                show_batch_content(app, ui, palette);
+            });
+        },
+    );
     app.show_batch_window = open;
 }
 

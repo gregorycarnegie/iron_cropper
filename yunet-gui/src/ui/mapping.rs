@@ -15,15 +15,27 @@ impl YuNetApp {
     /// Renders the mapping import window.
     pub fn show_mapping_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_mapping_window;
-        egui::Window::new("Mapping Import")
-            .open(&mut open)
-            .resizable(true)
-            .default_width(600.0)
-            .default_height(500.0)
-            .show(ctx, |ui| {
-                let palette = theme::palette();
-                self.show_mapping_content(ui, palette);
-            });
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("mapping_viewport"),
+            egui::ViewportBuilder::default()
+                .with_title("Mapping Import")
+                .with_inner_size([600.0, 500.0]),
+            |ctx, class| {
+                assert!(
+                    class == egui::ViewportClass::Immediate,
+                    "This egui backend doesn't support multiple viewports"
+                );
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        open = false;
+                    }
+
+                    let palette = theme::palette();
+                    self.show_mapping_content(ui, palette);
+                });
+            },
+        );
         self.show_mapping_window = open;
     }
 

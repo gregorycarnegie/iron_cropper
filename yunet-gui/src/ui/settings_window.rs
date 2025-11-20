@@ -1,47 +1,60 @@
 use crate::YuNetApp;
 use crate::theme;
-use egui::{ComboBox, Context, DragValue, RichText, ScrollArea, Slider, Ui, Window};
+use egui::{ComboBox, Context, DragValue, RichText, ScrollArea, Slider, Ui};
 
 pub fn show_settings_window(app: &mut YuNetApp, ctx: &Context) {
     let mut open = app.show_settings_window;
-    Window::new("Settings")
-        .open(&mut open)
-        .resizable(true)
-        .default_width(400.0)
-        .show(ctx, |ui| {
-            let palette = theme::palette();
-            ScrollArea::vertical().show(ui, |ui| {
-                let mut engine_changed = false;
-                let mut requires_detector_reset = false;
-                let mut requires_cache_refresh = false;
+    ctx.show_viewport_immediate(
+        egui::ViewportId::from_hash_of("settings_viewport"),
+        egui::ViewportBuilder::default()
+            .with_title("Settings")
+            .with_inner_size([400.0, 600.0]),
+        |ctx, class| {
+            assert!(
+                class == egui::ViewportClass::Immediate,
+                "This egui backend doesn't support multiple viewports"
+            );
 
-                ui.heading("Detection Engine");
-                show_model_settings(
-                    app,
-                    ui,
-                    &mut engine_changed,
-                    &mut requires_detector_reset,
-                    &mut requires_cache_refresh,
-                );
-
-                ui.separator();
-                show_gpu_section(
-                    app,
-                    ui,
-                    palette,
-                    &mut engine_changed,
-                    &mut requires_detector_reset,
-                );
-
-                ui.separator();
-                show_diagnostics_section(app, ui, &mut engine_changed);
-
-                if engine_changed {
-                    app.apply_settings_changes(requires_detector_reset, requires_cache_refresh);
-                    app.persist_settings_with_feedback();
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    open = false;
                 }
+
+                let palette = theme::palette();
+                ScrollArea::vertical().show(ui, |ui| {
+                    let mut engine_changed = false;
+                    let mut requires_detector_reset = false;
+                    let mut requires_cache_refresh = false;
+
+                    ui.heading("Detection Engine");
+                    show_model_settings(
+                        app,
+                        ui,
+                        &mut engine_changed,
+                        &mut requires_detector_reset,
+                        &mut requires_cache_refresh,
+                    );
+
+                    ui.separator();
+                    show_gpu_section(
+                        app,
+                        ui,
+                        palette,
+                        &mut engine_changed,
+                        &mut requires_detector_reset,
+                    );
+
+                    ui.separator();
+                    show_diagnostics_section(app, ui, &mut engine_changed);
+
+                    if engine_changed {
+                        app.apply_settings_changes(requires_detector_reset, requires_cache_refresh);
+                        app.persist_settings_with_feedback();
+                    }
+                });
             });
-        });
+        },
+    );
     app.show_settings_window = open;
 }
 
