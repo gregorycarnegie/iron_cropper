@@ -19,9 +19,9 @@
     "vertical_offset": -0.13,
     "horizontal_offset": 0.15,
     "fill_color": {
-      "red": 0,
-      "green": 0,
-      "blue": 0,
+      "red": 178,
+      "green": 155,
+      "blue": 145,
       "alpha": 255
     },
     "output_format": "png",

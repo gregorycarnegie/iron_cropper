@@ -52,6 +52,10 @@ impl YuNetApp {
                     // Right side: status badge
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         self.draw_status_badge(ui, palette);
+                        ui.add_space(8.0);
+                        if ui.button("⚙").clicked() {
+                            self.show_settings_window = true;
+                        }
                     });
                 });
             });

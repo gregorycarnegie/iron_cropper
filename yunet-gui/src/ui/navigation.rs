@@ -36,6 +36,15 @@ impl YuNetApp {
                                 self.open_batch_dialog();
                             }
                         });
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Batch Queue").clicked() {
+                                self.show_batch_window = true;
+                            }
+                            if ui.button("Mapping Import").clicked() {
+                                self.show_mapping_window = true;
+                            }
+                        });
 
                         ui.horizontal(|ui| {
                             let export_enabled = self.can_export_selected();

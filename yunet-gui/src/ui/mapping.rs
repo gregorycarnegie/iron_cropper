@@ -41,7 +41,7 @@ impl YuNetApp {
 
     /// Renders the mapping import panel content.
     pub fn show_mapping_content(&mut self, ui: &mut Ui, palette: theme::Palette) {
-        ui.vertical(|ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Select mapping file…").clicked()
                     && let Some(path) = FileDialog::new()

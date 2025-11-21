@@ -1,6 +1,6 @@
 //! Main configuration panel orchestration.
 
-use egui::{Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Stroke, Ui};
+use egui::{Context as EguiContext, Frame, Margin, RichText, ScrollArea, SidePanel, Stroke};
 
 use crate::YuNetApp;
 use crate::theme;
@@ -70,16 +70,6 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                         app.persist_settings_with_feedback();
                     }
 
-                    ui.separator();
-                    if ui.button("Batch Queue").clicked() {
-                        app.show_batch_window = true;
-                    }
-
-                    ui.separator();
-                    if ui.button("⚙ Settings").clicked() {
-                        app.show_settings_window = true;
-                    }
-
                     ui.add_space(8.0);
                     ui.small(
                         RichText::new(format!("Settings file: {}", app.settings_path.display()))
@@ -95,11 +85,6 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                     }
                     if enhance_changed_now && !enhancement_changed {
                         app.clear_crop_preview_cache();
-                    }
-
-                    ui.separator();
-                    if ui.button("Mapping Import").clicked() {
-                        app.show_mapping_window = true;
                     }
                 });
         });

@@ -1,7 +1,7 @@
 //! Batch queue window.
 
 use crate::{YuNetApp, theme};
-use egui::{Context, Window};
+use egui::Context;
 
 /// Shows the batch queue window.
 pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
