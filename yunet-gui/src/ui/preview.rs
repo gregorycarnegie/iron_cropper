@@ -21,19 +21,8 @@ impl YuNetApp {
                 let total_height = ui.available_height();
                 let spacing = 12.0;
                 let min_preview = 220.0;
-                let min_detections = 180.0;
-                let mut preview_height = (total_height * 0.75).max(min_preview);
+                let mut preview_height = (total_height * 0.85).max(min_preview);
                 preview_height = preview_height.min(total_height.max(0.0));
-                let mut detection_height = (total_height - preview_height - spacing).max(0.0);
-                if detection_height < min_detections && preview_height > min_preview {
-                    let available_shift = (preview_height - min_preview).max(0.0);
-                    let needed = (min_detections - detection_height).max(0.0);
-                    let shift = available_shift.min(needed);
-                    if shift > 0.0 {
-                        preview_height -= shift;
-                        detection_height += shift;
-                    }
-                }
                 let width = ui.available_width();
 
                 ui.allocate_ui_with_layout(
@@ -53,11 +42,25 @@ impl YuNetApp {
                 );
 
                 ui.add_space(spacing);
-                let detection_allocation = detection_height.min(ui.available_height()).max(0.0);
-                ui.allocate_ui(vec2(width, detection_allocation), |ui| {
-                    ui.set_max_height(detection_allocation);
-                    ui.set_clip_rect(ui.max_rect());
-                    crate::ui::config::detections::show_detection_carousel(self, ctx, ui, palette);
+                ui.add_space(spacing);
+                ui.horizontal(|ui| {
+                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        let enabled = self.preview.texture.is_some();
+                        let label = if self.manual_box_tool_enabled {
+                            "Exit draw mode"
+                        } else {
+                            "Draw manual box"
+                        };
+                        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                            self.manual_box_tool_enabled = !self.manual_box_tool_enabled;
+                            if !self.manual_box_tool_enabled {
+                                self.manual_box_draft = None;
+                            }
+                        }
+                        if ui.button("Show Detections").clicked() {
+                            self.show_detection_window = true;
+                        }
+                    });
                 });
             });
     }

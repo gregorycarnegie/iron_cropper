@@ -223,6 +223,7 @@ impl YuNetApp {
             show_settings_window: false,
             show_batch_window: false,
             show_mapping_window: false,
+            show_detection_window: false,
         }
     }
 
@@ -280,6 +281,9 @@ impl App for YuNetApp {
         }
         if self.show_mapping_window {
             self.show_mapping_window(ctx);
+        }
+        if self.show_detection_window {
+            ui::config::detections::show_detection_window(self, ctx);
         }
 
         self.handle_shortcuts(ctx);

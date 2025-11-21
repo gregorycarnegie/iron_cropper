@@ -190,6 +190,8 @@ pub struct YuNetApp {
     pub show_batch_window: bool,
     /// Whether the mapping import window is open.
     pub show_mapping_window: bool,
+    /// Whether the detection details window is open.
+    pub show_detection_window: bool,
 }
 
 /// Indicates whether a bounding box originated from the detector or the user.
