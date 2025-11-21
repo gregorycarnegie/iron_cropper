@@ -1,5 +1,5 @@
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use std::sync::Arc;
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::{hint::black_box, sync::Arc};
 use yunet_core::gpu::ops::{
     Conv2dChannels, Conv2dConfig, Conv2dOptions, GpuInferenceOps, SpatialDims,
 };
