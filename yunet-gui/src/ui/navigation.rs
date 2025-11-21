@@ -10,7 +10,7 @@ impl YuNetApp {
         let palette = theme::palette();
         SidePanel::left("yunet_navigation_panel")
             .resizable(false)
-            .exact_width(280.0)
+            .exact_width(283.0)
             .frame(
                 Frame::new()
                     .fill(palette.panel)
