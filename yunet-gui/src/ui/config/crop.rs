@@ -183,23 +183,130 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     }
 
     let mut hex_error = false;
-    ui.horizontal(|ui| {
-        ui.label("Hex");
-        let hex_response = ui.add(
-            TextEdit::singleline(&mut app.crop_fill_hex_input).hint_text("#RRGGBB or #RRGGBBAA"),
-        );
-        if hex_response.changed() {
-            if let Some(color) = parse_hex_color(&app.crop_fill_hex_input) {
-                if app.set_fill_color(color) {
-                    changed = true;
+
+    // Prepare RGB variables
+    let alpha = app.settings.crop.fill_color.alpha;
+    let mut rgb_changed = false;
+    let mut r = app.settings.crop.fill_color.red as i32;
+    let mut g = app.settings.crop.fill_color.green as i32;
+    let mut b = app.settings.crop.fill_color.blue as i32;
+
+    // Prepare HSV variables
+    let (h0, s0, v0) = rgb_to_hsv(
+        app.settings.crop.fill_color.red,
+        app.settings.crop.fill_color.green,
+        app.settings.crop.fill_color.blue,
+    );
+    let mut hue = h0;
+    let mut sat_pct = s0 * 100.0;
+    let mut val_pct = v0 * 100.0;
+    let mut hsv_changed = false;
+
+    egui::Grid::new("color_picker_grid")
+        .num_columns(2)
+        .spacing([8.0, 8.0])
+        .show(ui, |ui| {
+            ui.label("Hex");
+            let hex_response = ui.add(
+                TextEdit::singleline(&mut app.crop_fill_hex_input)
+                    .hint_text("#RRGGBB or #RRGGBBAA"),
+            );
+            if hex_response.changed() {
+                if let Some(color) = parse_hex_color(&app.crop_fill_hex_input) {
+                    if app.set_fill_color(color) {
+                        changed = true;
+                    } else {
+                        app.refresh_fill_color_hex_input();
+                    }
                 } else {
-                    app.refresh_fill_color_hex_input();
+                    hex_error = true;
                 }
-            } else {
-                hex_error = true;
             }
-        }
-    });
+            ui.end_row();
+
+            ui.label("RGB");
+            ui.horizontal(|ui| {
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut r)
+                            .range(0..=255)
+                            .speed(1.0)
+                            .suffix(" R"),
+                    )
+                    .changed()
+                {
+                    rgb_changed = true;
+                }
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut g)
+                            .range(0..=255)
+                            .speed(1.0)
+                            .suffix(" G"),
+                    )
+                    .changed()
+                {
+                    rgb_changed = true;
+                }
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut b)
+                            .range(0..=255)
+                            .speed(1.0)
+                            .suffix(" B"),
+                    )
+                    .changed()
+                {
+                    rgb_changed = true;
+                }
+            });
+            ui.end_row();
+
+            ui.label("HSV");
+            ui.horizontal(|ui| {
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut hue)
+                            .range(0.0..=360.0)
+                            .speed(1.0)
+                            .suffix("°"),
+                    )
+                    .changed()
+                {
+                    hsv_changed = true;
+                }
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut sat_pct)
+                            .range(0.0..=100.0)
+                            .speed(1.0)
+                            .suffix("% S"),
+                    )
+                    .changed()
+                {
+                    hsv_changed = true;
+                }
+                if ui
+                    .add_sized(
+                        [80.0, 20.0],
+                        DragValue::new(&mut val_pct)
+                            .range(0.0..=100.0)
+                            .speed(1.0)
+                            .suffix("% V"),
+                    )
+                    .changed()
+                {
+                    hsv_changed = true;
+                }
+            });
+            ui.end_row();
+        });
+
     if hex_error {
         ui.colored_label(
             Color32::from_rgb(255, 120, 120),
@@ -207,47 +314,6 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         );
     }
 
-    let alpha = app.settings.crop.fill_color.alpha;
-    let mut rgb_changed = false;
-    let mut r = app.settings.crop.fill_color.red as i32;
-    let mut g = app.settings.crop.fill_color.green as i32;
-    let mut b = app.settings.crop.fill_color.blue as i32;
-    ui.horizontal(|ui| {
-        ui.label("RGB");
-        if ui
-            .add(
-                DragValue::new(&mut r)
-                    .range(0..=255)
-                    .speed(1.0)
-                    .suffix(" R"),
-            )
-            .changed()
-        {
-            rgb_changed = true;
-        }
-        if ui
-            .add(
-                DragValue::new(&mut g)
-                    .range(0..=255)
-                    .speed(1.0)
-                    .suffix(" G"),
-            )
-            .changed()
-        {
-            rgb_changed = true;
-        }
-        if ui
-            .add(
-                DragValue::new(&mut b)
-                    .range(0..=255)
-                    .speed(1.0)
-                    .suffix(" B"),
-            )
-            .changed()
-        {
-            rgb_changed = true;
-        }
-    });
     if rgb_changed {
         let new_color = RgbaColor {
             red: r.clamp(0, 255) as u8,
@@ -260,51 +326,6 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         }
     }
 
-    let (h0, s0, v0) = rgb_to_hsv(
-        app.settings.crop.fill_color.red,
-        app.settings.crop.fill_color.green,
-        app.settings.crop.fill_color.blue,
-    );
-    let mut hue = h0;
-    let mut sat_pct = s0 * 100.0;
-    let mut val_pct = v0 * 100.0;
-    let mut hsv_changed = false;
-    ui.horizontal(|ui| {
-        ui.label("HSV");
-        if ui
-            .add(
-                DragValue::new(&mut hue)
-                    .range(0.0..=360.0)
-                    .speed(1.0)
-                    .suffix("°"),
-            )
-            .changed()
-        {
-            hsv_changed = true;
-        }
-        if ui
-            .add(
-                DragValue::new(&mut sat_pct)
-                    .range(0.0..=100.0)
-                    .speed(1.0)
-                    .suffix("% S"),
-            )
-            .changed()
-        {
-            hsv_changed = true;
-        }
-        if ui
-            .add(
-                DragValue::new(&mut val_pct)
-                    .range(0.0..=100.0)
-                    .speed(1.0)
-                    .suffix("% V"),
-            )
-            .changed()
-        {
-            hsv_changed = true;
-        }
-    });
     if hsv_changed {
         let (nr, ng, nb) = hsv_to_rgb(
             hue,

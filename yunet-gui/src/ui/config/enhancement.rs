@@ -24,32 +24,121 @@ pub fn show_enhancement_section(
         // Preset selection
         show_preset_selector(app, ui, settings_changed, enhancement_changed);
 
-        // Auto color correction
-        show_auto_color_control(app, ui, settings_changed, enhancement_changed);
+        egui::Grid::new("enhancement_grid")
+            .num_columns(3)
+            .spacing([8.0, 8.0])
+            .show(ui, |ui| {
+                // Auto color correction
+                ui.label("Auto color correction");
+                if ui
+                    .checkbox(&mut app.settings.enhance.auto_color, "")
+                    .changed()
+                {
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.label(""); // Placeholder for 3rd column
+                ui.end_row();
 
-        // Exposure control
-        show_exposure_control(app, ui, settings_changed, enhancement_changed);
+                // Exposure control
+                ui.label("Exposure (stops)");
+                let mut exp = app.settings.enhance.exposure_stops;
+                let r1 = ui.add(Slider::new(&mut exp, -2.0..=2.0).show_value(false));
+                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut exp).speed(0.01));
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.exposure_stops = exp;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Brightness control
-        show_brightness_control(app, ui, settings_changed, enhancement_changed);
+                // Brightness control
+                ui.label("Brightness");
+                let mut bright = app.settings.enhance.brightness;
+                let r1 = ui.add(Slider::new(&mut bright, -100..=100).show_value(false));
+                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut bright).speed(1.0));
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.brightness = bright;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Contrast control
-        show_contrast_control(app, ui, settings_changed, enhancement_changed);
+                // Contrast control
+                ui.label("Contrast");
+                let mut con = app.settings.enhance.contrast;
+                let r1 = ui.add(Slider::new(&mut con, 0.5..=2.0).show_value(false));
+                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut con).speed(0.01));
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.contrast = con;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Saturation control
-        show_saturation_control(app, ui, settings_changed, enhancement_changed);
+                // Saturation control
+                ui.label("Saturation");
+                let mut sat = app.settings.enhance.saturation;
+                let r1 = ui.add(Slider::new(&mut sat, 0.0..=2.5).show_value(false));
+                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sat).speed(0.01));
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.saturation = sat;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Sharpness control
-        show_sharpness_control(app, ui, settings_changed, enhancement_changed);
+                // Sharpness control
+                ui.label("Sharpness");
+                let mut sharp = app.settings.enhance.sharpness;
+                let r1 = ui.add(Slider::new(&mut sharp, 0.0..=2.0).show_value(false));
+                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sharp).speed(0.01));
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.sharpness = sharp;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Skin smoothing control
-        show_skin_smooth_control(app, ui, settings_changed, enhancement_changed);
+                // Skin smoothing control
+                ui.label("Skin Smoothing");
+                let mut skin_smooth = app.settings.enhance.skin_smooth;
+                let r1 = ui.add(Slider::new(&mut skin_smooth, 0.0..=1.0).show_value(false));
+                let r2 = ui.add_sized(
+                    [50.0, 20.0],
+                    egui::DragValue::new(&mut skin_smooth).speed(0.01),
+                );
+                if r1.changed() || r2.changed() {
+                    app.settings.enhance.skin_smooth = skin_smooth;
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.end_row();
 
-        // Red-eye removal
-        show_red_eye_control(app, ui, settings_changed, enhancement_changed);
+                // Red-eye removal
+                ui.label("Red-Eye Removal");
+                if ui
+                    .checkbox(&mut app.settings.enhance.red_eye_removal, "")
+                    .changed()
+                {
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.label(""); // Placeholder for 3rd column
+                ui.end_row();
 
-        // Background blur
-        show_background_blur_control(app, ui, settings_changed, enhancement_changed);
+                // Background blur
+                ui.label("Background Blur");
+                if ui
+                    .checkbox(&mut app.settings.enhance.background_blur, "")
+                    .changed()
+                {
+                    *settings_changed = true;
+                    *enhancement_changed = true;
+                }
+                ui.label(""); // Placeholder for 3rd column
+                ui.end_row();
+            });
 
         // Reset button
         show_reset_button(app, ui, settings_changed, enhancement_changed);
@@ -85,167 +174,6 @@ fn show_preset_selector(
                 }
             }
         });
-}
-
-/// Shows the auto color correction checkbox.
-fn show_auto_color_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    ui.add_space(6.0);
-    if ui
-        .checkbox(
-            &mut app.settings.enhance.auto_color,
-            "Auto color correction",
-        )
-        .changed()
-    {
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the exposure slider control.
-fn show_exposure_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    ui.add_space(6.0);
-    let mut exp = app.settings.enhance.exposure_stops;
-    if ui
-        .add(Slider::new(&mut exp, -2.0..=2.0).text("Exposure (stops)"))
-        .changed()
-    {
-        app.settings.enhance.exposure_stops = exp;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the brightness slider control.
-fn show_brightness_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut bright = app.settings.enhance.brightness;
-    if ui
-        .add(Slider::new(&mut bright, -100..=100).text("Brightness"))
-        .changed()
-    {
-        app.settings.enhance.brightness = bright;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the contrast slider control.
-fn show_contrast_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut con = app.settings.enhance.contrast;
-    if ui
-        .add(Slider::new(&mut con, 0.5..=2.0).text("Contrast"))
-        .changed()
-    {
-        app.settings.enhance.contrast = con;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the saturation slider control.
-fn show_saturation_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut sat = app.settings.enhance.saturation;
-    if ui
-        .add(Slider::new(&mut sat, 0.0..=2.5).text("Saturation"))
-        .changed()
-    {
-        app.settings.enhance.saturation = sat;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the sharpness slider control.
-fn show_sharpness_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut sharp = app.settings.enhance.sharpness;
-    if ui
-        .add(Slider::new(&mut sharp, 0.0..=2.0).text("Sharpness"))
-        .changed()
-    {
-        app.settings.enhance.sharpness = sharp;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the skin smoothing slider control.
-fn show_skin_smooth_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    let mut skin_smooth = app.settings.enhance.skin_smooth;
-    if ui
-        .add(Slider::new(&mut skin_smooth, 0.0..=1.0).text("Skin Smoothing"))
-        .changed()
-    {
-        app.settings.enhance.skin_smooth = skin_smooth;
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the red-eye removal checkbox.
-fn show_red_eye_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    if ui
-        .checkbox(&mut app.settings.enhance.red_eye_removal, "Red-Eye Removal")
-        .changed()
-    {
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
-}
-
-/// Shows the background blur checkbox.
-fn show_background_blur_control(
-    app: &mut YuNetApp,
-    ui: &mut Ui,
-    settings_changed: &mut bool,
-    enhancement_changed: &mut bool,
-) {
-    if ui
-        .checkbox(&mut app.settings.enhance.background_blur, "Background Blur")
-        .changed()
-    {
-        *settings_changed = true;
-        *enhancement_changed = true;
-    }
 }
 
 /// Shows the reset to defaults button.

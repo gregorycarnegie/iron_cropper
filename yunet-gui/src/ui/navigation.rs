@@ -28,40 +28,71 @@ impl YuNetApp {
                         ui.heading("Quick Actions");
                         ui.add_space(8.0);
 
-                        ui.horizontal(|ui| {
-                            if ui.button("Open image").clicked() {
-                                self.open_image_dialog();
-                            }
-                            if ui.button("Load batch").clicked() {
-                                self.open_batch_dialog();
-                            }
-                        });
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("Batch Queue").clicked() {
-                                self.show_batch_window = true;
-                            }
-                            if ui.button("Mapping Import").clicked() {
-                                self.show_mapping_window = true;
-                            }
-                        });
+                        let btn_width = (ui.available_width() - 8.0) / 2.0;
+                        egui::Grid::new("quick_actions_grid")
+                            .num_columns(2)
+                            .spacing([8.0, 8.0])
+                            .show(ui, |ui| {
+                                if ui
+                                    .add_sized([btn_width, 30.0], egui::Button::new("Open image"))
+                                    .clicked()
+                                {
+                                    self.open_image_dialog();
+                                }
+                                if ui
+                                    .add_sized([btn_width, 30.0], egui::Button::new("Load batch"))
+                                    .clicked()
+                                {
+                                    self.open_batch_dialog();
+                                }
+                                ui.end_row();
 
-                        ui.horizontal(|ui| {
-                            let export_enabled = self.can_export_selected();
-                            if ui
-                                .add_enabled(export_enabled, egui::Button::new("Export selected"))
-                                .clicked()
-                            {
-                                self.export_selected_faces();
-                            }
-                            let batch_enabled = !self.batch_files.is_empty();
-                            if ui
-                                .add_enabled(batch_enabled, egui::Button::new("Run batch"))
-                                .clicked()
-                            {
-                                self.start_batch_export();
-                            }
-                        });
+                                if ui
+                                    .add_sized([btn_width, 30.0], egui::Button::new("Batch Queue"))
+                                    .clicked()
+                                {
+                                    self.show_batch_window = true;
+                                }
+                                if ui
+                                    .add_sized(
+                                        [btn_width, 30.0],
+                                        egui::Button::new("Mapping Import"),
+                                    )
+                                    .clicked()
+                                {
+                                    self.show_mapping_window = true;
+                                }
+                                ui.end_row();
+                            });
+
+                        egui::Grid::new("quick_actions_grid_2")
+                            .num_columns(2)
+                            .spacing([8.0, 8.0])
+                            .show(ui, |ui| {
+                                let export_enabled = self.can_export_selected();
+                                if ui
+                                    .add_enabled(
+                                        export_enabled,
+                                        egui::Button::new("Export selected")
+                                            .min_size(egui::vec2(btn_width, 30.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    self.export_selected_faces();
+                                }
+                                let batch_enabled = !self.batch_files.is_empty();
+                                if ui
+                                    .add_enabled(
+                                        batch_enabled,
+                                        egui::Button::new("Run batch")
+                                            .min_size(egui::vec2(btn_width, 30.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    self.start_batch_export();
+                                }
+                                ui.end_row();
+                            });
 
                         ui.add_space(12.0);
                         ui.separator();
@@ -107,38 +138,55 @@ impl YuNetApp {
         ui.heading("Adjustments");
         ui.add_space(6.0);
 
-        let mut face_fill = self.settings.crop.face_height_pct;
-        if ui
-            .add(Slider::new(&mut face_fill, 20.0..=95.0).text("Face fill (%)"))
-            .changed()
-        {
-            self.settings.crop.face_height_pct = face_fill;
-            self.push_crop_history();
-            self.persist_settings_with_feedback();
-            self.clear_crop_preview_cache();
-        }
+        egui::Grid::new("simple_settings_grid")
+            .num_columns(3)
+            .spacing([8.0, 8.0])
+            .show(ui, |ui| {
+                ui.label("Face fill (%)");
+                let mut face_fill = self.settings.crop.face_height_pct;
+                let r1 = ui.add(Slider::new(&mut face_fill, 20.0..=95.0).show_value(false));
+                let r2 = ui.add_sized(
+                    [50.0, 20.0],
+                    egui::DragValue::new(&mut face_fill).speed(1.0),
+                );
+                if r1.changed() || r2.changed() {
+                    self.settings.crop.face_height_pct = face_fill;
+                    self.push_crop_history();
+                    self.persist_settings_with_feedback();
+                    self.clear_crop_preview_cache();
+                }
+                ui.end_row();
 
-        let mut horizontal = self.settings.crop.horizontal_offset;
-        if ui
-            .add(Slider::new(&mut horizontal, -1.0..=1.0).text("Eye alignment"))
-            .changed()
-        {
-            self.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
-            self.push_crop_history();
-            self.persist_settings_with_feedback();
-            self.clear_crop_preview_cache();
-        }
+                ui.label("Eye alignment");
+                let mut horizontal = self.settings.crop.horizontal_offset;
+                let r1 = ui.add(Slider::new(&mut horizontal, -1.0..=1.0).show_value(false));
+                let r2 = ui.add_sized(
+                    [50.0, 20.0],
+                    egui::DragValue::new(&mut horizontal).speed(0.01),
+                );
+                if r1.changed() || r2.changed() {
+                    self.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
+                    self.push_crop_history();
+                    self.persist_settings_with_feedback();
+                    self.clear_crop_preview_cache();
+                }
+                ui.end_row();
 
-        let mut vertical = self.settings.crop.vertical_offset;
-        if ui
-            .add(Slider::new(&mut vertical, -1.0..=1.0).text("Vertical lift"))
-            .changed()
-        {
-            self.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
-            self.push_crop_history();
-            self.persist_settings_with_feedback();
-            self.clear_crop_preview_cache();
-        }
+                ui.label("Vertical lift");
+                let mut vertical = self.settings.crop.vertical_offset;
+                let r1 = ui.add(Slider::new(&mut vertical, -1.0..=1.0).show_value(false));
+                let r2 = ui.add_sized(
+                    [50.0, 20.0],
+                    egui::DragValue::new(&mut vertical).speed(0.01),
+                );
+                if r1.changed() || r2.changed() {
+                    self.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
+                    self.push_crop_history();
+                    self.persist_settings_with_feedback();
+                    self.clear_crop_preview_cache();
+                }
+                ui.end_row();
+            });
 
         ui.add_space(8.0);
         ui.label(RichText::new("Automation").strong());

@@ -42,36 +42,45 @@ impl YuNetApp {
     /// Renders the mapping import panel content.
     pub fn show_mapping_content(&mut self, ui: &mut Ui, palette: theme::Palette) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Select mapping file…").clicked()
-                    && let Some(path) = FileDialog::new()
-                        .add_filter(
-                            "Data files",
-                            &[
-                                "csv", "tsv", "txt", "xlsx", "xls", "parquet", "db", "sqlite",
-                            ],
-                        )
-                        .pick_file()
-                {
-                    self.mapping.set_file(path.clone());
-                    match self.mapping.reload_preview() {
-                        Ok(_) => {
-                            self.show_success(format!(
-                                "Loaded mapping preview from {}",
-                                path.display()
-                            ));
-                        }
-                        Err(err) => {
-                            self.show_error("Failed to load mapping preview", err.to_string());
+            egui::Grid::new("mapping_file_grid")
+                .num_columns(2)
+                .spacing([8.0, 8.0])
+                .show(ui, |ui| {
+                    if ui
+                        .add_sized([200.0, 20.0], egui::Button::new("Select mapping file…"))
+                        .clicked()
+                        && let Some(path) = FileDialog::new()
+                            .add_filter(
+                                "Data files",
+                                &[
+                                    "csv", "tsv", "txt", "xlsx", "xls", "parquet", "db", "sqlite",
+                                ],
+                            )
+                            .pick_file()
+                    {
+                        self.mapping.set_file(path.clone());
+                        match self.mapping.reload_preview() {
+                            Ok(_) => {
+                                self.show_success(format!(
+                                    "Loaded mapping preview from {}",
+                                    path.display()
+                                ));
+                            }
+                            Err(err) => {
+                                self.show_error("Failed to load mapping preview", err.to_string());
+                            }
                         }
                     }
-                }
-                if let Some(path) = &self.mapping.file_path {
-                    ui.monospace(path.display().to_string());
-                } else {
-                    ui.label(RichText::new("No mapping file selected").color(palette.subtle_text));
-                }
-            });
+
+                    if let Some(path) = &self.mapping.file_path {
+                        ui.label(path.display().to_string());
+                    } else {
+                        ui.label(
+                            RichText::new("No mapping file selected").color(palette.subtle_text),
+                        );
+                    }
+                    ui.end_row();
+                });
 
             if self.mapping.file_path.is_none() {
                 ui.label(
@@ -152,6 +161,7 @@ impl YuNetApp {
     fn mapping_options_ui(&mut self, ui: &mut Ui, palette: theme::Palette) {
         let prev_format = self.mapping.effective_format();
         egui::ComboBox::from_label("Format")
+            .width(200.0)
             .selected_text(
                 self.mapping
                     .format_override
