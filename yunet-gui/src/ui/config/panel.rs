@@ -49,7 +49,6 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
                         }
                     }
 
-                    ui.separator();
                     super::enhancement::show_enhancement_section(
                         app,
                         ui,
