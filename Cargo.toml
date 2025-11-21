@@ -10,7 +10,7 @@ description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
 anyhow = "1.0.100"
-calamine = "0.31.0"
+calamine = "0.32.0"
 clap = { version = "4.5.53", features = ["derive"] }
 criterion = "0.7.0"
 csv = "1.4.0"
