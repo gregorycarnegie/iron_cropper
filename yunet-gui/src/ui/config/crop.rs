@@ -225,85 +225,91 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             ui.end_row();
 
             ui.label("RGB");
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut r)
-                            .range(0..=255)
-                            .speed(1.0)
-                            .suffix(" R"),
-                    )
-                    .changed()
-                {
-                    rgb_changed = true;
-                }
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut g)
-                            .range(0..=255)
-                            .speed(1.0)
-                            .suffix(" G"),
-                    )
-                    .changed()
-                {
-                    rgb_changed = true;
-                }
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut b)
-                            .range(0..=255)
-                            .speed(1.0)
-                            .suffix(" B"),
-                    )
-                    .changed()
-                {
-                    rgb_changed = true;
-                }
-            });
+            egui::Grid::new("rgb_inner_grid")
+                .num_columns(3)
+                .spacing([8.0, 0.0])
+                .show(ui, |ui| {
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut r)
+                                .range(0..=255)
+                                .speed(1.0)
+                                .suffix(" R"),
+                        )
+                        .changed()
+                    {
+                        rgb_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut g)
+                                .range(0..=255)
+                                .speed(1.0)
+                                .suffix(" G"),
+                        )
+                        .changed()
+                    {
+                        rgb_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut b)
+                                .range(0..=255)
+                                .speed(1.0)
+                                .suffix(" B"),
+                        )
+                        .changed()
+                    {
+                        rgb_changed = true;
+                    }
+                });
             ui.end_row();
 
             ui.label("HSV");
-            ui.horizontal(|ui| {
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut hue)
-                            .range(0.0..=360.0)
-                            .speed(1.0)
-                            .suffix("°"),
-                    )
-                    .changed()
-                {
-                    hsv_changed = true;
-                }
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut sat_pct)
-                            .range(0.0..=100.0)
-                            .speed(1.0)
-                            .suffix("% S"),
-                    )
-                    .changed()
-                {
-                    hsv_changed = true;
-                }
-                if ui
-                    .add_sized(
-                        [80.0, 20.0],
-                        DragValue::new(&mut val_pct)
-                            .range(0.0..=100.0)
-                            .speed(1.0)
-                            .suffix("% V"),
-                    )
-                    .changed()
-                {
-                    hsv_changed = true;
-                }
-            });
+            egui::Grid::new("hsv_inner_grid")
+                .num_columns(3)
+                .spacing([8.0, 0.0])
+                .show(ui, |ui| {
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut hue)
+                                .range(0.0..=360.0)
+                                .speed(1.0)
+                                .suffix("°"),
+                        )
+                        .changed()
+                    {
+                        hsv_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut sat_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% S"),
+                        )
+                        .changed()
+                    {
+                        hsv_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut val_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% V"),
+                        )
+                        .changed()
+                    {
+                        hsv_changed = true;
+                    }
+                });
             ui.end_row();
         });
 
