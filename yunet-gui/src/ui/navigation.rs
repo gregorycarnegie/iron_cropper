@@ -1,136 +1,123 @@
 //! Left panel with simple/common settings and quick actions.
 
-use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, SidePanel, Slider, Stroke, Ui};
+use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, Slider, Stroke, Ui};
 
 use crate::{YuNetApp, theme};
 
 impl YuNetApp {
     /// Renders the left panel with common settings and actions.
-    pub fn show_navigation_panel(&mut self, ctx: &egui::Context) {
+    pub fn show_navigation_panel(&mut self, ui: &mut Ui) {
         let palette = theme::palette();
-        SidePanel::left("yunet_navigation_panel")
-            .resizable(false)
-            .exact_width(283.0)
-            .frame(
-                Frame::new()
-                    .fill(palette.panel)
-                    .inner_margin(Margin::symmetric(16, 18))
-                    .stroke(Stroke::new(1.0, palette.outline)),
-            )
-            .show(ctx, |ui| {
-                ScrollArea::vertical()
-                    .auto_shrink([false, false])
+
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                self.draw_nav_logo(ui, palette);
+                ui.add_space(18.0);
+
+                // Quick actions
+                ui.heading("Quick Actions");
+                ui.add_space(8.0);
+
+                let btn_width = (ui.available_width() - 8.0) / 2.0;
+                egui::Grid::new("quick_actions_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 8.0])
                     .show(ui, |ui| {
-                        self.draw_nav_logo(ui, palette);
-                        ui.add_space(18.0);
+                        if ui
+                            .add_sized([btn_width, 30.0], egui::Button::new("Open image"))
+                            .clicked()
+                        {
+                            self.open_image_dialog();
+                        }
+                        if ui
+                            .add_sized([btn_width, 30.0], egui::Button::new("Load batch"))
+                            .clicked()
+                        {
+                            self.open_batch_dialog();
+                        }
+                        ui.end_row();
 
-                        // Quick actions
-                        ui.heading("Quick Actions");
-                        ui.add_space(8.0);
-
-                        let btn_width = (ui.available_width() - 8.0) / 2.0;
-                        egui::Grid::new("quick_actions_grid")
-                            .num_columns(2)
-                            .spacing([8.0, 8.0])
-                            .show(ui, |ui| {
-                                if ui
-                                    .add_sized([btn_width, 30.0], egui::Button::new("Open image"))
-                                    .clicked()
-                                {
-                                    self.open_image_dialog();
-                                }
-                                if ui
-                                    .add_sized([btn_width, 30.0], egui::Button::new("Load batch"))
-                                    .clicked()
-                                {
-                                    self.open_batch_dialog();
-                                }
-                                ui.end_row();
-
-                                if ui
-                                    .add_sized([btn_width, 30.0], egui::Button::new("Batch Queue"))
-                                    .clicked()
-                                {
-                                    self.show_batch_window = true;
-                                }
-                                if ui
-                                    .add_sized(
-                                        [btn_width, 30.0],
-                                        egui::Button::new("Mapping Import"),
-                                    )
-                                    .clicked()
-                                {
-                                    self.show_mapping_window = true;
-                                }
-                                ui.end_row();
-                            });
-
-                        egui::Grid::new("quick_actions_grid_2")
-                            .num_columns(2)
-                            .spacing([8.0, 8.0])
-                            .show(ui, |ui| {
-                                let export_enabled = self.can_export_selected();
-                                if ui
-                                    .add_enabled(
-                                        export_enabled,
-                                        egui::Button::new("Export selected")
-                                            .min_size(egui::vec2(btn_width, 30.0)),
-                                    )
-                                    .clicked()
-                                {
-                                    self.export_selected_faces();
-                                }
-                                let batch_enabled = !self.batch_files.is_empty();
-                                if ui
-                                    .add_enabled(
-                                        batch_enabled,
-                                        egui::Button::new("Run batch")
-                                            .min_size(egui::vec2(btn_width, 30.0)),
-                                    )
-                                    .clicked()
-                                {
-                                    self.start_batch_export();
-                                }
-                                ui.end_row();
-                            });
-
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(8.0);
-
-                        // Simple settings
-                        self.show_simple_settings(ui, palette);
-
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(8.0);
-
-                        // Stats
-                        ui.heading("Status");
-                        ui.add_space(8.0);
-                        self.nav_stat(
-                            ui,
-                            palette,
-                            "Detections",
-                            format!("{}", self.preview.detections.len()),
-                        );
-                        self.nav_stat(
-                            ui,
-                            palette,
-                            "Selected",
-                            format!("{}", self.selected_faces.len()),
-                        );
-                        self.nav_stat(
-                            ui,
-                            palette,
-                            "Batch",
-                            if self.batch_files.is_empty() {
-                                "Empty".to_string()
-                            } else {
-                                format!("{} items", self.batch_files.len())
-                            },
-                        );
+                        if ui
+                            .add_sized([btn_width, 30.0], egui::Button::new("Batch Queue"))
+                            .clicked()
+                        {
+                            self.show_batch_window = true;
+                        }
+                        if ui
+                            .add_sized([btn_width, 30.0], egui::Button::new("Mapping Import"))
+                            .clicked()
+                        {
+                            self.show_mapping_window = true;
+                        }
+                        ui.end_row();
                     });
+
+                egui::Grid::new("quick_actions_grid_2")
+                    .num_columns(2)
+                    .spacing([8.0, 8.0])
+                    .show(ui, |ui| {
+                        let export_enabled = self.can_export_selected();
+                        if ui
+                            .add_enabled(
+                                export_enabled,
+                                egui::Button::new("Export selected")
+                                    .min_size(egui::vec2(btn_width, 30.0)),
+                            )
+                            .clicked()
+                        {
+                            self.export_selected_faces();
+                        }
+                        let batch_enabled = !self.batch_files.is_empty();
+                        if ui
+                            .add_enabled(
+                                batch_enabled,
+                                egui::Button::new("Run batch")
+                                    .min_size(egui::vec2(btn_width, 30.0)),
+                            )
+                            .clicked()
+                        {
+                            self.start_batch_export();
+                        }
+                        ui.end_row();
+                    });
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // Simple settings
+                self.show_simple_settings(ui, palette);
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // Stats
+                ui.heading("Status");
+                ui.add_space(8.0);
+                self.nav_stat(
+                    ui,
+                    palette,
+                    "Detections",
+                    format!("{}", self.preview.detections.len()),
+                );
+                self.nav_stat(
+                    ui,
+                    palette,
+                    "Selected",
+                    format!("{}", self.selected_faces.len()),
+                );
+                self.nav_stat(
+                    ui,
+                    palette,
+                    "Batch",
+                    if self.batch_files.is_empty() {
+                        "Empty".to_string()
+                    } else {
+                        format!("{} items", self.batch_files.len())
+                    },
+                );
             });
     }
 

@@ -1,68 +1,61 @@
 //! Preview panel UI components for the YuNet GUI.
 
 use egui::{
-    Align, CentralPanel, Color32, CornerRadius, Layout, Margin, Rect, Rgba, RichText, Sense,
-    Spinner, Stroke, Ui, UiBuilder, pos2, vec2,
+    Align, Color32, CornerRadius, Layout, Margin, Rect, Rgba, RichText, Sense, Spinner, Stroke, Ui,
+    UiBuilder, pos2, vec2,
 };
 
 use crate::{YuNetApp, theme};
 
 impl YuNetApp {
     /// Renders the main image preview panel.
-    pub fn show_preview(&mut self, ctx: &egui::Context) {
+    pub fn show_preview(&mut self, ui: &mut Ui, ctx: &egui::Context) {
         let palette = theme::palette();
-        CentralPanel::default()
-            .frame(
+
+        let total_height = ui.available_height();
+        let spacing = 12.0;
+        let min_preview = 220.0;
+        let mut preview_height = (total_height * 0.85).max(min_preview);
+        preview_height = preview_height.min(total_height.max(0.0));
+        let width = ui.available_width();
+
+        ui.allocate_ui_with_layout(
+            vec2(width, preview_height),
+            Layout::top_down(Align::Center),
+            |ui| {
                 egui::Frame::new()
-                    .fill(palette.canvas)
-                    .inner_margin(Margin::symmetric(16, 16)),
-            )
-            .show(ctx, |ui| {
-                let total_height = ui.available_height();
-                let spacing = 12.0;
-                let min_preview = 220.0;
-                let mut preview_height = (total_height * 0.85).max(min_preview);
-                preview_height = preview_height.min(total_height.max(0.0));
-                let width = ui.available_width();
-
-                ui.allocate_ui_with_layout(
-                    vec2(width, preview_height),
-                    Layout::top_down(Align::Center),
-                    |ui| {
-                        egui::Frame::new()
-                            .fill(palette.panel_dark)
-                            .stroke(Stroke::new(1.0, palette.outline))
-                            .corner_radius(CornerRadius::same(28))
-                            .inner_margin(Margin::symmetric(18, 18))
-                            .show(ui, |ui| {
-                                ui.set_min_height(preview_height);
-                                self.render_preview_area(ui, ctx, palette);
-                            });
-                    },
-                );
-
-                ui.add_space(spacing);
-                ui.add_space(spacing);
-                ui.horizontal(|ui| {
-                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                        let enabled = self.preview.texture.is_some();
-                        let label = if self.manual_box_tool_enabled {
-                            "Exit draw mode"
-                        } else {
-                            "Draw manual box"
-                        };
-                        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
-                            self.manual_box_tool_enabled = !self.manual_box_tool_enabled;
-                            if !self.manual_box_tool_enabled {
-                                self.manual_box_draft = None;
-                            }
-                        }
-                        if ui.button("Show Detections").clicked() {
-                            self.show_detection_window = true;
-                        }
+                    .fill(palette.panel_dark)
+                    .stroke(Stroke::new(1.0, palette.outline))
+                    .corner_radius(CornerRadius::same(28))
+                    .inner_margin(Margin::symmetric(18, 18))
+                    .show(ui, |ui| {
+                        ui.set_min_height(preview_height);
+                        self.render_preview_area(ui, ctx, palette);
                     });
-                });
+            },
+        );
+
+        ui.add_space(spacing);
+        ui.add_space(spacing);
+        ui.horizontal(|ui| {
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                let enabled = self.preview.texture.is_some();
+                let label = if self.manual_box_tool_enabled {
+                    "Exit draw mode"
+                } else {
+                    "Draw manual box"
+                };
+                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                    self.manual_box_tool_enabled = !self.manual_box_tool_enabled;
+                    if !self.manual_box_tool_enabled {
+                        self.manual_box_draft = None;
+                    }
+                }
+                if ui.button("Show Detections").clicked() {
+                    self.show_detection_window = true;
+                }
             });
+        });
     }
 
     fn render_preview_area(&mut self, ui: &mut Ui, ctx: &egui::Context, palette: theme::Palette) {

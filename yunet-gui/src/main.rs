@@ -266,12 +266,52 @@ impl YuNetApp {
 
 impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        use egui_extras::{Size, StripBuilder};
+
         self.process_import_payloads(ctx);
         self.poll_worker(ctx);
         self.show_status_bar(ctx);
-        self.show_navigation_panel(ctx);
-        ui::config::panel::show_configuration_panel(self, ctx);
-        self.show_preview(ctx);
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            StripBuilder::new(ui)
+                .size(Size::exact(283.0)) // Navigation
+                .size(Size::remainder()) // Preview
+                .size(Size::exact(420.0)) // Configuration
+                .horizontal(|mut strip| {
+                    strip.cell(|ui| {
+                        // Navigation Panel Frame
+                        let palette = theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.panel)
+                            .inner_margin(egui::Margin::symmetric(16, 18))
+                            .stroke(egui::Stroke::new(1.0, palette.outline))
+                            .show(ui, |ui| {
+                                self.show_navigation_panel(ui);
+                            });
+                    });
+                    strip.cell(|ui| {
+                        // Preview Panel Frame
+                        let palette = theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.canvas)
+                            .inner_margin(egui::Margin::symmetric(16, 16))
+                            .show(ui, |ui| {
+                                self.show_preview(ui, ctx);
+                            });
+                    });
+                    strip.cell(|ui| {
+                        // Configuration Panel Frame
+                        let palette = theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.panel)
+                            .stroke(egui::Stroke::new(1.0, palette.outline))
+                            .inner_margin(egui::Margin::symmetric(16, 18))
+                            .show(ui, |ui| {
+                                ui::config::panel::show_configuration_panel(self, ui, ctx);
+                            });
+                    });
+                });
+        });
 
         if self.show_settings_window {
             ui::settings_window::show_settings_window(self, ctx);
