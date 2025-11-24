@@ -1055,10 +1055,7 @@ impl Conv2dConfig {
         pad: SpatialDims,
         options: Conv2dOptions,
     ) -> Result<Self> {
-        let Conv2dOptions {
-            groups,
-            activation,
-        } = options;
+        let Conv2dOptions { groups, activation } = options;
         let Conv2dChannels {
             input: input_channels,
             output: output_channels,

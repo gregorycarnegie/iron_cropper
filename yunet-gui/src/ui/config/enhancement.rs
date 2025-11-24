@@ -1,7 +1,8 @@
 //! Enhancement settings UI controls.
 
 use crate::YuNetApp;
-use egui::{ComboBox, Slider, Ui};
+use crate::ui::widgets;
+use egui::{ComboBox, Ui};
 
 /// Shows the enhancement settings section.
 pub fn show_enhancement_section(
@@ -43,7 +44,7 @@ pub fn show_enhancement_section(
                 // Exposure control
                 ui.label("Exposure (stops)");
                 let mut exp = app.settings.enhance.exposure_stops;
-                let r1 = ui.add(Slider::new(&mut exp, -2.0..=2.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut exp, -2.0..=2.0, None);
                 let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut exp).speed(0.01));
                 if r1.changed() || r2.changed() {
                     app.settings.enhance.exposure_stops = exp;
@@ -55,7 +56,7 @@ pub fn show_enhancement_section(
                 // Brightness control
                 ui.label("Brightness");
                 let mut bright = app.settings.enhance.brightness;
-                let r1 = ui.add(Slider::new(&mut bright, -100..=100).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut bright, -100..=100, None);
                 let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut bright).speed(1.0));
                 if r1.changed() || r2.changed() {
                     app.settings.enhance.brightness = bright;
@@ -67,7 +68,7 @@ pub fn show_enhancement_section(
                 // Contrast control
                 ui.label("Contrast");
                 let mut con = app.settings.enhance.contrast;
-                let r1 = ui.add(Slider::new(&mut con, 0.5..=2.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut con, 0.5..=2.0, None);
                 let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut con).speed(0.01));
                 if r1.changed() || r2.changed() {
                     app.settings.enhance.contrast = con;
@@ -79,7 +80,7 @@ pub fn show_enhancement_section(
                 // Saturation control
                 ui.label("Saturation");
                 let mut sat = app.settings.enhance.saturation;
-                let r1 = ui.add(Slider::new(&mut sat, 0.0..=2.5).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut sat, 0.0..=2.5, None);
                 let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sat).speed(0.01));
                 if r1.changed() || r2.changed() {
                     app.settings.enhance.saturation = sat;
@@ -91,7 +92,7 @@ pub fn show_enhancement_section(
                 // Sharpness control
                 ui.label("Sharpness");
                 let mut sharp = app.settings.enhance.sharpness;
-                let r1 = ui.add(Slider::new(&mut sharp, 0.0..=2.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut sharp, 0.0..=2.0, None);
                 let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sharp).speed(0.01));
                 if r1.changed() || r2.changed() {
                     app.settings.enhance.sharpness = sharp;
@@ -103,7 +104,7 @@ pub fn show_enhancement_section(
                 // Skin smoothing control
                 ui.label("Skin Smoothing");
                 let mut skin_smooth = app.settings.enhance.skin_smooth;
-                let r1 = ui.add(Slider::new(&mut skin_smooth, 0.0..=1.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut skin_smooth, 0.0..=1.0, None);
                 let r2 = ui.add_sized(
                     [50.0, 20.0],
                     egui::DragValue::new(&mut skin_smooth).speed(0.01),

@@ -348,10 +348,7 @@ pub fn run_stage0_block<W: WeightProvider>(
         SpatialDims::new(3, 3),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
-        crate::gpu::ops::Conv2dOptions::new(
-            16,
-            Some(crate::gpu::ops::ActivationKind::Relu),
-        ),
+        crate::gpu::ops::Conv2dOptions::new(16, Some(crate::gpu::ops::ActivationKind::Relu)),
     )?;
     ops.conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
         .context("stage0 depthwise")
@@ -618,10 +615,7 @@ pub fn run_separable_block(
         SpatialDims::new(depth_kernel_w, depth_kernel_h),
         SpatialDims::new(1, 1),
         SpatialDims::new(pad, pad),
-        crate::gpu::ops::Conv2dOptions::new(
-            depth_out,
-            Some(crate::gpu::ops::ActivationKind::Relu),
-        ),
+        crate::gpu::ops::Conv2dOptions::new(depth_out, Some(crate::gpu::ops::ActivationKind::Relu)),
     )?;
     ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)
 }

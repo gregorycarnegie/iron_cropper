@@ -25,7 +25,7 @@
       "alpha": 255
     },
     "output_format": "png",
-    "jpeg_quality": 90,
+    "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
     "auto_detect_format": true,
@@ -48,13 +48,13 @@
   },
   "enhance": {
     "enabled": true,
-    "preset": "natural",
+    "preset": "none",
     "auto_color": false,
     "exposure_stops": 0.0,
-    "brightness": 5,
-    "contrast": 1.05,
-    "saturation": 1.05,
-    "sharpness": 0.3,
+    "brightness": 0,
+    "contrast": 1.0,
+    "saturation": 1.0,
+    "sharpness": 0.0,
     "skin_smooth": 0.0,
     "red_eye_removal": false,
     "background_blur": false

@@ -232,7 +232,9 @@ impl YuNetApp {
 
         let events = ctx.input(|i| i.events.clone());
         for event in events {
-            if let Event::Paste(text) = event && self.handle_paste_text(&text) {
+            if let Event::Paste(text) = event
+                && self.handle_paste_text(&text)
+            {
                 return;
             }
         }

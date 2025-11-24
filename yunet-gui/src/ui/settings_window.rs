@@ -1,6 +1,7 @@
 use crate::YuNetApp;
 use crate::theme;
-use egui::{ComboBox, Context, DragValue, RichText, ScrollArea, Slider, Ui};
+use crate::ui::widgets;
+use egui::{ComboBox, Context, DragValue, RichText, ScrollArea, Ui};
 
 pub fn show_settings_window(app: &mut YuNetApp, ctx: &Context) {
     let mut open = app.show_settings_window;
@@ -145,19 +146,13 @@ fn show_model_settings(
     ui.add_space(6.0);
     ui.label("Detection thresholds");
     let mut score = app.settings.detection.score_threshold;
-    if ui
-        .add(Slider::new(&mut score, 0.0..=1.0).text("Score threshold"))
-        .changed()
-    {
+    if widgets::custom_slider(ui, &mut score, 0.0..=1.0, Some("Score threshold")).changed() {
         app.settings.detection.score_threshold = score;
         *settings_changed = true;
         *requires_cache_refresh = true;
     }
     let mut nms = app.settings.detection.nms_threshold;
-    if ui
-        .add(Slider::new(&mut nms, 0.0..=1.0).text("NMS threshold"))
-        .changed()
-    {
+    if widgets::custom_slider(ui, &mut nms, 0.0..=1.0, Some("NMS threshold")).changed() {
         app.settings.detection.nms_threshold = nms;
         *settings_changed = true;
         *requires_cache_refresh = true;

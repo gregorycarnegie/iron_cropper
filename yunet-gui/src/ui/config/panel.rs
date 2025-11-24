@@ -10,7 +10,7 @@ pub fn show_configuration_panel(app: &mut YuNetApp, ctx: &EguiContext) {
     let palette = theme::palette();
     SidePanel::right("yunet_adjustments_panel")
         .resizable(false)
-        .exact_width(360.0)
+        .exact_width(420.0)
         .frame(
             Frame::new()
                 .fill(palette.panel)
