@@ -246,7 +246,7 @@ impl YuNetApp {
             egui_extras::install_image_loaders(ui.ctx());
 
             // Load and display the SVG logo using egui_extras
-            let logo_size = egui::vec2(80.0, 80.0);
+            let logo_size = egui::vec2(160.0, 160.0);
             ui.add(
                 egui::Image::from_bytes(
                     "bytes://app_logo.svg",
