@@ -2,13 +2,14 @@ use egui::{Align2, Color32, FontId, Rect, Response, Sense, Ui, emath, lerp, pos2
 
 /// A custom slider with specific styling:
 /// - Dark rounded background container
-/// - Blue active track, White inactive track
-/// - Blue circular thumb
+/// - Colored active track, White inactive track
+/// - Colored circular thumb
 pub fn custom_slider<Num: emath::Numeric>(
     ui: &mut Ui,
     value: &mut Num,
     range: std::ops::RangeInclusive<Num>,
     text: Option<&str>,
+    accent_color: Option<Color32>,
 ) -> Response {
     let min_width = 180.0;
     let desired_size = vec2(ui.available_width().max(min_width), 24.0);
@@ -43,6 +44,7 @@ pub fn custom_slider<Num: emath::Numeric>(
 
     if ui.is_rect_visible(rect) {
         let palette = crate::theme::palette();
+        let accent = accent_color.unwrap_or(palette.accent);
 
         // 1. Draw Container (Dark rounded background)
         // Using a very dark color for the "cutout" look
@@ -69,7 +71,7 @@ pub fn custom_slider<Num: emath::Numeric>(
         // Calculate the split point
         let split_x = lerp(track_rect.left()..=track_rect.right(), t as f32);
 
-        // Active part (Left) - Blue
+        // Active part (Left) - Colored
         let active_rect = Rect::from_min_max(track_rect.min, pos2(split_x, track_rect.max.y));
 
         // Inactive part (Right) - White/Light Gray
@@ -83,18 +85,15 @@ pub fn custom_slider<Num: emath::Numeric>(
         );
 
         // Draw Active Track (Left side)
-        ui.painter().rect_filled(
-            active_rect,
-            egui::CornerRadius::same(3),
-            palette.accent, // Blue
-        );
+        ui.painter()
+            .rect_filled(active_rect, egui::CornerRadius::same(3), accent);
 
         // 3. Draw Thumb (Circle)
         let thumb_radius = 8.0;
         let thumb_center = pos2(split_x, rect.center().y);
 
         ui.painter()
-            .circle_filled(thumb_center, thumb_radius, palette.accent);
+            .circle_filled(thumb_center, thumb_radius, accent);
 
         // Optional: Add a small border or shadow to the thumb to make it pop?
         // The reference image has a clean blue circle.
@@ -130,4 +129,43 @@ pub fn custom_slider<Num: emath::Numeric>(
     }
 
     response.on_hover_cursor(egui::CursorIcon::Grab)
+}
+
+/// Helper function to render a slider row with label and drag value.
+pub fn slider_row<Num: emath::Numeric>(
+    ui: &mut Ui,
+    value: &mut Num,
+    range: std::ops::RangeInclusive<Num>,
+    label: &str,
+    speed: f64,
+    hover_text: Option<&str>,
+    accent_color: Option<Color32>,
+) -> bool {
+    ui.label(label);
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        let drag_width = 50.0;
+        let spacing = 8.0;
+        let total_width = ui.available_width();
+        let slider_width = (total_width - drag_width - spacing).max(10.0);
+
+        ui.allocate_ui_with_layout(
+            vec2(slider_width, 24.0),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                if custom_slider(ui, value, range, None, accent_color).changed() {
+                    changed = true;
+                }
+            },
+        );
+
+        let response = ui.add_sized([drag_width, 20.0], egui::DragValue::new(value).speed(speed));
+        if response.changed() {
+            changed = true;
+        }
+        if let Some(text) = hover_text {
+            response.on_hover_text(text);
+        }
+    });
+    changed
 }

@@ -1,7 +1,8 @@
 //! Left panel with simple/common settings and quick actions.
 
-use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, Slider, Stroke, Ui};
+use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, Stroke, Ui};
 
+use crate::ui::widgets;
 use crate::{YuNetApp, theme};
 
 impl YuNetApp {
@@ -131,7 +132,7 @@ impl YuNetApp {
             .show(ui, |ui| {
                 ui.label("Face fill (%)");
                 let mut face_fill = self.settings.crop.face_height_pct;
-                let r1 = ui.add(Slider::new(&mut face_fill, 20.0..=95.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut face_fill, 20.0..=95.0, None, None);
                 let r2 = ui.add_sized(
                     [50.0, 20.0],
                     egui::DragValue::new(&mut face_fill).speed(1.0),
@@ -146,7 +147,7 @@ impl YuNetApp {
 
                 ui.label("Eye alignment");
                 let mut horizontal = self.settings.crop.horizontal_offset;
-                let r1 = ui.add(Slider::new(&mut horizontal, -1.0..=1.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut horizontal, -1.0..=1.0, None, None);
                 let r2 = ui.add_sized(
                     [50.0, 20.0],
                     egui::DragValue::new(&mut horizontal).speed(0.01),
@@ -161,7 +162,7 @@ impl YuNetApp {
 
                 ui.label("Vertical lift");
                 let mut vertical = self.settings.crop.vertical_offset;
-                let r1 = ui.add(Slider::new(&mut vertical, -1.0..=1.0).show_value(false));
+                let r1 = widgets::custom_slider(ui, &mut vertical, -1.0..=1.0, None, None);
                 let r2 = ui.add_sized(
                     [50.0, 20.0],
                     egui::DragValue::new(&mut vertical).speed(0.01),

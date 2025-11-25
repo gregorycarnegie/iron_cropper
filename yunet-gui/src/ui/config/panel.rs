@@ -1,9 +1,8 @@
 //! Main configuration panel orchestration.
 
-use egui::{Context as EguiContext, Frame, Margin, RichText, ScrollArea, Stroke, Ui};
+use egui::{Context as EguiContext, RichText, ScrollArea, Ui};
 
 use crate::YuNetApp;
-use crate::theme;
 
 /// Renders the right-hand advanced configuration panel.
 pub fn show_configuration_panel(app: &mut YuNetApp, ui: &mut Ui, ctx: &EguiContext) {

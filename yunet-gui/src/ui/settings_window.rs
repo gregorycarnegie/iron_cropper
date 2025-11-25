@@ -146,13 +146,29 @@ fn show_model_settings(
     ui.add_space(6.0);
     ui.label("Detection thresholds");
     let mut score = app.settings.detection.score_threshold;
-    if widgets::custom_slider(ui, &mut score, 0.0..=1.0, Some("Score threshold")).changed() {
+    if widgets::slider_row(
+        ui,
+        &mut score,
+        0.0..=1.0,
+        "Score threshold",
+        0.01,
+        None,
+        Some(egui::Color32::RED),
+    ) {
         app.settings.detection.score_threshold = score;
         *settings_changed = true;
         *requires_cache_refresh = true;
     }
     let mut nms = app.settings.detection.nms_threshold;
-    if widgets::custom_slider(ui, &mut nms, 0.0..=1.0, Some("NMS threshold")).changed() {
+    if widgets::slider_row(
+        ui,
+        &mut nms,
+        0.0..=1.0,
+        "NMS threshold",
+        0.01,
+        None,
+        Some(egui::Color32::RED),
+    ) {
         app.settings.detection.nms_threshold = nms;
         *settings_changed = true;
         *requires_cache_refresh = true;

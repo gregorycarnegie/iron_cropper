@@ -25,121 +25,99 @@ pub fn show_enhancement_section(
         // Preset selection
         show_preset_selector(app, ui, settings_changed, enhancement_changed);
 
-        egui::Grid::new("enhancement_grid")
-            .num_columns(3)
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                // Auto color correction
-                ui.label("Auto color correction");
-                if ui
-                    .checkbox(&mut app.settings.enhance.auto_color, "")
-                    .changed()
-                {
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.label(""); // Placeholder for 3rd column
-                ui.end_row();
+        // Auto color correction
+        if ui
+            .checkbox(
+                &mut app.settings.enhance.auto_color,
+                "Auto color correction",
+            )
+            .changed()
+        {
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Exposure control
-                ui.label("Exposure (stops)");
-                let mut exp = app.settings.enhance.exposure_stops;
-                let r1 = widgets::custom_slider(ui, &mut exp, -2.0..=2.0, None);
-                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut exp).speed(0.01));
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.exposure_stops = exp;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Exposure control
+        let mut exp = app.settings.enhance.exposure_stops;
+        if widgets::slider_row(
+            ui,
+            &mut exp,
+            -2.0..=2.0,
+            "Exposure (stops)",
+            0.01,
+            None,
+            None,
+        ) {
+            app.settings.enhance.exposure_stops = exp;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Brightness control
-                ui.label("Brightness");
-                let mut bright = app.settings.enhance.brightness;
-                let r1 = widgets::custom_slider(ui, &mut bright, -100..=100, None);
-                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut bright).speed(1.0));
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.brightness = bright;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Brightness control
+        let mut bright = app.settings.enhance.brightness;
+        if widgets::slider_row(ui, &mut bright, -100..=100, "Brightness", 1.0, None, None) {
+            app.settings.enhance.brightness = bright;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Contrast control
-                ui.label("Contrast");
-                let mut con = app.settings.enhance.contrast;
-                let r1 = widgets::custom_slider(ui, &mut con, 0.5..=2.0, None);
-                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut con).speed(0.01));
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.contrast = con;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Contrast control
+        let mut con = app.settings.enhance.contrast;
+        if widgets::slider_row(ui, &mut con, 0.5..=2.0, "Contrast", 0.01, None, None) {
+            app.settings.enhance.contrast = con;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Saturation control
-                ui.label("Saturation");
-                let mut sat = app.settings.enhance.saturation;
-                let r1 = widgets::custom_slider(ui, &mut sat, 0.0..=2.5, None);
-                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sat).speed(0.01));
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.saturation = sat;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Saturation control
+        let mut sat = app.settings.enhance.saturation;
+        if widgets::slider_row(ui, &mut sat, 0.0..=2.5, "Saturation", 0.01, None, None) {
+            app.settings.enhance.saturation = sat;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Sharpness control
-                ui.label("Sharpness");
-                let mut sharp = app.settings.enhance.sharpness;
-                let r1 = widgets::custom_slider(ui, &mut sharp, 0.0..=2.0, None);
-                let r2 = ui.add_sized([50.0, 20.0], egui::DragValue::new(&mut sharp).speed(0.01));
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.sharpness = sharp;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Sharpness control
+        let mut sharp = app.settings.enhance.sharpness;
+        if widgets::slider_row(ui, &mut sharp, 0.0..=2.0, "Sharpness", 0.01, None, None) {
+            app.settings.enhance.sharpness = sharp;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Skin smoothing control
-                ui.label("Skin Smoothing");
-                let mut skin_smooth = app.settings.enhance.skin_smooth;
-                let r1 = widgets::custom_slider(ui, &mut skin_smooth, 0.0..=1.0, None);
-                let r2 = ui.add_sized(
-                    [50.0, 20.0],
-                    egui::DragValue::new(&mut skin_smooth).speed(0.01),
-                );
-                if r1.changed() || r2.changed() {
-                    app.settings.enhance.skin_smooth = skin_smooth;
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.end_row();
+        // Skin smoothing control
+        let mut skin_smooth = app.settings.enhance.skin_smooth;
+        if widgets::slider_row(
+            ui,
+            &mut skin_smooth,
+            0.0..=1.0,
+            "Skin Smoothing",
+            0.01,
+            None,
+            None,
+        ) {
+            app.settings.enhance.skin_smooth = skin_smooth;
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Red-eye removal
-                ui.label("Red-Eye Removal");
-                if ui
-                    .checkbox(&mut app.settings.enhance.red_eye_removal, "")
-                    .changed()
-                {
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.label(""); // Placeholder for 3rd column
-                ui.end_row();
+        // Red-eye removal
+        if ui
+            .checkbox(&mut app.settings.enhance.red_eye_removal, "Red-Eye Removal")
+            .changed()
+        {
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
-                // Background blur
-                ui.label("Background Blur");
-                if ui
-                    .checkbox(&mut app.settings.enhance.background_blur, "")
-                    .changed()
-                {
-                    *settings_changed = true;
-                    *enhancement_changed = true;
-                }
-                ui.label(""); // Placeholder for 3rd column
-                ui.end_row();
-            });
+        // Background blur
+        if ui
+            .checkbox(&mut app.settings.enhance.background_blur, "Background Blur")
+            .changed()
+        {
+            *settings_changed = true;
+            *enhancement_changed = true;
+        }
 
         // Reset button
         show_reset_button(app, ui, settings_changed, enhancement_changed);

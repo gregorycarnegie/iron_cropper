@@ -1,6 +1,7 @@
 //! Crop settings UI controls.
 
-use egui::{Color32, ComboBox, DragValue, Slider, TextEdit, Ui, color_picker};
+use crate::ui::widgets;
+use egui::{Color32, ComboBox, DragValue, TextEdit, Ui, color_picker};
 use std::collections::BTreeMap;
 use yunet_core::preset_by_name;
 use yunet_utils::quality::Quality;
@@ -207,7 +208,8 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         .spacing([8.0, 8.0])
         .show(ui, |ui| {
             ui.label("Hex");
-            let hex_response = ui.add(
+            let hex_response = ui.add_sized(
+                [95.0, 20.0],
                 TextEdit::singleline(&mut app.crop_fill_hex_input)
                     .hint_text("#RRGGBB or #RRGGBBAA"),
             );
@@ -379,20 +381,28 @@ fn show_positioning_controls(app: &mut YuNetApp, ui: &mut Ui, settings_changed: 
     if app.settings.crop.positioning_mode == "custom" {
         ui.add_space(4.0);
         let mut vert = app.settings.crop.vertical_offset;
-        if ui
-            .add(Slider::new(&mut vert, -1.0..=1.0).text("Vertical offset"))
-            .on_hover_text("Negative values move the crop up, positive values move it down.")
-            .changed()
-        {
+        if widgets::slider_row(
+            ui,
+            &mut vert,
+            -1.0..=1.0,
+            "Vertical offset",
+            0.01,
+            Some("Negative values move the crop up, positive values move it down."),
+            None,
+        ) {
             app.settings.crop.vertical_offset = vert;
             *settings_changed = true;
         }
         let mut horiz = app.settings.crop.horizontal_offset;
-        if ui
-            .add(Slider::new(&mut horiz, -1.0..=1.0).text("Horizontal offset"))
-            .on_hover_text("Negative values move the crop left, positive values move it right.")
-            .changed()
-        {
+        if widgets::slider_row(
+            ui,
+            &mut horiz,
+            -1.0..=1.0,
+            "Horizontal offset",
+            0.01,
+            Some("Negative values move the crop left, positive values move it right."),
+            None,
+        ) {
             app.settings.crop.horizontal_offset = horiz;
             *settings_changed = true;
         }
@@ -551,26 +561,41 @@ fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bo
             }
         }
     });
-
     // JPEG quality
     let mut jpeg_quality = i32::from(app.settings.crop.jpeg_quality);
-    if ui
-        .add(Slider::new(&mut jpeg_quality, 1..=100).text("JPEG quality"))
-        .changed()
-    {
-        app.settings.crop.jpeg_quality = jpeg_quality as u8;
-        *settings_changed = true;
-    }
+    ui.scope(|ui| {
+        ui.set_max_width(250.0);
+        if widgets::slider_row(
+            ui,
+            &mut jpeg_quality,
+            1..=100,
+            "JPEG quality",
+            1.0,
+            None,
+            None,
+        ) {
+            app.settings.crop.jpeg_quality = jpeg_quality as u8;
+            *settings_changed = true;
+        }
+    });
 
     // WebP quality
     let mut webp_quality = i32::from(app.settings.crop.webp_quality);
-    if ui
-        .add(Slider::new(&mut webp_quality, 0..=100).text("WebP quality"))
-        .changed()
-    {
-        app.settings.crop.webp_quality = webp_quality as u8;
-        *settings_changed = true;
-    }
+    ui.scope(|ui| {
+        ui.set_max_width(250.0);
+        if widgets::slider_row(
+            ui,
+            &mut webp_quality,
+            0..=100,
+            "WebP quality",
+            1.0,
+            None,
+            None,
+        ) {
+            app.settings.crop.webp_quality = webp_quality as u8;
+            *settings_changed = true;
+        }
+    });
 }
 
 /// Shows the metadata settings section.
@@ -722,23 +747,39 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     match &mut shape {
         CropShape::RoundedRectangle { radius_pct } => {
             let mut radius = (*radius_pct * 100.0).clamp(0.0, 50.0);
-            if ui
-                .add(Slider::new(&mut radius, 0.0..=50.0).text("Corner radius (%)"))
-                .changed()
-            {
-                *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
-                changed = true;
-            }
+            ui.scope(|ui| {
+                ui.set_max_width(250.0);
+                if widgets::slider_row(
+                    ui,
+                    &mut radius,
+                    0.0..=50.0,
+                    "Corner radius (%)",
+                    1.0,
+                    None,
+                    None,
+                ) {
+                    *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                    changed = true;
+                }
+            });
         }
         CropShape::ChamferedRectangle { size_pct } => {
             let mut size = (*size_pct * 100.0).clamp(0.0, 50.0);
-            if ui
-                .add(Slider::new(&mut size, 0.0..=50.0).text("Chamfer size (%)"))
-                .changed()
-            {
-                *size_pct = (size / 100.0).clamp(0.0, 0.5);
-                changed = true;
-            }
+            ui.scope(|ui| {
+                ui.set_max_width(250.0);
+                if widgets::slider_row(
+                    ui,
+                    &mut size,
+                    0.0..=50.0,
+                    "Chamfer size (%)",
+                    1.0,
+                    None,
+                    None,
+                ) {
+                    *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                    changed = true;
+                }
+            });
         }
         CropShape::Polygon {
             sides,
@@ -758,10 +799,15 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 *sides = sides_u32.clamp(3, 24) as u8;
                 changed = true;
             }
-            if ui
-                .add(Slider::new(rotation_deg, -180.0..=180.0).text("Rotation (°)"))
-                .changed()
-            {
+            if widgets::slider_row(
+                ui,
+                rotation_deg,
+                -180.0..=180.0,
+                "Rotation (°)",
+                1.0,
+                None,
+                None,
+            ) {
                 changed = true;
             }
 
@@ -769,23 +815,39 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 PolygonCornerStyle::Sharp => {}
                 PolygonCornerStyle::Rounded { radius_pct } => {
                     let mut radius = (*radius_pct * 100.0).clamp(0.0, 40.0);
-                    if ui
-                        .add(Slider::new(&mut radius, 0.0..=40.0).text("Corner radius (%)"))
-                        .changed()
-                    {
-                        *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
-                        changed = true;
-                    }
+                    ui.scope(|ui| {
+                        ui.set_max_width(250.0);
+                        if widgets::slider_row(
+                            ui,
+                            &mut radius,
+                            0.0..=40.0,
+                            "Corner radius (%)",
+                            1.0,
+                            None,
+                            None,
+                        ) {
+                            *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                            changed = true;
+                        }
+                    });
                 }
                 PolygonCornerStyle::Chamfered { size_pct } => {
                     let mut size = (*size_pct * 100.0).clamp(0.0, 40.0);
-                    if ui
-                        .add(Slider::new(&mut size, 0.0..=40.0).text("Chamfer size (%)"))
-                        .changed()
-                    {
-                        *size_pct = (size / 100.0).clamp(0.0, 0.5);
-                        changed = true;
-                    }
+                    ui.scope(|ui| {
+                        ui.set_max_width(250.0);
+                        if widgets::slider_row(
+                            ui,
+                            &mut size,
+                            0.0..=40.0,
+                            "Chamfer size (%)",
+                            1.0,
+                            None,
+                            None,
+                        ) {
+                            *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                            changed = true;
+                        }
+                    });
                 }
             }
         }
