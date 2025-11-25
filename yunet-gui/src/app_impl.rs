@@ -657,6 +657,19 @@ impl YuNetApp {
                 self.preview.detections.clear();
                 self.preview.source_image = None;
             }
+            JobMessage::WebcamFrame {
+                image,
+                frame_number,
+                detections,
+            } => {
+                self.process_webcam_frame(ctx, image, frame_number, detections);
+            }
+            JobMessage::WebcamError(error) => {
+                self.handle_webcam_error(error);
+            }
+            JobMessage::WebcamStopped => {
+                self.handle_webcam_stopped();
+            }
         }
     }
 }

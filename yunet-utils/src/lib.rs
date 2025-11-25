@@ -25,6 +25,8 @@ pub mod quality;
 pub mod shape;
 /// Instrumentation helpers for optional performance tracing.
 pub mod telemetry;
+/// Webcam capture utilities for real-time face detection.
+pub mod webcam;
 
 use std::path::Path;
 
@@ -61,6 +63,7 @@ pub use telemetry::{
     TimingGuard, configure as configure_telemetry, telemetry_allows, telemetry_enabled,
     telemetry_level, timing_guard, timing_guard_if,
 };
+pub use webcam::{WebcamCapture, list_webcam_devices};
 
 /// Initialize logging once for CLI and GUI environments.
 ///

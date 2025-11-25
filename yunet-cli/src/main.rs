@@ -27,15 +27,15 @@ use yunet_core::{
 use yunet_utils::{
     BatchCropRequest, CropShape, EnhancementSettings, GpuAvailability, GpuBatchCropper, GpuContext,
     GpuContextOptions, GpuContextPool, GpuPoolError, MetadataContext, OutputOptions, Quality,
-    QualityFilter, RgbaColor, WgpuEnhancer, append_suffix_to_filename, apply_enhancements,
-    apply_shape_mask_dynamic,
+    QualityFilter, RgbaColor, WebcamCapture, WgpuEnhancer, append_suffix_to_filename,
+    apply_enhancements, apply_shape_mask_dynamic,
     config::{
         AppSettings, CropSettings as ConfigCropSettings, MetadataMode, QualityAutomationSettings,
         ResizeQuality, default_settings_path,
     },
     configure_telemetry, estimate_sharpness,
     gpu::{GpuStatusIndicator, GpuStatusMode},
-    hsv_to_rgb, init_logging, load_image,
+    hsv_to_rgb, init_logging, list_webcam_devices, load_image,
     mapping::ColumnSelector,
     mapping::MappingFormat,
     mapping::MappingReadOptions,
@@ -49,8 +49,32 @@ use yunet_utils::{
 #[command(author, version, about)]
 struct DetectArgs {
     /// Path to an image file or a directory containing images.
-    #[arg(short, long, required_unless_present = "mapping_file")]
+    #[arg(short, long, required_unless_present_any = ["mapping_file", "webcam"])]
     input: Option<PathBuf>,
+
+    /// Enable webcam capture mode (captures frames from the default webcam).
+    #[arg(long, conflicts_with = "input", conflicts_with = "mapping_file")]
+    webcam: bool,
+
+    /// Webcam device index (default: 0 for default camera).
+    #[arg(long, default_value_t = 0, requires = "webcam")]
+    webcam_device: u32,
+
+    /// Webcam capture width (default: 640).
+    #[arg(long, default_value_t = 640, requires = "webcam")]
+    webcam_width: u32,
+
+    /// Webcam capture height (default: 480).
+    #[arg(long, default_value_t = 480, requires = "webcam")]
+    webcam_height: u32,
+
+    /// Webcam frame rate (default: 30 fps).
+    #[arg(long, default_value_t = 30, requires = "webcam")]
+    webcam_fps: u32,
+
+    /// Number of frames to capture in webcam mode (0 = continuous, Ctrl+C to stop).
+    #[arg(long, default_value_t = 0, requires = "webcam")]
+    webcam_frames: u32,
 
     /// Path to the YuNet ONNX model.
     #[arg(
@@ -793,6 +817,205 @@ fn build_cli_detector(
     }
 }
 
+/// Process frames from webcam in real-time.
+fn run_webcam_mode(
+    args: &DetectArgs,
+    detector: Arc<YuNetDetector>,
+    settings: Arc<AppSettings>,
+    gpu_runtime: Arc<CliGpuRuntime>,
+    quality_filter: Arc<QualityFilter>,
+) -> Result<()> {
+    info!(
+        "Opening webcam device {} at {}x{} @ {} fps",
+        args.webcam_device, args.webcam_width, args.webcam_height, args.webcam_fps
+    );
+
+    // List available devices
+    match list_webcam_devices() {
+        Ok(devices) => {
+            info!("Available webcam devices:");
+            for (idx, name) in devices {
+                info!("  [{}] {}", idx, name);
+            }
+        }
+        Err(e) => warn!("Could not enumerate webcam devices: {}", e),
+    }
+
+    let mut webcam = WebcamCapture::with_device_index(
+        args.webcam_device,
+        args.webcam_width,
+        args.webcam_height,
+        args.webcam_fps,
+    )
+    .context("Failed to open webcam")?;
+
+    let (actual_width, actual_height) = webcam.resolution();
+    info!(
+        "Webcam opened successfully: {}x{} @ {} fps",
+        actual_width,
+        actual_height,
+        webcam.frame_rate()
+    );
+
+    let annotate_dir = if let Some(dir) = args.annotate.as_ref() {
+        fs::create_dir_all(dir)
+            .with_context(|| format!("failed to create annotation directory {}", dir.display()))?;
+        Some(normalize_path(dir)?)
+    } else {
+        None
+    };
+
+    let crop_enabled = args.crop;
+    let crop_output_dir = if crop_enabled {
+        if let Some(dir) = args.output_dir.as_ref() {
+            fs::create_dir_all(dir)
+                .with_context(|| format!("failed to create output dir {}", dir.display()))?;
+            Some(normalize_path(dir)?)
+        } else {
+            anyhow::bail!("--crop requires --output-dir to be specified");
+        }
+    } else {
+        None
+    };
+
+    let enhancement_settings = Arc::new(build_enhancement_settings(args));
+    let max_frames = args.webcam_frames;
+    let continuous_mode = max_frames == 0;
+    let mut frame_count = 0u32;
+    let mut total_faces = 0usize;
+
+    if continuous_mode {
+        info!("Starting webcam detection loop (continuous mode - press Ctrl+C to stop)");
+    } else {
+        info!(
+            "Starting webcam detection loop (capturing {} frames)",
+            max_frames
+        );
+    }
+
+    loop {
+        if !continuous_mode && frame_count >= max_frames {
+            break;
+        }
+
+        let frame = match webcam.capture_frame() {
+            Ok(f) => f,
+            Err(e) => {
+                warn!("Failed to capture frame: {}", e);
+                continue;
+            }
+        };
+
+        frame_count += 1;
+
+        // Run detection on the frame
+        let output = match detector.detect_image(&frame) {
+            Ok(out) => out,
+            Err(e) => {
+                warn!("Detection failed on frame {}: {}", frame_count, e);
+                continue;
+            }
+        };
+
+        let num_faces = output.detections.len();
+        total_faces += num_faces;
+
+        info!("Frame {}: detected {} face(s)", frame_count, num_faces);
+
+        // Print detection results
+        for (idx, det) in output.detections.iter().enumerate() {
+            debug!(
+                "  Face {}: score={:.3}, bbox=[{:.1}, {:.1}, {:.1}, {:.1}]",
+                idx + 1,
+                det.score,
+                det.bbox.x,
+                det.bbox.y,
+                det.bbox.width,
+                det.bbox.height
+            );
+        }
+
+        // Save annotated frame if requested
+        if let Some(dir) = annotate_dir.as_ref() {
+            let frame_name = format!("frame_{:06}.png", frame_count);
+            let frame_path = std::env::temp_dir().join(&frame_name);
+            if let Err(e) = frame.save(&frame_path) {
+                warn!("Failed to save temporary frame: {}", e);
+            } else {
+                match annotate_image(&frame_path, &output.detections, dir) {
+                    Ok(path) => debug!("Saved annotated frame to {}", path.display()),
+                    Err(e) => warn!("Failed to annotate frame {}: {}", frame_count, e),
+                }
+                let _ = fs::remove_file(&frame_path);
+            }
+        }
+
+        // Crop faces if requested
+        if crop_enabled && !output.detections.is_empty() {
+            if let Some(out_dir) = crop_output_dir.as_ref() {
+                let core_settings = build_core_crop_settings(&settings.crop);
+                let output_options = OutputOptions::from_crop_settings(&settings.crop);
+
+                for (idx, det) in output.detections.iter().enumerate() {
+                    let mut crop_img = crop_face_from_image(&frame, det, &core_settings);
+
+                    if let Some(enh) = enhancement_settings.as_ref() {
+                        crop_img = gpu_runtime.enhance(&crop_img, enh);
+                    }
+
+                    let (quality_score, quality) = estimate_sharpness(&crop_img);
+
+                    if quality_filter.should_skip(quality) {
+                        debug!(
+                            "Skipping frame {} face {} due to {:?} quality",
+                            frame_count,
+                            idx + 1,
+                            quality
+                        );
+                        continue;
+                    }
+
+                    crop_img = gpu_runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+
+                    let mut ext = settings.crop.output_format.clone();
+                    if ext.is_empty() {
+                        ext = "png".to_string();
+                    }
+
+                    let mut out_name =
+                        format!("webcam_frame{:06}_face{}.{}", frame_count, idx + 1, ext);
+                    if let Some(suffix) = quality_filter.suffix_for(quality) {
+                        out_name = append_suffix_to_filename(&out_name, suffix);
+                    }
+
+                    let out_path = out_dir.join(&out_name);
+
+                    let metadata_ctx = MetadataContext {
+                        source_path: None,
+                        crop_settings: Some(&settings.crop),
+                        detection_score: Some(det.score),
+                        quality: Some(quality),
+                        quality_score: Some(quality_score),
+                    };
+
+                    match save_dynamic_image(&crop_img, &out_path, &output_options, &metadata_ctx) {
+                        Ok(_) => info!("Saved crop to {}", out_path.display()),
+                        Err(e) => warn!("Failed to save crop: {}", e),
+                    }
+                }
+            }
+        }
+    }
+
+    info!(
+        "Webcam capture complete: {} frames processed, {} total faces detected",
+        frame_count, total_faces
+    );
+
+    webcam.stop().context("Failed to stop webcam")?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = DetectArgs::parse();
 
@@ -829,6 +1052,29 @@ fn main() -> Result<()> {
     let preprocess_config: PreprocessConfig = settings.input.into();
     let postprocess_config: PostprocessConfig = (&settings.detection).into();
     let input_size = preprocess_config.input_size;
+
+    // Check if webcam mode is enabled
+    if args.webcam {
+        info!(
+            "Loading YuNet model from {} at resolution {}x{}",
+            model_path.display(),
+            input_size.width,
+            input_size.height
+        );
+        let prefer_gpu_inference = settings.gpu.enabled && settings.gpu.inference;
+        let detector = build_cli_detector(
+            &model_path,
+            &preprocess_config,
+            &postprocess_config,
+            gpu_runtime.as_ref(),
+            prefer_gpu_inference,
+        )?;
+        let detector = Arc::new(detector);
+        let settings = Arc::new(settings);
+        let quality_filter = Arc::new(quality_filter);
+
+        return run_webcam_mode(&args, detector, settings, gpu_runtime, quality_filter);
+    }
 
     let processing_items = if let Some(mapping_file) = args.mapping_file.as_ref() {
         collect_mapping_targets(mapping_file, &args)?

@@ -224,6 +224,7 @@ impl YuNetApp {
             show_batch_window: false,
             show_mapping_window: false,
             show_detection_window: false,
+            webcam_state: Default::default(),
         }
     }
 
@@ -267,10 +268,16 @@ impl YuNetApp {
 impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         use egui_extras::{Size, StripBuilder};
+        use crate::types::WebcamStatus;
 
         self.process_import_payloads(ctx);
         self.poll_worker(ctx);
         self.show_status_bar(ctx);
+
+        // Request continuous repaints when webcam is active
+        if matches!(self.webcam_state.status, WebcamStatus::Active | WebcamStatus::Starting) {
+            ctx.request_repaint();
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             StripBuilder::new(ui)

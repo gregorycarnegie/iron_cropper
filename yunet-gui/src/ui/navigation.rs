@@ -87,6 +87,13 @@ impl YuNetApp {
                 ui.separator();
                 ui.add_space(8.0);
 
+                // Webcam section
+                self.show_webcam_controls(ui);
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
                 // Simple settings
                 self.show_simple_settings(ui, palette);
 
@@ -289,5 +296,101 @@ impl YuNetApp {
                     });
                 });
             });
+    }
+
+    fn show_webcam_controls(&mut self, ui: &mut Ui) {
+        use crate::types::WebcamStatus;
+
+        ui.heading("Webcam");
+        ui.add_space(8.0);
+
+        let is_active = matches!(
+            self.webcam_state.status,
+            WebcamStatus::Active | WebcamStatus::Starting
+        );
+        let is_inactive = matches!(self.webcam_state.status, WebcamStatus::Inactive);
+
+        // Start/Stop button
+        let btn_text = if is_active {
+            "⏹ Stop Webcam"
+        } else {
+            "▶ Start Webcam"
+        };
+
+        if ui
+            .add_sized([ui.available_width(), 32.0], egui::Button::new(btn_text))
+            .clicked()
+        {
+            if is_active {
+                self.stop_webcam();
+            } else {
+                self.start_webcam();
+            }
+        }
+
+        // Status indicator
+        let status_text = match self.webcam_state.status {
+            WebcamStatus::Inactive => "⚪ Inactive",
+            WebcamStatus::Starting => "🟡 Starting...",
+            WebcamStatus::Active => "🟢 Active",
+            WebcamStatus::Stopping => "🟡 Stopping...",
+            WebcamStatus::Error => "🔴 Error",
+        };
+        ui.label(status_text);
+
+        // Show stats when active
+        if is_active {
+            ui.add_space(4.0);
+            ui.label(format!("Frames: {}", self.webcam_state.frames_captured));
+            ui.label(format!("Faces: {}", self.webcam_state.total_faces));
+            ui.label(format!(
+                "Resolution: {}x{}",
+                self.webcam_state.width, self.webcam_state.height
+            ));
+        }
+
+        // Show error message if any
+        if let Some(ref error) = self.webcam_state.error_message {
+            ui.add_space(4.0);
+            ui.colored_label(egui::Color32::from_rgb(255, 100, 100), error);
+        }
+
+        // Configuration (only when inactive)
+        ui.add_enabled_ui(is_inactive, |ui| {
+            ui.add_space(8.0);
+            ui.label("Device:");
+            ui.add(
+                egui::DragValue::new(&mut self.webcam_state.device_index)
+                    .speed(1.0)
+                    .range(0..=10),
+            );
+
+            ui.horizontal(|ui| {
+                ui.label("Resolution:");
+                ui.add(
+                    egui::DragValue::new(&mut self.webcam_state.width)
+                        .speed(1.0)
+                        .range(320..=1920),
+                );
+                ui.label("×");
+                ui.add(
+                    egui::DragValue::new(&mut self.webcam_state.height)
+                        .speed(1.0)
+                        .range(240..=1080),
+                );
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("FPS:");
+                ui.add(
+                    egui::DragValue::new(&mut self.webcam_state.fps)
+                        .speed(1.0)
+                        .range(1..=60),
+                );
+            });
+
+            ui.checkbox(&mut self.webcam_state.show_overlay, "Show detections");
+            ui.checkbox(&mut self.webcam_state.auto_crop, "Auto-save crops");
+        });
     }
 }

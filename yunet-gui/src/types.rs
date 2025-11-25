@@ -192,6 +192,62 @@ pub struct YuNetApp {
     pub show_mapping_window: bool,
     /// Whether the detection details window is open.
     pub show_detection_window: bool,
+    /// Webcam state management.
+    pub webcam_state: WebcamState,
+}
+
+/// Webcam capture state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebcamStatus {
+    Inactive,
+    Starting,
+    Active,
+    Stopping,
+    Error,
+}
+
+/// Webcam configuration and runtime state.
+pub struct WebcamState {
+    /// Current status of the webcam.
+    pub status: WebcamStatus,
+    /// Selected device index.
+    pub device_index: u32,
+    /// Capture width.
+    pub width: u32,
+    /// Capture height.
+    pub height: u32,
+    /// Capture frame rate.
+    pub fps: u32,
+    /// Total frames captured.
+    pub frames_captured: u32,
+    /// Total faces detected across all frames.
+    pub total_faces: usize,
+    /// Last error message if any.
+    pub error_message: Option<String>,
+    /// Whether to show detection overlays in real-time.
+    pub show_overlay: bool,
+    /// Whether to automatically crop detected faces.
+    pub auto_crop: bool,
+    /// Atomic flag to signal the webcam thread to stop.
+    pub stop_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+impl Default for WebcamState {
+    fn default() -> Self {
+        Self {
+            status: WebcamStatus::Inactive,
+            device_index: 0,
+            width: 640,
+            height: 480,
+            fps: 30,
+            frames_captured: 0,
+            total_faces: 0,
+            error_message: None,
+            show_overlay: true,
+            auto_crop: false,
+            stop_flag: None,
+        }
+    }
 }
 
 /// Indicates whether a bounding box originated from the detector or the user.
@@ -544,6 +600,16 @@ pub enum JobMessage {
     },
     /// Indicates that a detection job has failed.
     DetectionFailed { job_id: u64, error: String },
+    /// Webcam frame captured and ready for processing.
+    WebcamFrame {
+        image: DynamicImage,
+        frame_number: u32,
+        detections: Vec<DetectionWithQuality>,
+    },
+    /// Webcam capture error occurred.
+    WebcamError(String),
+    /// Webcam has been stopped.
+    WebcamStopped,
 }
 
 /// The data returned from a successful detection job.

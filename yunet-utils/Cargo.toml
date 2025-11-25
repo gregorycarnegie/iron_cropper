@@ -31,6 +31,7 @@ pollster.workspace = true
 async-channel.workspace = true
 thiserror.workspace = true
 bytemuck.workspace = true
+nokhwa.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
