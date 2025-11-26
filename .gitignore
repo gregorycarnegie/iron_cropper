@@ -10,6 +10,7 @@
 *.onnx
 *.log
 /cache
+nul
 # AGENTS.md
 # CLAUDE.md
 # GEMINI.md
