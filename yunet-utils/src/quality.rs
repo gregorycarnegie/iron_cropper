@@ -13,7 +13,6 @@
 //! such as auto-selecting the sharpest face or applying filename suffixes.
 
 use image::{DynamicImage, GenericImageView, GrayImage};
-use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 
 /// Quality levels derived from Laplacian variance thresholds.
@@ -139,45 +138,54 @@ pub fn laplacian_variance(img: &DynamicImage) -> f64 {
         std::borrow::Cow::Borrowed(img)
     };
 
-    // Convert to grayscale u8 image
     let gray: GrayImage = img_to_process.to_luma8();
-    let (w, h) = gray.dimensions();
+    let (width, height) = gray.dimensions();
 
-    if w == 0 || h == 0 {
+    if width < 3 || height < 3 {
         return 0.0;
     }
 
-    // Convert to ndarray for convolution
-    let mut arr = Array2::<f64>::zeros((h as usize, w as usize));
-    for (y, mut row) in arr.rows_mut().into_iter().enumerate() {
-        for (x, val) in row.iter_mut().enumerate() {
-            *val = gray.get_pixel(x as u32, y as u32)[0] as f64;
+    let raw = gray.as_raw();
+    let stride = width as usize;
+
+    let mut sum = 0.0;
+    let mut sum_sq = 0.0;
+    let mut count = 0.0;
+
+    // Single-pass Laplacian calculation using integer arithmetic
+    // Kernel:
+    //  0  1  0
+    //  1 -4  1
+    //  0  1  0
+
+    // Iterate over the inner pixels
+    for y in 1..height - 1 {
+        let row_offset = (y as usize) * stride;
+        for x in 1..width - 1 {
+            let idx = row_offset + (x as usize);
+
+            // Direct buffer access (safe because we are within bounds)
+            let p_c = raw[idx] as i16;
+            let p_u = raw[idx - stride] as i16;
+            let p_d = raw[idx + stride] as i16;
+            let p_l = raw[idx - 1] as i16;
+            let p_r = raw[idx + 1] as i16;
+
+            let lap = p_u + p_d + p_l + p_r - 4 * p_c;
+            let val = lap as f64;
+
+            sum += val;
+            sum_sq += val * val;
+            count += 1.0;
         }
     }
 
-    // 3x3 Laplacian kernel
-    let k: [[f64; 3]; 3] = [[0.0, 1.0, 0.0], [1.0, -4.0, 1.0], [0.0, 1.0, 0.0]];
-
-    let mut lap = Array2::<f64>::zeros((h as usize, w as usize));
-
-    for y in 1..(h as usize - 1).max(1) {
-        for x in 1..(w as usize - 1).max(1) {
-            let mut s = 0.0;
-            for (ky, krow) in k.iter().enumerate() {
-                for (kx, kval) in krow.iter().enumerate() {
-                    let px = x + kx - 1;
-                    let py = y + ky - 1;
-                    s += kval * arr[[py, px]];
-                }
-            }
-            lap[[y, x]] = s;
-        }
+    if count == 0.0 {
+        return 0.0;
     }
 
-    // compute variance of lap values
-    let flat: Vec<f64> = lap.iter().copied().collect();
-    let mean = flat.iter().sum::<f64>() / (flat.len() as f64);
-    flat.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (flat.len() as f64)
+    let mean = sum / count;
+    (sum_sq / count) - (mean * mean)
 }
 
 /// Estimate the quality bucket for the image using Laplacian variance.
@@ -275,5 +283,35 @@ mod tests {
         assert_eq!(filter.suffix_for(Quality::High), Some("_highq"));
         assert_eq!(filter.suffix_for(Quality::Medium), Some("_medq"));
         assert_eq!(filter.suffix_for(Quality::Low), Some("_lowq"));
+    }
+}
+
+#[cfg(test)]
+mod benchmarks {
+    use super::*;
+    use image::{DynamicImage, RgbaImage};
+    use std::time::Instant;
+
+    #[test]
+    fn bench_laplacian_variance() {
+        // Create a 512x512 image (typical face crop size)
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(512, 512));
+
+        // Warmup
+        for _ in 0..10 {
+            let _ = laplacian_variance(&img);
+        }
+
+        let start = Instant::now();
+        let iterations = 100;
+        for _ in 0..iterations {
+            let _ = laplacian_variance(&img);
+        }
+        let duration = start.elapsed();
+
+        println!(
+            "laplacian_variance (512x512) avg time: {:?}",
+            duration / iterations
+        );
     }
 }
