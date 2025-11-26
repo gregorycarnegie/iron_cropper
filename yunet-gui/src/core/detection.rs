@@ -13,7 +13,7 @@ use yunet_core::{
 };
 use yunet_utils::{
     GpuAvailability, GpuContext, GpuContextOptions, config::AppSettings, load_image,
-    quality::estimate_sharpness,
+    quality::estimate_sharpness, timing_guard,
 };
 
 use crate::{
@@ -205,48 +205,57 @@ pub fn perform_detection(
     detector: Arc<YuNetDetector>,
     path: PathBuf,
 ) -> Result<DetectionJobSuccess> {
-    let image = Arc::new(
-        load_image(&path)
-            .with_context(|| format!("failed to load image from {}", path.display()))?,
-    );
-    let detection_output = detector
-        .detect_image(&image)
-        .with_context(|| format!("YuNet detection failed for {}", path.display()))?;
+    let image = {
+        let _guard = timing_guard("yunet_gui::load_image", log::Level::Debug);
+        Arc::new(
+            load_image(&path)
+                .with_context(|| format!("failed to load image from {}", path.display()))?,
+        )
+    };
+    let detection_output = {
+        let _guard = timing_guard("yunet_gui::detect_image", log::Level::Debug);
+        detector
+            .detect_image(&image)
+            .with_context(|| format!("YuNet detection failed for {}", path.display()))?
+    };
 
     // Calculate quality scores for each detected face
-    let detections_with_quality: Vec<DetectionWithQuality> = detection_output
-        .detections
-        .into_iter()
-        .map(|detection| {
-            // Crop face region for quality analysis
-            let bbox = detection.bbox;
-            let x = bbox.x.max(0.0) as u32;
-            let y = bbox.y.max(0.0) as u32;
-            let w = bbox.width.max(1.0) as u32;
-            let h = bbox.height.max(1.0) as u32;
+    let detections_with_quality: Vec<DetectionWithQuality> = {
+        let _guard = timing_guard("yunet_gui::estimate_sharpness_batch", log::Level::Debug);
+        detection_output
+            .detections
+            .into_iter()
+            .map(|detection| {
+                // Crop face region for quality analysis
+                let bbox = detection.bbox;
+                let x = bbox.x.max(0.0) as u32;
+                let y = bbox.y.max(0.0) as u32;
+                let w = bbox.width.max(1.0) as u32;
+                let h = bbox.height.max(1.0) as u32;
 
-            // Clamp to image bounds
-            let img_w = image.width();
-            let img_h = image.height();
-            let x = x.min(img_w.saturating_sub(1));
-            let y = y.min(img_h.saturating_sub(1));
-            let w = w.min(img_w.saturating_sub(x));
-            let h = h.min(img_h.saturating_sub(y));
+                // Clamp to image bounds
+                let img_w = image.width();
+                let img_h = image.height();
+                let x = x.min(img_w.saturating_sub(1));
+                let y = y.min(img_h.saturating_sub(1));
+                let w = w.min(img_w.saturating_sub(x));
+                let h = h.min(img_h.saturating_sub(y));
 
-            let face_region = image.crop_imm(x, y, w, h);
-            let (quality_score, quality) = estimate_sharpness(&face_region);
+                let face_region = image.crop_imm(x, y, w, h);
+                let (quality_score, quality) = estimate_sharpness(&face_region);
 
-            DetectionWithQuality {
-                detection,
-                quality_score,
-                quality,
-                thumbnail: None, // Will be created on the GUI thread
-                current_bbox: bbox,
-                original_bbox: bbox,
-                origin: DetectionOrigin::Detector,
-            }
-        })
-        .collect();
+                DetectionWithQuality {
+                    detection,
+                    quality_score,
+                    quality,
+                    thumbnail: None, // Will be created on the GUI thread
+                    current_bbox: bbox,
+                    original_bbox: bbox,
+                    origin: DetectionOrigin::Detector,
+                }
+            })
+            .collect()
+    };
 
     let rgba = image.to_rgba8();
     let size = [rgba.width() as usize, rgba.height() as usize];
@@ -268,6 +277,7 @@ pub fn create_thumbnails(
     image: &DynamicImage,
     texture_seq: &mut u64,
 ) {
+    let _guard = timing_guard("yunet_gui::create_thumbnails", log::Level::Debug);
     for (index, det) in detections.iter_mut().enumerate() {
         let bbox = det.active_bbox();
         let x = bbox.x.max(0.0) as u32;
@@ -285,7 +295,7 @@ pub fn create_thumbnails(
 
         let face_region = image.crop_imm(x, y, w, h);
         // Resize to thumbnail size (96x96)
-        let thumb = face_region.resize(96, 96, image::imageops::FilterType::Lanczos3);
+        let thumb = face_region.resize(96, 96, image::imageops::FilterType::Triangle);
         let thumb_rgba = thumb.to_rgba8();
         let thumb_size = [thumb_rgba.width() as usize, thumb_rgba.height() as usize];
         let thumb_color = egui::ColorImage::from_rgba_unmultiplied(thumb_size, thumb_rgba.as_raw());

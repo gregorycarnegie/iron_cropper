@@ -12,7 +12,7 @@
 //! the derived `Quality` so higher layers (CLI/GUI) can implement automation
 //! such as auto-selecting the sharpest face or applying filename suffixes.
 
-use image::{DynamicImage, GrayImage};
+use image::{DynamicImage, GenericImageView, GrayImage};
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 
@@ -130,8 +130,17 @@ impl QualityFilter {
 /// Compute the Laplacian variance for an image region. Higher values mean
 /// the image is sharper (less blurry).
 pub fn laplacian_variance(img: &DynamicImage) -> f64 {
+    // Optimization: Downscale large images to speed up variance calculation
+    let (w, h) = img.dimensions();
+    let max_dim = 512;
+    let img_to_process = if w > max_dim || h > max_dim {
+        std::borrow::Cow::Owned(img.resize(max_dim, max_dim, image::imageops::FilterType::Triangle))
+    } else {
+        std::borrow::Cow::Borrowed(img)
+    };
+
     // Convert to grayscale u8 image
-    let gray: GrayImage = img.to_luma8();
+    let gray: GrayImage = img_to_process.to_luma8();
     let (w, h) = gray.dimensions();
 
     if w == 0 || h == 0 {
