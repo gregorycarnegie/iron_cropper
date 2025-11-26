@@ -148,9 +148,8 @@ pub fn laplacian_variance(img: &DynamicImage) -> f64 {
     let raw = gray.as_raw();
     let stride = width as usize;
 
-    let mut sum = 0.0;
-    let mut sum_sq = 0.0;
-    let mut count = 0.0;
+    let mut sum: i64 = 0;
+    let mut sum_sq: i64 = 0;
 
     // Single-pass Laplacian calculation using integer arithmetic
     // Kernel:
@@ -171,21 +170,16 @@ pub fn laplacian_variance(img: &DynamicImage) -> f64 {
             let p_l = raw[idx - 1] as i16;
             let p_r = raw[idx + 1] as i16;
 
-            let lap = p_u + p_d + p_l + p_r - 4 * p_c;
-            let val = lap as f64;
+            let lap = (p_u + p_d + p_l + p_r - 4 * p_c) as i64;
 
-            sum += val;
-            sum_sq += val * val;
-            count += 1.0;
+            sum += lap;
+            sum_sq += lap * lap;
         }
     }
 
-    if count == 0.0 {
-        return 0.0;
-    }
-
-    let mean = sum / count;
-    (sum_sq / count) - (mean * mean)
+    let count = ((width - 2) * (height - 2)) as f64;
+    let mean = (sum as f64) / count;
+    ((sum_sq as f64) / count) - (mean * mean)
 }
 
 /// Estimate the quality bucket for the image using Laplacian variance.
