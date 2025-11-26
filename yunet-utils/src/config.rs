@@ -104,7 +104,7 @@ impl Default for InputDimensions {
         Self {
             width: 640,
             height: 640,
-            resize_quality: ResizeQuality::Quality,
+            resize_quality: ResizeQuality::Speed,
         }
     }
 }
@@ -429,7 +429,7 @@ impl Default for GpuSettings {
         Self {
             enabled: true,
             respect_env: true,
-            inference: false,
+            inference: true,
         }
     }
 }
