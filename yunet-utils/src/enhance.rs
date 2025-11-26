@@ -310,7 +310,11 @@ fn apply_skin_smoothing(
     let amount = amount.clamp(0.0, 1.0);
     let src = img.to_rgba8();
     let (w, h) = src.dimensions();
-    let mut out = src.clone();
+
+    // Create output buffer
+    // We need to use UnsafeCell or split the buffer to write in parallel safely.
+    // Since we are writing to distinct pixels (x,y), we can use `par_chunks_mut` on the raw buffer.
+    let mut out_buffer = src.clone();
 
     // Kernel radius based on spatial sigma (typically 2-3 sigmas)
     let radius = (sigma_space * 2.0).ceil() as i32;
@@ -327,70 +331,89 @@ fn apply_skin_smoothing(
         }
     }
 
-    // Color similarity coefficient
+    // Precompute color weights LUT
+    // Max possible squared color distance is 255^2 * 3 approx 195075
+    // We can just precompute for all possible squared distances.
     let color_coeff = -0.5 / (sigma_color * sigma_color);
+    let max_dist_sq = 255 * 255 * 3;
+    let color_lut: Vec<f32> = (0..=max_dist_sq)
+        .map(|d| (color_coeff * d as f32).exp())
+        .collect();
 
-    for y in 0..h {
-        for x in 0..w {
-            let center = src.get_pixel(x, y).0;
-            let mut sum_r = 0.0f32;
-            let mut sum_g = 0.0f32;
-            let mut sum_b = 0.0f32;
-            let mut sum_weight = 0.0f32;
+    // Parallelize over rows
+    use rayon::prelude::*;
+    out_buffer
+        .enumerate_rows_mut()
+        .par_bridge()
+        .for_each(|(y, row)| {
+            for (x, _y, pixel) in row {
+                let center = src.get_pixel(x, y).0;
+                let mut sum_r = 0.0f32;
+                let mut sum_g = 0.0f32;
+                let mut sum_b = 0.0f32;
+                let mut sum_weight = 0.0f32;
 
-            // Iterate over neighborhood
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let nx = (x as i32 + dx).clamp(0, w as i32 - 1) as u32;
+                // Iterate over neighborhood
+                for dy in -radius..=radius {
                     let ny = (y as i32 + dy).clamp(0, h as i32 - 1) as u32;
-                    let neighbor = src.get_pixel(nx, ny).0;
+                    // Optimization: Pre-calculate Y offset or row pointer if possible,
+                    // but get_pixel is safe. For speed, we might want raw access but let's trust the compiler first.
 
-                    // Color distance (Euclidean in RGB space)
-                    let dr = center[0] as f32 - neighbor[0] as f32;
-                    let dg = center[1] as f32 - neighbor[1] as f32;
-                    let db = center[2] as f32 - neighbor[2] as f32;
-                    let color_dist_sq = dr.mul_add(dr, dg.mul_add(dg, db * db));
+                    for dx in -radius..=radius {
+                        let nx = (x as i32 + dx).clamp(0, w as i32 - 1) as u32;
 
-                    // Combine spatial and color weights
-                    let spatial_w = spatial_weights[(dy + radius) as usize][(dx + radius) as usize];
-                    let color_w = (color_coeff * color_dist_sq).exp();
-                    let weight = spatial_w * color_w;
+                        // We need random access to neighbors, so we use src (read-only shared ref)
+                        let neighbor = src.get_pixel(nx, ny).0;
 
-                    sum_r = weight.mul_add(neighbor[0] as f32, sum_r);
-                    sum_g = weight.mul_add(neighbor[1] as f32, sum_g);
-                    sum_b = weight.mul_add(neighbor[2] as f32, sum_b);
-                    sum_weight += weight;
+                        // Color distance (Euclidean in RGB space)
+                        // We use integer arithmetic for distance to use the LUT
+                        let dr = (center[0] as i32 - neighbor[0] as i32).abs();
+                        let dg = (center[1] as i32 - neighbor[1] as i32).abs();
+                        let db = (center[2] as i32 - neighbor[2] as i32).abs();
+                        let color_dist_sq = (dr * dr + dg * dg + db * db) as usize;
+
+                        // Combine spatial and color weights
+                        let spatial_w =
+                            spatial_weights[(dy + radius) as usize][(dx + radius) as usize];
+                        // LUT lookup
+                        let color_w = color_lut[color_dist_sq];
+                        let weight = spatial_w * color_w;
+
+                        sum_r = weight.mul_add(neighbor[0] as f32, sum_r);
+                        sum_g = weight.mul_add(neighbor[1] as f32, sum_g);
+                        sum_b = weight.mul_add(neighbor[2] as f32, sum_b);
+                        sum_weight += weight;
+                    }
+                }
+
+                if sum_weight > 0.0 {
+                    let filtered_r = (sum_r / sum_weight).round().clamp(0.0, 255.0) as u8;
+                    let filtered_g = (sum_g / sum_weight).round().clamp(0.0, 255.0) as u8;
+                    let filtered_b = (sum_b / sum_weight).round().clamp(0.0, 255.0) as u8;
+
+                    // Blend with original based on amount
+                    let center_r = center[0] as f32;
+                    let center_g = center[1] as f32;
+                    let center_b = center[2] as f32;
+                    let final_r = amount
+                        .mul_add(filtered_r as f32 - center_r, center_r)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    let final_g = amount
+                        .mul_add(filtered_g as f32 - center_g, center_g)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+                    let final_b = amount
+                        .mul_add(filtered_b as f32 - center_b, center_b)
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
+
+                    *pixel = image::Rgba([final_r, final_g, final_b, center[3]]);
                 }
             }
+        });
 
-            if sum_weight > 0.0 {
-                let filtered_r = (sum_r / sum_weight).round().clamp(0.0, 255.0) as u8;
-                let filtered_g = (sum_g / sum_weight).round().clamp(0.0, 255.0) as u8;
-                let filtered_b = (sum_b / sum_weight).round().clamp(0.0, 255.0) as u8;
-
-                // Blend with original based on amount
-                let center_r = center[0] as f32;
-                let center_g = center[1] as f32;
-                let center_b = center[2] as f32;
-                let final_r = amount
-                    .mul_add(filtered_r as f32 - center_r, center_r)
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
-                let final_g = amount
-                    .mul_add(filtered_g as f32 - center_g, center_g)
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
-                let final_b = amount
-                    .mul_add(filtered_b as f32 - center_b, center_b)
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
-
-                out.put_pixel(x, y, image::Rgba([final_r, final_g, final_b, center[3]]));
-            }
-        }
-    }
-
-    DynamicImage::ImageRgba8(out)
+    DynamicImage::ImageRgba8(out_buffer)
 }
 
 /// Apply automated red-eye reduction.

@@ -11,6 +11,8 @@
 *.log
 /cache
 nul
+bench_*.txt
+test_*.txt
 # AGENTS.md
 # CLAUDE.md
 # GEMINI.md

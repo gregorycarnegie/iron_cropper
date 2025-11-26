@@ -186,3 +186,33 @@ mod tests {
         assert_eq!(fast.as_raw(), expected.as_raw());
     }
 }
+
+#[cfg(test)]
+mod benchmarks {
+    use super::*;
+    use image::RgbImage;
+    use std::time::Instant;
+
+    #[test]
+    fn bench_rgb_to_bgr_chw() {
+        // 640x640 image (typical inference size)
+        let img = RgbImage::new(640, 640);
+
+        // Warmup
+        for _ in 0..10 {
+            let _ = rgb_to_bgr_chw(&img);
+        }
+
+        let start = Instant::now();
+        let iterations = 100;
+        for _ in 0..iterations {
+            let _ = rgb_to_bgr_chw(&img);
+        }
+        let duration = start.elapsed();
+
+        println!(
+            "rgb_to_bgr_chw (640x640) avg time: {:?}",
+            duration / iterations
+        );
+    }
+}
