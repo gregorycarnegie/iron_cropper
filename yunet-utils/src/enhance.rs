@@ -487,35 +487,60 @@ fn background_blur_from_rgba(
     let rx = (w as f32 / 2.0) * mask_size;
     let ry = (h as f32 / 2.0) * mask_size;
 
+    // Squared radii for distance checks
+    let rx_sq = rx * rx;
+    let ry_sq = ry * ry;
+
+    // Thresholds for transition zone (0.9 to 1.1)
+    // We check dist_sq against 0.9^2 and 1.1^2
+    let inner_thresh_sq = 0.81; // 0.9 * 0.9
+    let outer_thresh_sq = 1.21; // 1.1 * 1.1
+
+    // Create output buffer
+    // We can reuse the sharp image buffer as a base if we wanted to save allocation,
+    // but let's create a new one to be safe and parallel-friendly.
     let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
 
-    for y in 0..h {
-        for x in 0..w {
-            let dx = (x as f32 - cx) / rx;
-            let dy = (y as f32 - cy) / ry;
-            let dist = dx.mul_add(dx, dy * dy).sqrt();
+    use rayon::prelude::*;
+    out.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
+        let dy = y as f32 - cy;
+        let dy_sq_norm = (dy * dy) / ry_sq;
 
-            let blend = if dist < 0.9 {
+        for (x, _y, pixel) in row {
+            let dx = x as f32 - cx;
+            let dx_sq_norm = (dx * dx) / rx_sq;
+
+            // Normalized squared distance from center
+            let dist_sq = dx_sq_norm + dy_sq_norm;
+
+            let blend = if dist_sq < inner_thresh_sq {
                 0.0
-            } else if dist > 1.1 {
+            } else if dist_sq > outer_thresh_sq {
                 1.0
             } else {
+                // Only compute sqrt in the transition zone
+                let dist = dist_sq.sqrt();
                 (dist - 0.9) / 0.2
             };
 
             let sharp_px = sharp.get_pixel(x, y).0;
-            let blur_px = blurred.get_pixel(x, y).0;
 
-            let mut result = [0u8; 4];
-            for c in 0..4 {
-                let sharp_val = sharp_px[c] as f32;
-                let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
-                result[c] = mix.round().clamp(0.0, 255.0) as u8;
+            if blend <= 0.0 {
+                *pixel = Rgba(sharp_px);
+            } else if blend >= 1.0 {
+                *pixel = *blurred.get_pixel(x, y);
+            } else {
+                let blur_px = blurred.get_pixel(x, y).0;
+                let mut result = [0u8; 4];
+                for c in 0..4 {
+                    let sharp_val = sharp_px[c] as f32;
+                    let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
+                    result[c] = mix.round().clamp(0.0, 255.0) as u8;
+                }
+                *pixel = Rgba(result);
             }
-
-            out.put_pixel(x, y, Rgba(result));
         }
-    }
+    });
 
     DynamicImage::ImageRgba8(out)
 }
