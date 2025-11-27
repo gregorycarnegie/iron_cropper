@@ -5,7 +5,9 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{BACKGROUND_BLUR_WGSL, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{
+    BACKGROUND_BLUR_WGSL, GpuBufferPool, GpuContext, pack_rgba_pixels, unpack_rgba_pixels,
+};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
@@ -21,6 +23,7 @@ pub struct GpuBackgroundBlur {
     context: Arc<GpuContext>,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    buffer_pool: Arc<GpuBufferPool>,
 }
 
 impl GpuBackgroundBlur {
@@ -39,10 +42,13 @@ impl GpuBackgroundBlur {
             ]
         );
 
+        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
+
         Ok(Self {
             context,
             pipeline,
             bind_group_layout,
+            buffer_pool,
         })
     }
 
@@ -68,28 +74,31 @@ impl GpuBackgroundBlur {
         let queue = self.context.queue();
         let buffer_size = (sharp_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
-        let sharp_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("yunet_background_blur_sharp"),
-            contents: cast_slice(&sharp_u32),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
-        let blur_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("yunet_background_blur_blur"),
-            contents: cast_slice(&blur_u32),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
-        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("yunet_background_blur_output"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("yunet_background_blur_readback"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        // Acquire buffers from pool
+        let sharp_buffer = self.buffer_pool.acquire(
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            Some("yunet_background_blur_sharp"),
+        );
+        let blur_buffer = self.buffer_pool.acquire(
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            Some("yunet_background_blur_blur"),
+        );
+        let output_buffer = self.buffer_pool.acquire(
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            Some("yunet_background_blur_output"),
+        );
+        let readback = self.buffer_pool.acquire(
+            buffer_size,
+            wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            Some("yunet_background_blur_readback"),
+        );
+
+        // Upload input data
+        queue.write_buffer(&sharp_buffer, 0, cast_slice(&sharp_u32));
+        queue.write_buffer(&blur_buffer, 0, cast_slice(&blur_u32));
 
         let uniforms = BackgroundBlurUniforms {
             width,
@@ -145,6 +154,28 @@ impl GpuBackgroundBlur {
 
         let out_pixels = gpu_readback!(readback, device, sharp_u32.len(), "background blur")?;
         let out_bytes = unpack_rgba_pixels(&out_pixels);
+
+        // Recycle buffers back to pool
+        self.buffer_pool.recycle(
+            sharp_buffer,
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        );
+        self.buffer_pool.recycle(
+            blur_buffer,
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        );
+        self.buffer_pool.recycle(
+            output_buffer,
+            buffer_size,
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        );
+        self.buffer_pool.recycle(
+            readback,
+            buffer_size,
+            wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        );
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build blurred image")?;

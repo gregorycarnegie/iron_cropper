@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -6,21 +7,21 @@ use crate::gpu::GpuContext;
 struct BufferEntry {
     buffer: wgpu::Buffer,
     size: u64,
-    usage: wgpu::BufferUsages,
 }
 
-/// Simple best-fit pool for `wgpu::Buffer` allocations so inference layers can
-/// recycle storage instead of thrashing the driver with create/destroy calls.
+/// Best-fit pool for `wgpu::Buffer` allocations organized by usage flags.
+/// Buffers are grouped by usage to improve search performance and avoid
+/// iterating through incompatible buffers.
 pub struct GpuBufferPool {
     context: Arc<GpuContext>,
-    idle: Mutex<Vec<BufferEntry>>,
+    idle: Mutex<HashMap<wgpu::BufferUsages, Vec<BufferEntry>>>,
 }
 
 impl GpuBufferPool {
     pub fn new(context: Arc<GpuContext>) -> Self {
         Self {
             context,
-            idle: Mutex::new(Vec::new()),
+            idle: Mutex::new(HashMap::new()),
         }
     }
 
@@ -45,24 +46,26 @@ impl GpuBufferPool {
 
     pub fn recycle(&self, buffer: wgpu::Buffer, size: u64, usage: wgpu::BufferUsages) {
         match self.idle.lock() {
-            Ok(mut idle) => idle.push(BufferEntry {
-                buffer,
-                size,
-                usage,
-            }),
-            Err(poisoned) => poisoned.into_inner().push(BufferEntry {
-                buffer,
-                size,
-                usage,
-            }),
+            Ok(mut idle) => {
+                idle.entry(usage)
+                    .or_default()
+                    .push(BufferEntry { buffer, size });
+            }
+            Err(poisoned) => {
+                poisoned
+                    .into_inner()
+                    .entry(usage)
+                    .or_default()
+                    .push(BufferEntry { buffer, size });
+            }
         }
     }
 
     pub fn available(&self) -> usize {
         self.idle
             .lock()
-            .map(|buffers| buffers.len())
-            .unwrap_or_else(|poisoned| poisoned.into_inner().len())
+            .map(|map| map.values().map(|v| v.len()).sum())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().values().map(|v| v.len()).sum())
     }
 
     fn take_best_fit(&self, size: u64, usage: wgpu::BufferUsages) -> Option<BufferEntry> {
@@ -70,10 +73,15 @@ impl GpuBufferPool {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
+
+        // Only search buffers with matching usage flags
+        let buffers = idle.get_mut(&usage)?;
+
         let mut best_index = None;
         let mut best_size = u64::MAX;
-        for (index, entry) in idle.iter().enumerate() {
-            if entry.usage != usage || entry.size < size {
+
+        for (index, entry) in buffers.iter().enumerate() {
+            if entry.size < size {
                 continue;
             }
             if entry.size < best_size {
@@ -84,19 +92,16 @@ impl GpuBufferPool {
                 }
             }
         }
-        best_index.map(|index| idle.swap_remove(index))
+
+        best_index.map(|index| buffers.swap_remove(index))
     }
 }
 
 impl fmt::Debug for GpuBufferPool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let idle_len = self
-            .idle
-            .lock()
-            .map(|idle| idle.len())
-            .unwrap_or_else(|poisoned| poisoned.into_inner().len());
+        let idle_count = self.available();
         f.debug_struct("GpuBufferPool")
-            .field("idle_buffers", &idle_len)
+            .field("idle_buffers", &idle_count)
             .finish()
     }
 }

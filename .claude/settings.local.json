@@ -16,7 +16,9 @@
       "Bash(rustc:*)",
       "Bash(cargo run:*)",
       "Bash(cargo doc:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(cargo bench:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

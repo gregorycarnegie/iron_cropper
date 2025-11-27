@@ -153,6 +153,8 @@ pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) ->
     let pad_w = align_to(input_w, 32);
     let pad_h = align_to(input_h, 32);
 
+    // Calculate total capacity needed across all strides
+    let mut total_cells = 0;
     for &stride in STRIDES.iter() {
         anyhow::ensure!(
             pad_w
@@ -168,7 +170,9 @@ pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) ->
             "input height not divisible by stride {}",
             stride
         );
+        total_cells += (pad_w / stride) * (pad_h / stride);
     }
+    let total_capacity = total_cells * OUTPUT_COLS;
 
     // Process each stride in parallel and collect results
     let stride_results: Result<Vec<Vec<f32>>> = STRIDES
@@ -270,8 +274,12 @@ pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) ->
         })
         .collect();
 
-    // Concatenate results from all strides
-    let fused: Vec<f32> = stride_results?.into_iter().flatten().collect();
+    // Concatenate results from all strides with pre-allocated capacity
+    let stride_vecs = stride_results?;
+    let mut fused = Vec::with_capacity(total_capacity);
+    for vec in stride_vecs {
+        fused.extend_from_slice(&vec);
+    }
 
     let rows = fused.len() / OUTPUT_COLS;
     Tensor::from_shape(&[rows, OUTPUT_COLS], &fused)

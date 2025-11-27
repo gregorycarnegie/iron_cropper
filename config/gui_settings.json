@@ -11,10 +11,10 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "avatar",
-    "output_width": 512,
-    "output_height": 512,
-    "face_height_pct": 70.0,
+    "preset": "idcard",
+    "output_width": 332,
+    "output_height": 498,
+    "face_height_pct": 50.930832,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,
     "horizontal_offset": 0.2963668,
@@ -42,7 +42,8 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "rectangle"
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.12
     }
   },
   "enhance": {
@@ -53,7 +54,7 @@
     "brightness": 0,
     "contrast": 1.0,
     "saturation": 1.0,
-    "sharpness": 0.0,
+    "sharpness": 0.12493477,
     "skin_smooth": 0.0,
     "red_eye_removal": false,
     "background_blur": false
