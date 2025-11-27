@@ -5,6 +5,8 @@
 //! will power the end-to-end YuNet port in subsequent increments.
 
 pub mod ops;
+#[macro_use]
+pub mod macros;
 
 pub use ops::{ActivationKind, BatchNormConfig, Conv2dConfig, GpuInferenceOps};
 pub mod tensor;

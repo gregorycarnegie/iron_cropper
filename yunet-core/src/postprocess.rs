@@ -228,9 +228,6 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
 
         let reference_bbox = detections[keep].bbox;
         for j in (keep + 1)..len {
-            if suppressed[j] {
-                continue;
-            }
             if !suppressed[j] && reference_bbox.iou(&detections[j].bbox) > threshold {
                 suppressed[j] = true;
             }

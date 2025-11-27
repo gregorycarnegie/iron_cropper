@@ -20,78 +20,28 @@ pub struct BackboneStage {
 }
 
 pub const STAGE1_BLOCKS: [StageBlock; 2] = [
-    StageBlock {
-        point_weight: "backbone.model1.conv1.conv1.weight",
-        point_bias: "backbone.model1.conv1.conv1.bias",
-        depth_weight: "426",
-        depth_bias: "427",
-    },
-    StageBlock {
-        point_weight: "backbone.model1.conv2.conv1.weight",
-        point_bias: "backbone.model1.conv2.conv1.bias",
-        depth_weight: "429",
-        depth_bias: "430",
-    },
+    crate::backbone_block!("1", "1", "426", "427"),
+    crate::backbone_block!("1", "2", "429", "430"),
 ];
 
 pub const STAGE2_BLOCKS: [StageBlock; 2] = [
-    StageBlock {
-        point_weight: "backbone.model2.conv1.conv1.weight",
-        point_bias: "backbone.model2.conv1.conv1.bias",
-        depth_weight: "432",
-        depth_bias: "433",
-    },
-    StageBlock {
-        point_weight: "backbone.model2.conv2.conv1.weight",
-        point_bias: "backbone.model2.conv2.conv1.bias",
-        depth_weight: "435",
-        depth_bias: "436",
-    },
+    crate::backbone_block!("2", "1", "432", "433"),
+    crate::backbone_block!("2", "2", "435", "436"),
 ];
 
 pub const STAGE3_BLOCKS: [StageBlock; 2] = [
-    StageBlock {
-        point_weight: "backbone.model3.conv1.conv1.weight",
-        point_bias: "backbone.model3.conv1.conv1.bias",
-        depth_weight: "438",
-        depth_bias: "439",
-    },
-    StageBlock {
-        point_weight: "backbone.model3.conv2.conv1.weight",
-        point_bias: "backbone.model3.conv2.conv1.bias",
-        depth_weight: "441",
-        depth_bias: "442",
-    },
+    crate::backbone_block!("3", "1", "438", "439"),
+    crate::backbone_block!("3", "2", "441", "442"),
 ];
 
 pub const STAGE4_BLOCKS: [StageBlock; 2] = [
-    StageBlock {
-        point_weight: "backbone.model4.conv1.conv1.weight",
-        point_bias: "backbone.model4.conv1.conv1.bias",
-        depth_weight: "444",
-        depth_bias: "445",
-    },
-    StageBlock {
-        point_weight: "backbone.model4.conv2.conv1.weight",
-        point_bias: "backbone.model4.conv2.conv1.bias",
-        depth_weight: "447",
-        depth_bias: "448",
-    },
+    crate::backbone_block!("4", "1", "444", "445"),
+    crate::backbone_block!("4", "2", "447", "448"),
 ];
 
 pub const STAGE5_BLOCKS: [StageBlock; 2] = [
-    StageBlock {
-        point_weight: "backbone.model5.conv1.conv1.weight",
-        point_bias: "backbone.model5.conv1.conv1.bias",
-        depth_weight: "450",
-        depth_bias: "451",
-    },
-    StageBlock {
-        point_weight: "backbone.model5.conv2.conv1.weight",
-        point_bias: "backbone.model5.conv2.conv1.bias",
-        depth_weight: "453",
-        depth_bias: "454",
-    },
+    crate::backbone_block!("5", "1", "450", "451"),
+    crate::backbone_block!("5", "2", "453", "454"),
 ];
 
 pub const BACKBONE_STAGES: [BackboneStage; 5] = [
@@ -117,7 +67,7 @@ pub const BACKBONE_STAGES: [BackboneStage; 5] = [
     },
 ];
 
-const STAGE0_WEIGHT_NAMES: [&str; 6] = [
+pub const STAGE0_WEIGHT_NAMES: [&str; 6] = [
     "420",
     "421",
     "backbone.model0.conv2.conv1.weight",
@@ -126,25 +76,10 @@ const STAGE0_WEIGHT_NAMES: [&str; 6] = [
     "424",
 ];
 
-const NECK_BLOCKS: [StageBlock; 3] = [
-    StageBlock {
-        point_weight: "neck.lateral_convs.0.conv1.weight",
-        point_bias: "neck.lateral_convs.0.conv1.bias",
-        depth_weight: "462",
-        depth_bias: "463",
-    },
-    StageBlock {
-        point_weight: "neck.lateral_convs.1.conv1.weight",
-        point_bias: "neck.lateral_convs.1.conv1.bias",
-        depth_weight: "459",
-        depth_bias: "460",
-    },
-    StageBlock {
-        point_weight: "neck.lateral_convs.2.conv1.weight",
-        point_bias: "neck.lateral_convs.2.conv1.bias",
-        depth_weight: "456",
-        depth_bias: "457",
-    },
+pub const NECK_BLOCKS: [StageBlock; 3] = [
+    crate::neck_block!("0", "462", "463"),
+    crate::neck_block!("1", "459", "460"),
+    crate::neck_block!("2", "456", "457"),
 ];
 
 #[derive(Clone, Copy)]
@@ -174,84 +109,9 @@ pub struct DetectionHeadConfig {
 }
 
 pub const DETECTION_HEADS: [DetectionHeadConfig; 3] = [
-    DetectionHeadConfig {
-        cls: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_cls.0.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_cls.0.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_cls.0.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_cls.0.conv2.bias",
-        },
-        obj: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_obj.0.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_obj.0.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_obj.0.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_obj.0.conv2.bias",
-        },
-        bbox: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_bbox.0.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_bbox.0.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_bbox.0.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_bbox.0.conv2.bias",
-        },
-        kps: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_kps.0.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_kps.0.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_kps.0.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_kps.0.conv2.bias",
-        },
-    },
-    DetectionHeadConfig {
-        cls: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_cls.1.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_cls.1.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_cls.1.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_cls.1.conv2.bias",
-        },
-        obj: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_obj.1.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_obj.1.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_obj.1.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_obj.1.conv2.bias",
-        },
-        bbox: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_bbox.1.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_bbox.1.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_bbox.1.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_bbox.1.conv2.bias",
-        },
-        kps: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_kps.1.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_kps.1.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_kps.1.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_kps.1.conv2.bias",
-        },
-    },
-    DetectionHeadConfig {
-        cls: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_cls.2.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_cls.2.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_cls.2.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_cls.2.conv2.bias",
-        },
-        obj: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_obj.2.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_obj.2.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_obj.2.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_obj.2.conv2.bias",
-        },
-        bbox: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_bbox.2.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_bbox.2.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_bbox.2.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_bbox.2.conv2.bias",
-        },
-        kps: HeadBlock {
-            conv1_weight: "bbox_head.multi_level_kps.2.conv1.weight",
-            conv1_bias: "bbox_head.multi_level_kps.2.conv1.bias",
-            conv2_weight: "bbox_head.multi_level_kps.2.conv2.weight",
-            conv2_bias: "bbox_head.multi_level_kps.2.conv2.bias",
-        },
-    },
+    crate::detection_head!("0"),
+    crate::detection_head!("1"),
+    crate::detection_head!("2"),
 ];
 
 pub trait WeightProvider {
