@@ -228,6 +228,9 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
 
         let reference_bbox = detections[keep].bbox;
         for j in (keep + 1)..len {
+            if suppressed[j] {
+                continue;
+            }
             if !suppressed[j] && reference_bbox.iou(&detections[j].bbox) > threshold {
                 suppressed[j] = true;
             }
@@ -363,5 +366,101 @@ mod tests {
         assert_eq!(config_from_ref.score_threshold, settings.score_threshold);
         assert_eq!(config_from_ref.nms_threshold, settings.nms_threshold);
         assert_eq!(config_from_ref.top_k, settings.top_k);
+    }
+}
+
+#[cfg(test)]
+mod benches {
+    use super::*;
+    use std::time::Instant;
+
+    fn apply_nms_in_place_baseline(detections: &mut Vec<Detection>, threshold: f32) {
+        let len = detections.len();
+        if len <= 1 {
+            return;
+        }
+
+        let mut suppressed = vec![false; len];
+        let mut keep = 0;
+
+        for i in 0..len {
+            if suppressed[i] {
+                continue;
+            }
+
+            if keep != i {
+                detections.swap(keep, i);
+                suppressed.swap(keep, i);
+            }
+
+            let reference_bbox = detections[keep].bbox;
+            for j in (keep + 1)..len {
+                if !suppressed[j] && reference_bbox.iou(&detections[j].bbox) > threshold {
+                    suppressed[j] = true;
+                }
+            }
+
+            keep += 1;
+        }
+
+        detections.truncate(keep);
+    }
+
+    fn synthetic_detections(count: usize) -> Vec<Detection> {
+        let mut out = Vec::with_capacity(count);
+        for i in 0..count {
+            let base = (i % 50) as f32 * 4.0;
+            out.push(Detection {
+                bbox: BoundingBox {
+                    x: base,
+                    y: base,
+                    width: 32.0,
+                    height: 32.0,
+                },
+                landmarks: [Landmark { x: 0.0, y: 0.0 }; 5],
+                score: 0.9 - (i as f32 * 0.0001),
+            });
+        }
+        out
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_nms_variants() {
+        let template = synthetic_detections(5_000);
+        let iterations = 8;
+
+        let mut optimized_total = std::time::Duration::ZERO;
+        let mut baseline_total = std::time::Duration::ZERO;
+
+        for i in 0..iterations {
+            if i % 2 == 0 {
+                let mut data = template.clone();
+                let start = Instant::now();
+                apply_nms_in_place(&mut data, 0.3);
+                optimized_total += start.elapsed();
+
+                let mut baseline = template.clone();
+                let start = Instant::now();
+                apply_nms_in_place_baseline(&mut baseline, 0.3);
+                baseline_total += start.elapsed();
+            } else {
+                let mut baseline = template.clone();
+                let start = Instant::now();
+                apply_nms_in_place_baseline(&mut baseline, 0.3);
+                baseline_total += start.elapsed();
+
+                let mut data = template.clone();
+                let start = Instant::now();
+                apply_nms_in_place(&mut data, 0.3);
+                optimized_total += start.elapsed();
+            }
+        }
+
+        println!(
+            "nms optimized avg: {:?}, baseline avg: {:?}",
+            optimized_total / iterations as u32,
+            baseline_total / iterations as u32
+        );
     }
 }

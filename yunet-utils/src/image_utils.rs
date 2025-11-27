@@ -78,23 +78,21 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let row_stride = w * 3;
     let pixels = image.as_raw();
     let mut data = vec![0f32; 3 * channel_len];
+    let (b_slice, rest) = data.split_at_mut(channel_len);
+    let (g_slice, r_slice) = rest.split_at_mut(channel_len);
 
-    data.par_chunks_mut(channel_len)
+    b_slice
+        .par_chunks_mut(w)
+        .zip(g_slice.par_chunks_mut(w))
+        .zip(r_slice.par_chunks_mut(w))
         .enumerate()
-        .for_each(|(channel, channel_buf)| {
-            // BGR ordering: channel 0 = Blue (RGB index 2), 1 = Green (1), 2 = Red (0)
-            let rgb_index = match channel {
-                0 => 2,
-                1 => 1,
-                2 => 0,
-                _ => unreachable!(),
-            };
-
-            for (row_idx, dst_row) in channel_buf.chunks_mut(w).enumerate() {
-                let src_row = &pixels[row_idx * row_stride..(row_idx + 1) * row_stride];
-                for x in 0..w {
-                    dst_row[x] = src_row[x * 3 + rgb_index] as f32;
-                }
+        .for_each(|(y, ((b_row, g_row), r_row))| {
+            let src_row = &pixels[y * row_stride..(y + 1) * row_stride];
+            for x in 0..w {
+                let src = x * 3;
+                b_row[x] = src_row[src + 2] as f32;
+                g_row[x] = src_row[src + 1] as f32;
+                r_row[x] = src_row[src] as f32;
             }
         });
 
@@ -193,13 +191,43 @@ mod benchmarks {
     use image::RgbImage;
     use std::time::Instant;
 
+    fn rgb_to_bgr_chw_baseline(image: &RgbImage) -> Array3<f32> {
+        let (width, height) = image.dimensions();
+        let w = width as usize;
+        let h = height as usize;
+        let channel_len = w * h;
+        let row_stride = w * 3;
+        let pixels = image.as_raw();
+        let mut data = vec![0f32; 3 * channel_len];
+
+        data.par_chunks_mut(channel_len)
+            .enumerate()
+            .for_each(|(channel, channel_buf)| {
+                let rgb_index = match channel {
+                    0 => 2,
+                    1 => 1,
+                    2 => 0,
+                    _ => unreachable!(),
+                };
+
+                for (row_idx, dst_row) in channel_buf.chunks_mut(w).enumerate() {
+                    let src_row = &pixels[row_idx * row_stride..(row_idx + 1) * row_stride];
+                    for x in 0..w {
+                        dst_row[x] = src_row[x * 3 + rgb_index] as f32;
+                    }
+                }
+            });
+
+        Array3::from_shape_vec((3, h, w), data).expect("shape matches data length")
+    }
+
     #[test]
     fn bench_rgb_to_bgr_chw() {
         // 640x640 image (typical inference size)
         let img = RgbImage::new(640, 640);
 
-        // Warmup
-        for _ in 0..10 {
+        for _ in 0..5 {
+            let _ = rgb_to_bgr_chw_baseline(&img);
             let _ = rgb_to_bgr_chw(&img);
         }
 
@@ -208,11 +236,18 @@ mod benchmarks {
         for _ in 0..iterations {
             let _ = rgb_to_bgr_chw(&img);
         }
-        let duration = start.elapsed();
+        let optimized = start.elapsed();
+
+        let start_baseline = Instant::now();
+        for _ in 0..iterations {
+            let _ = rgb_to_bgr_chw_baseline(&img);
+        }
+        let baseline = start_baseline.elapsed();
 
         println!(
-            "rgb_to_bgr_chw (640x640) avg time: {:?}",
-            duration / iterations
+            "rgb_to_bgr_chw optimized avg: {:?}, baseline avg: {:?}",
+            optimized / iterations,
+            baseline / iterations
         );
     }
 }

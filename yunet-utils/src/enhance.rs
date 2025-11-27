@@ -4,10 +4,12 @@
 //! when `--enhance` is requested. The implementations are intentionally
 //! lightweight and pure-Rust using the `image` crate.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::{Context, Result};
 use image::{DynamicImage, ImageBuffer, Rgba};
+use rayon::prelude::*;
 use wide::f32x4;
 
 use crate::{
@@ -19,6 +21,62 @@ use crate::{
 };
 
 const EPSILON: f32 = 1e-6;
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct SkinKernelKey {
+    radius: i32,
+    sigma_space_bits: u32,
+    sigma_color_bits: u32,
+}
+
+#[derive(Clone)]
+struct SkinKernel {
+    kernel_side: usize,
+    spatial_weights: Arc<Vec<f32>>,
+    color_lut: Arc<Vec<f32>>,
+}
+
+static SKIN_KERNEL_CACHE: OnceLock<Mutex<HashMap<SkinKernelKey, Arc<SkinKernel>>>> =
+    OnceLock::new();
+
+fn skin_kernel(radius: i32, sigma_space: f32, sigma_color: f32) -> Arc<SkinKernel> {
+    let key = SkinKernelKey {
+        radius,
+        sigma_space_bits: sigma_space.to_bits(),
+        sigma_color_bits: sigma_color.to_bits(),
+    };
+    let cache = SKIN_KERNEL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().expect("kernel cache poisoned").get(&key) {
+        return hit.clone();
+    }
+
+    let side = (2 * radius + 1) as usize;
+    let mut spatial = Vec::with_capacity(side * side);
+    let spatial_coeff = -0.5 / (sigma_space * sigma_space);
+    for dy in -radius..=radius {
+        for dx in -radius..=radius {
+            let dist_sq = (dx * dx + dy * dy) as f32;
+            spatial.push((spatial_coeff * dist_sq).exp());
+        }
+    }
+
+    let max_dist_sq = 255 * 255 * 3;
+    let color_coeff = -0.5 / (sigma_color * sigma_color);
+    let color_lut: Vec<f32> = (0..=max_dist_sq)
+        .map(|d| (color_coeff * d as f32).exp())
+        .collect();
+
+    let kernel = Arc::new(SkinKernel {
+        kernel_side: side,
+        spatial_weights: Arc::new(spatial),
+        color_lut: Arc::new(color_lut),
+    });
+    cache
+        .lock()
+        .expect("kernel cache poisoned")
+        .insert(key, kernel.clone());
+    kernel
+}
 
 /// Settings for the enhancement pipeline.
 #[derive(Debug, Clone)]
@@ -310,74 +368,53 @@ fn apply_skin_smoothing(
     let amount = amount.clamp(0.0, 1.0);
     let src = img.to_rgba8();
     let (w, h) = src.dimensions();
-
-    // Create output buffer
-    // We need to use UnsafeCell or split the buffer to write in parallel safely.
-    // Since we are writing to distinct pixels (x,y), we can use `par_chunks_mut` on the raw buffer.
-    let mut out_buffer = src.clone();
-
-    // Kernel radius based on spatial sigma (typically 2-3 sigmas)
-    let radius = (sigma_space * 2.0).ceil() as i32;
-
-    // Precompute spatial weights (Gaussian based on distance)
-    let mut spatial_weights =
-        vec![vec![0.0f32; (2 * radius + 1) as usize]; (2 * radius + 1) as usize];
-    let spatial_coeff = -0.5 / (sigma_space * sigma_space);
-    for dy in -radius..=radius {
-        for dx in -radius..=radius {
-            let dist_sq = (dx * dx + dy * dy) as f32;
-            spatial_weights[(dy + radius) as usize][(dx + radius) as usize] =
-                (spatial_coeff * dist_sq).exp();
-        }
+    if w == 0 || h == 0 {
+        return DynamicImage::ImageRgba8(src);
     }
 
-    // Precompute color weights LUT
-    // Max possible squared color distance is 255^2 * 3 approx 195075
-    // We can just precompute for all possible squared distances.
-    let color_coeff = -0.5 / (sigma_color * sigma_color);
-    let max_dist_sq = 255 * 255 * 3;
-    let color_lut: Vec<f32> = (0..=max_dist_sq)
-        .map(|d| (color_coeff * d as f32).exp())
-        .collect();
+    let mut out_buffer = src.clone();
 
-    // Parallelize over rows
-    use rayon::prelude::*;
-    out_buffer
-        .enumerate_rows_mut()
-        .par_bridge()
+    let radius = (sigma_space * 2.0).ceil() as i32;
+    let kernel = skin_kernel(radius, sigma_space, sigma_color);
+    let spatial_weights = kernel.spatial_weights.clone();
+    let color_lut = kernel.color_lut.clone();
+    let kernel_side = kernel.kernel_side;
+
+    let max_y = h as i32 - 1;
+    let max_x = w as i32 - 1;
+    let row_stride = w as usize * 4;
+    let src_data = src.as_raw();
+    let out_data = out_buffer.as_mut();
+
+    out_data
+        .par_chunks_mut(row_stride)
+        .enumerate()
         .for_each(|(y, row)| {
-            for (x, _y, pixel) in row {
-                let center = src.get_pixel(x, y).0;
+            let y_i = y as i32;
+            let base_y = y * row_stride;
+            for x in 0..w as usize {
+                let src_idx = base_y + x * 4;
+                let center = &src_data[src_idx..src_idx + 4];
                 let mut sum_r = 0.0f32;
                 let mut sum_g = 0.0f32;
                 let mut sum_b = 0.0f32;
                 let mut sum_weight = 0.0f32;
 
-                // Iterate over neighborhood
                 for dy in -radius..=radius {
-                    let ny = (y as i32 + dy).clamp(0, h as i32 - 1) as u32;
-                    // Optimization: Pre-calculate Y offset or row pointer if possible,
-                    // but get_pixel is safe. For speed, we might want raw access but let's trust the compiler first.
-
+                    let ny = (y_i + dy).clamp(0, max_y) as usize;
+                    let ny_offset = ny * row_stride;
+                    let spatial_row = (dy + radius) as usize * kernel_side;
                     for dx in -radius..=radius {
-                        let nx = (x as i32 + dx).clamp(0, w as i32 - 1) as u32;
+                        let nx = (x as i32 + dx).clamp(0, max_x) as usize;
+                        let neighbor_idx = ny_offset + nx * 4;
+                        let neighbor = &src_data[neighbor_idx..neighbor_idx + 4];
 
-                        // We need random access to neighbors, so we use src (read-only shared ref)
-                        let neighbor = src.get_pixel(nx, ny).0;
-
-                        // Color distance (Euclidean in RGB space)
-                        // We use integer arithmetic for distance to use the LUT
+                        let spatial_w = spatial_weights[spatial_row + (dx + radius) as usize];
                         let dr = (center[0] as i32 - neighbor[0] as i32).abs();
                         let dg = (center[1] as i32 - neighbor[1] as i32).abs();
                         let db = (center[2] as i32 - neighbor[2] as i32).abs();
                         let color_dist_sq = (dr * dr + dg * dg + db * db) as usize;
-
-                        // Combine spatial and color weights
-                        let spatial_w =
-                            spatial_weights[(dy + radius) as usize][(dx + radius) as usize];
-                        // LUT lookup
-                        let color_w = color_lut[color_dist_sq];
-                        let weight = spatial_w * color_w;
+                        let weight = spatial_w * color_lut[color_dist_sq];
 
                         sum_r = weight.mul_add(neighbor[0] as f32, sum_r);
                         sum_g = weight.mul_add(neighbor[1] as f32, sum_g);
@@ -391,7 +428,6 @@ fn apply_skin_smoothing(
                     let filtered_g = (sum_g / sum_weight).round().clamp(0.0, 255.0) as u8;
                     let filtered_b = (sum_b / sum_weight).round().clamp(0.0, 255.0) as u8;
 
-                    // Blend with original based on amount
                     let center_r = center[0] as f32;
                     let center_g = center[1] as f32;
                     let center_b = center[2] as f32;
@@ -408,7 +444,11 @@ fn apply_skin_smoothing(
                         .round()
                         .clamp(0.0, 255.0) as u8;
 
-                    *pixel = image::Rgba([final_r, final_g, final_b, center[3]]);
+                    let out_idx = x * 4;
+                    row[out_idx] = final_r;
+                    row[out_idx + 1] = final_g;
+                    row[out_idx + 2] = final_b;
+                    row[out_idx + 3] = center[3];
                 }
             }
         });
@@ -480,6 +520,9 @@ fn background_blur_from_rgba(
     if blurred.dimensions() != (w, h) {
         return DynamicImage::ImageRgba8(sharp.clone());
     }
+    if w == 0 || h == 0 {
+        return DynamicImage::ImageRgba8(sharp.clone());
+    }
 
     let cx = w as f32 / 2.0;
     let cy = h as f32 / 2.0;
@@ -496,51 +539,51 @@ fn background_blur_from_rgba(
     let inner_thresh_sq = 0.81; // 0.9 * 0.9
     let outer_thresh_sq = 1.21; // 1.1 * 1.1
 
-    // Create output buffer
-    // We can reuse the sharp image buffer as a base if we wanted to save allocation,
-    // but let's create a new one to be safe and parallel-friendly.
     let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
+    let row_stride = w as usize * 4;
+    let sharp_raw = sharp.as_raw();
+    let blur_raw = blurred.as_raw();
+    let out_raw = out.as_mut();
 
-    use rayon::prelude::*;
-    out.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
-        let dy = y as f32 - cy;
-        let dy_sq_norm = (dy * dy) / ry_sq;
+    out_raw
+        .par_chunks_mut(row_stride)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let dy = y as f32 - cy;
+            let dy_sq_norm = (dy * dy) / ry_sq;
+            let sharp_row = &sharp_raw[y * row_stride..(y + 1) * row_stride];
+            let blur_row = &blur_raw[y * row_stride..(y + 1) * row_stride];
 
-        for (x, _y, pixel) in row {
-            let dx = x as f32 - cx;
-            let dx_sq_norm = (dx * dx) / rx_sq;
+            for x in 0..w as usize {
+                let dx = x as f32 - cx;
+                let dx_sq_norm = (dx * dx) / rx_sq;
+                let dist_sq = dx_sq_norm + dy_sq_norm;
 
-            // Normalized squared distance from center
-            let dist_sq = dx_sq_norm + dy_sq_norm;
+                let blend = if dist_sq < inner_thresh_sq {
+                    0.0
+                } else if dist_sq > outer_thresh_sq {
+                    1.0
+                } else {
+                    let dist = dist_sq.sqrt();
+                    (dist - 0.9) / 0.2
+                };
 
-            let blend = if dist_sq < inner_thresh_sq {
-                0.0
-            } else if dist_sq > outer_thresh_sq {
-                1.0
-            } else {
-                // Only compute sqrt in the transition zone
-                let dist = dist_sq.sqrt();
-                (dist - 0.9) / 0.2
-            };
-
-            let sharp_px = sharp.get_pixel(x, y).0;
-
-            if blend <= 0.0 {
-                *pixel = Rgba(sharp_px);
-            } else if blend >= 1.0 {
-                *pixel = *blurred.get_pixel(x, y);
-            } else {
-                let blur_px = blurred.get_pixel(x, y).0;
-                let mut result = [0u8; 4];
-                for c in 0..4 {
-                    let sharp_val = sharp_px[c] as f32;
-                    let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
-                    result[c] = mix.round().clamp(0.0, 255.0) as u8;
+                let idx = x * 4;
+                if blend <= 0.0 {
+                    row[idx..idx + 4].copy_from_slice(&sharp_row[idx..idx + 4]);
+                } else if blend >= 1.0 {
+                    row[idx..idx + 4].copy_from_slice(&blur_row[idx..idx + 4]);
+                } else {
+                    let sharp_px = &sharp_row[idx..idx + 4];
+                    let blur_px = &blur_row[idx..idx + 4];
+                    for c in 0..4 {
+                        let sharp_val = sharp_px[c] as f32;
+                        let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
+                        row[idx + c] = mix.round().clamp(0.0, 255.0) as u8;
+                    }
                 }
-                *pixel = Rgba(result);
             }
-        }
-    });
+        });
 
     DynamicImage::ImageRgba8(out)
 }
@@ -1239,5 +1282,237 @@ mod tests {
             - source.to_rgba8().get_pixel(0, 0)[0] as i16)
             .abs();
         assert!(corner_diff > 0, "corner should show blur impact");
+    }
+}
+
+#[cfg(test)]
+mod benches {
+    use super::*;
+    use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
+    use rayon::iter::ParallelBridge;
+    use std::time::Instant;
+
+    fn baseline_skin_smoothing(
+        img: &DynamicImage,
+        amount: f32,
+        sigma_space: f32,
+        sigma_color: f32,
+    ) -> DynamicImage {
+        if amount <= 0.0 {
+            return img.clone();
+        }
+
+        let amount = amount.clamp(0.0, 1.0);
+        let src = img.to_rgba8();
+        let (w, h) = src.dimensions();
+        let mut out_buffer = src.clone();
+        let radius = (sigma_space * 2.0).ceil() as i32;
+
+        let mut spatial_weights =
+            vec![vec![0.0f32; (2 * radius + 1) as usize]; (2 * radius + 1) as usize];
+        let spatial_coeff = -0.5 / (sigma_space * sigma_space);
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let dist_sq = (dx * dx + dy * dy) as f32;
+                spatial_weights[(dy + radius) as usize][(dx + radius) as usize] =
+                    (spatial_coeff * dist_sq).exp();
+            }
+        }
+
+        let color_coeff = -0.5 / (sigma_color * sigma_color);
+        let max_dist_sq = 255 * 255 * 3;
+        let color_lut: Vec<f32> = (0..=max_dist_sq)
+            .map(|d| (color_coeff * d as f32).exp())
+            .collect();
+
+        out_buffer
+            .enumerate_rows_mut()
+            .par_bridge()
+            .for_each(|(y, row)| {
+                for (x, _y, pixel) in row {
+                    let center = src.get_pixel(x, y).0;
+                    let mut sum_r = 0.0f32;
+                    let mut sum_g = 0.0f32;
+                    let mut sum_b = 0.0f32;
+                    let mut sum_weight = 0.0f32;
+
+                    for dy in -radius..=radius {
+                        let ny = (y as i32 + dy).clamp(0, h as i32 - 1) as u32;
+                        for dx in -radius..=radius {
+                            let nx = (x as i32 + dx).clamp(0, w as i32 - 1) as u32;
+                            let neighbor = src.get_pixel(nx, ny).0;
+
+                            let dr = (center[0] as i32 - neighbor[0] as i32).abs();
+                            let dg = (center[1] as i32 - neighbor[1] as i32).abs();
+                            let db = (center[2] as i32 - neighbor[2] as i32).abs();
+                            let color_dist_sq = (dr * dr + dg * dg + db * db) as usize;
+
+                            let spatial_w =
+                                spatial_weights[(dy + radius) as usize][(dx + radius) as usize];
+                            let color_w = color_lut[color_dist_sq];
+                            let weight = spatial_w * color_w;
+
+                            sum_r = weight.mul_add(neighbor[0] as f32, sum_r);
+                            sum_g = weight.mul_add(neighbor[1] as f32, sum_g);
+                            sum_b = weight.mul_add(neighbor[2] as f32, sum_b);
+                            sum_weight += weight;
+                        }
+                    }
+
+                    if sum_weight > 0.0 {
+                        let filtered_r = (sum_r / sum_weight).round().clamp(0.0, 255.0) as u8;
+                        let filtered_g = (sum_g / sum_weight).round().clamp(0.0, 255.0) as u8;
+                        let filtered_b = (sum_b / sum_weight).round().clamp(0.0, 255.0) as u8;
+
+                        let center_r = center[0] as f32;
+                        let center_g = center[1] as f32;
+                        let center_b = center[2] as f32;
+                        let final_r = amount
+                            .mul_add(filtered_r as f32 - center_r, center_r)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                        let final_g = amount
+                            .mul_add(filtered_g as f32 - center_g, center_g)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+                        let final_b = amount
+                            .mul_add(filtered_b as f32 - center_b, center_b)
+                            .round()
+                            .clamp(0.0, 255.0) as u8;
+
+                        *pixel = image::Rgba([final_r, final_g, final_b, center[3]]);
+                    }
+                }
+            });
+
+        DynamicImage::ImageRgba8(out_buffer)
+    }
+
+    fn baseline_background_blur(
+        sharp: &image::RgbaImage,
+        blurred: &image::RgbaImage,
+        mask_size: f32,
+    ) -> DynamicImage {
+        let (w, h) = sharp.dimensions();
+        if blurred.dimensions() != (w, h) {
+            return DynamicImage::ImageRgba8(sharp.clone());
+        }
+
+        let cx = w as f32 / 2.0;
+        let cy = h as f32 / 2.0;
+        let mask_size = mask_size.clamp(0.3, 1.0);
+        let rx = (w as f32 / 2.0) * mask_size;
+        let ry = (h as f32 / 2.0) * mask_size;
+
+        let rx_sq = rx * rx;
+        let ry_sq = ry * ry;
+        let inner_thresh_sq = 0.81;
+        let outer_thresh_sq = 1.21;
+
+        let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
+        out.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
+            let dy = y as f32 - cy;
+            let dy_sq_norm = (dy * dy) / ry_sq;
+
+            for (x, _y, pixel) in row {
+                let dx = x as f32 - cx;
+                let dx_sq_norm = (dx * dx) / rx_sq;
+
+                let dist_sq = dx_sq_norm + dy_sq_norm;
+
+                let blend = if dist_sq < inner_thresh_sq {
+                    0.0
+                } else if dist_sq > outer_thresh_sq {
+                    1.0
+                } else {
+                    let dist = dist_sq.sqrt();
+                    (dist - 0.9) / 0.2
+                };
+
+                let sharp_px = sharp.get_pixel(x, y).0;
+
+                if blend <= 0.0 {
+                    *pixel = Rgba(sharp_px);
+                } else if blend >= 1.0 {
+                    *pixel = *blurred.get_pixel(x, y);
+                } else {
+                    let blur_px = blurred.get_pixel(x, y).0;
+                    let mut result = [0u8; 4];
+                    for c in 0..4 {
+                        let sharp_val = sharp_px[c] as f32;
+                        let mix = blend.mul_add(blur_px[c] as f32 - sharp_val, sharp_val);
+                        result[c] = mix.round().clamp(0.0, 255.0) as u8;
+                    }
+                    *pixel = Rgba(result);
+                }
+            }
+        });
+
+        DynamicImage::ImageRgba8(out)
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_skin_smoothing_variants() {
+        let base = DynamicImage::ImageRgba8(ImageBuffer::from_pixel(
+            256,
+            256,
+            Rgba([140, 120, 110, 255]),
+        ));
+
+        let iterations = 5;
+        for _ in 0..2 {
+            let _ = apply_skin_smoothing(&base, 0.8, 3.0, 25.0);
+            let _ = baseline_skin_smoothing(&base, 0.8, 3.0, 25.0);
+        }
+
+        let start_new = Instant::now();
+        for _ in 0..iterations {
+            let _ = apply_skin_smoothing(&base, 0.8, 3.0, 25.0);
+        }
+        let new_time = start_new.elapsed();
+
+        let start_old = Instant::now();
+        for _ in 0..iterations {
+            let _ = baseline_skin_smoothing(&base, 0.8, 3.0, 25.0);
+        }
+        let old_time = start_old.elapsed();
+
+        println!(
+            "skin smoothing optimized avg: {:?}, baseline avg: {:?}",
+            new_time / iterations,
+            old_time / iterations
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_background_blur_variants() {
+        let sharp = RgbaImage::from_pixel(512, 512, Rgba([120, 120, 120, 255]));
+        let blurred = image::imageops::blur(&sharp, 12.0);
+
+        let iterations = 10;
+        for _ in 0..2 {
+            let _ = super::background_blur_from_rgba(&sharp, &blurred, 0.6);
+            let _ = baseline_background_blur(&sharp, &blurred, 0.6);
+        }
+
+        let start_new = Instant::now();
+        for _ in 0..iterations {
+            let _ = super::background_blur_from_rgba(&sharp, &blurred, 0.6);
+        }
+        let new_time = start_new.elapsed();
+
+        let start_old = Instant::now();
+        for _ in 0..iterations {
+            let _ = baseline_background_blur(&sharp, &blurred, 0.6);
+        }
+        let old_time = start_old.elapsed();
+
+        println!(
+            "background blur optimized avg: {:?}, baseline avg: {:?}",
+            new_time / iterations,
+            old_time / iterations
+        );
     }
 }
