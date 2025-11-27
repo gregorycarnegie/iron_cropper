@@ -443,6 +443,19 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
   - [ ] Document optimization impact in ARCHITECTURE.md
   - [ ] Update CLAUDE.md with optimization findings
 
+### Phase 12.1: CPU Enhancement Optimizations
+
+- [x] **`laplacian_variance` optimization**
+  - [x] Switch to integer math for accumulators (~10% speedup)
+- [x] **`apply_skin_smoothing` optimization**
+  - [x] Parallelize using `rayon`
+  - [x] Implement LUT for color weight calculation
+  - [x] Result: ~36x speedup (4.25s -> 116ms)
+- [x] **`apply_background_blur` optimization**
+  - [x] Parallelize mixing logic
+  - [x] Optimize distance math (avoid sqrt)
+  - [x] Result: ~25% speedup (182ms -> 136ms)
+
 ### Phase 13: GPU Acceleration with WGPU
 
 Leverage GPU compute for massive performance gains in image processing operations:
