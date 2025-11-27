@@ -951,57 +951,58 @@ fn run_webcam_mode(
         }
 
         // Crop faces if requested
-        if crop_enabled && !output.detections.is_empty() {
-            if let Some(out_dir) = crop_output_dir.as_ref() {
-                let core_settings = build_core_crop_settings(&settings.crop);
-                let output_options = OutputOptions::from_crop_settings(&settings.crop);
+        if crop_enabled
+            && !output.detections.is_empty()
+            && let Some(out_dir) = crop_output_dir.as_ref()
+        {
+            let core_settings = build_core_crop_settings(&settings.crop);
+            let output_options = OutputOptions::from_crop_settings(&settings.crop);
 
-                for (idx, det) in output.detections.iter().enumerate() {
-                    let mut crop_img = crop_face_from_image(&frame, det, &core_settings);
+            for (idx, det) in output.detections.iter().enumerate() {
+                let mut crop_img = crop_face_from_image(&frame, det, &core_settings);
 
-                    if let Some(enh) = enhancement_settings.as_ref() {
-                        crop_img = gpu_runtime.enhance(&crop_img, enh);
-                    }
+                if let Some(enh) = enhancement_settings.as_ref() {
+                    crop_img = gpu_runtime.enhance(&crop_img, enh);
+                }
 
-                    let (quality_score, quality) = estimate_sharpness(&crop_img);
+                let (quality_score, quality) = estimate_sharpness(&crop_img);
 
-                    if quality_filter.should_skip(quality) {
-                        debug!(
-                            "Skipping frame {} face {} due to {:?} quality",
-                            frame_count,
-                            idx + 1,
-                            quality
-                        );
-                        continue;
-                    }
+                if quality_filter.should_skip(quality) {
+                    debug!(
+                        "Skipping frame {} face {} due to {:?} quality",
+                        frame_count,
+                        idx + 1,
+                        quality
+                    );
+                    continue;
+                }
 
-                    crop_img = gpu_runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+                crop_img = gpu_runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
 
-                    let mut ext = settings.crop.output_format.clone();
-                    if ext.is_empty() {
-                        ext = "png".to_string();
-                    }
+                let mut ext = settings.crop.output_format.clone();
+                if ext.is_empty() {
+                    ext = "png".to_string();
+                }
 
-                    let mut out_name =
-                        format!("webcam_frame{:06}_face{}.{}", frame_count, idx + 1, ext);
-                    if let Some(suffix) = quality_filter.suffix_for(quality) {
-                        out_name = append_suffix_to_filename(&out_name, suffix);
-                    }
+                let mut out_name =
+                    format!("webcam_frame{:06}_face{}.{}", frame_count, idx + 1, ext);
+                if let Some(suffix) = quality_filter.suffix_for(quality) {
+                    out_name = append_suffix_to_filename(&out_name, suffix);
+                }
 
-                    let out_path = out_dir.join(&out_name);
+                let out_path = out_dir.join(&out_name);
 
-                    let metadata_ctx = MetadataContext {
-                        source_path: None,
-                        crop_settings: Some(&settings.crop),
-                        detection_score: Some(det.score),
-                        quality: Some(quality),
-                        quality_score: Some(quality_score),
-                    };
+                let metadata_ctx = MetadataContext {
+                    source_path: None,
+                    crop_settings: Some(&settings.crop),
+                    detection_score: Some(det.score),
+                    quality: Some(quality),
+                    quality_score: Some(quality_score),
+                };
 
-                    match save_dynamic_image(&crop_img, &out_path, &output_options, &metadata_ctx) {
-                        Ok(_) => info!("Saved crop to {}", out_path.display()),
-                        Err(e) => warn!("Failed to save crop: {}", e),
-                    }
+                match save_dynamic_image(&crop_img, &out_path, &output_options, &metadata_ctx) {
+                    Ok(_) => info!("Saved crop to {}", out_path.display()),
+                    Err(e) => warn!("Failed to save crop: {}", e),
                 }
             }
         }
@@ -1659,6 +1660,12 @@ mod tests {
     fn enhancement_preset_vivid_applies_defaults_and_overrides() {
         let args = DetectArgs {
             input: Some(PathBuf::from("image.png")),
+            webcam: false,
+            webcam_device: 0,
+            webcam_width: 640,
+            webcam_height: 480,
+            webcam_fps: 30,
+            webcam_frames: 0,
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,
@@ -1737,6 +1744,12 @@ mod tests {
     fn enhancement_preset_allows_explicit_override() {
         let args = DetectArgs {
             input: Some(PathBuf::from("image.png")),
+            webcam: false,
+            webcam_device: 0,
+            webcam_width: 640,
+            webcam_height: 480,
+            webcam_fps: 30,
+            webcam_frames: 0,
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,
@@ -1857,6 +1870,12 @@ mod tests {
         // Build args to request enhancement with a preset
         let args = DetectArgs {
             input: Some(img_path.clone()),
+            webcam: false,
+            webcam_device: 0,
+            webcam_width: 640,
+            webcam_height: 480,
+            webcam_fps: 30,
+            webcam_frames: 0,
             model: PathBuf::from("model.onnx"),
             config: None,
             telemetry: false,

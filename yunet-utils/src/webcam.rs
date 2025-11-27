@@ -56,11 +56,17 @@ impl WebcamCapture {
 
         // Try to set the resolution and frame rate (these may fail on some cameras, so we don't error out)
         if let Err(e) = camera.set_resolution(Resolution::new(width, height)) {
-            warn!("Could not set resolution {}x{}: {}. Using camera default.", width, height, e);
+            warn!(
+                "Could not set resolution {}x{}: {}. Using camera default.",
+                width, height, e
+            );
         }
 
         if let Err(e) = camera.set_frame_rate(fps) {
-            warn!("Could not set frame rate {} fps: {}. Using camera default.", fps, e);
+            warn!(
+                "Could not set frame rate {} fps: {}. Using camera default.",
+                fps, e
+            );
         }
 
         let actual_resolution = camera.resolution();

@@ -54,7 +54,15 @@ impl YuNetApp {
 
         // Spawn webcam capture thread
         thread::spawn(move || {
-            let result = run_webcam_loop(device_index, width, height, fps, detector, job_tx, stop_flag);
+            let result = run_webcam_loop(
+                device_index,
+                width,
+                height,
+                fps,
+                detector,
+                job_tx,
+                stop_flag,
+            );
             if let Err(e) = result {
                 error!("Webcam capture error: {}", e);
             }
@@ -79,7 +87,13 @@ impl YuNetApp {
     }
 
     /// Process webcam frame updates from the background thread.
-    pub fn process_webcam_frame(&mut self, ctx: &egui::Context, image: DynamicImage, frame_number: u32, detections: Vec<crate::DetectionWithQuality>) {
+    pub fn process_webcam_frame(
+        &mut self,
+        ctx: &egui::Context,
+        image: DynamicImage,
+        frame_number: u32,
+        detections: Vec<crate::DetectionWithQuality>,
+    ) {
         use crate::core::cache::load_texture_from_image;
 
         self.webcam_state.status = WebcamStatus::Active;
@@ -159,7 +173,7 @@ fn run_webcam_loop(
         frame_number += 1;
 
         // Skip every other frame for detection to improve performance
-        let detections = if frame_number % 2 == 0 {
+        let detections = if frame_number.is_multiple_of(2) {
             // Reuse detections from previous frame
             last_detections.clone()
         } else {

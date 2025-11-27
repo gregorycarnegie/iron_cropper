@@ -267,15 +267,18 @@ impl YuNetApp {
 
 impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
-        use egui_extras::{Size, StripBuilder};
         use crate::types::WebcamStatus;
+        use egui_extras::{Size, StripBuilder};
 
         self.process_import_payloads(ctx);
         self.poll_worker(ctx);
         self.show_status_bar(ctx);
 
         // Request continuous repaints when webcam is active
-        if matches!(self.webcam_state.status, WebcamStatus::Active | WebcamStatus::Starting) {
+        if matches!(
+            self.webcam_state.status,
+            WebcamStatus::Active | WebcamStatus::Starting
+        ) {
             ctx.request_repaint();
         }
 
