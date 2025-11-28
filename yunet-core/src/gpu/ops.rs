@@ -1446,6 +1446,59 @@ mod tests {
 
     use crate::gpu::{OnnxInitializerMap, OnnxTensor};
 
+    macro_rules! test_backbone_stage {
+        ($test_name:ident, $stage:expr, $ref_node:expr, $input_name:expr, $pool:expr) => {
+            #[test]
+            fn $test_name() {
+                let Some(ops) = gpu_ops() else {
+                    eprintln!("Skipping {} (no adapter)", stringify!($test_name));
+                    return;
+                };
+
+                let Some(model_path) = model_file_path() else {
+                    eprintln!(
+                        "Skipping {} (model file {} missing)",
+                        stringify!($test_name),
+                        MODEL_REL_PATH
+                    );
+                    return;
+                };
+
+                let loader = load_backbone_weights(&model_path, $stage, false, 0)
+                    .expect("load backbone weights");
+
+                let input_data = synthetic_input();
+                let cpu_vec = reference_output(&model_path, $ref_node, &input_data);
+
+                let input_gpu = ops
+                    .upload_tensor([1usize, 3, 640, 640], &input_data, Some($input_name))
+                    .expect("upload input");
+                let output_gpu =
+                    run_backbone_to_stage(&ops, &loader, &input_gpu, $stage).expect("run backbone");
+
+                let final_gpu = if $pool {
+                    pool_tensor(&ops, &output_gpu).expect("pool tensor")
+                } else {
+                    output_gpu
+                };
+
+                let gpu_vec = final_gpu.to_vec().expect("download output");
+
+                assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
+                let max_diff = gpu_vec
+                    .iter()
+                    .zip(cpu_vec.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                assert!(
+                    max_diff < 1e-3,
+                    "{} mismatch (max diff {max_diff})",
+                    stringify!($test_name)
+                );
+            }
+        };
+    }
+
     fn gpu_ops() -> Option<GpuInferenceOps> {
         match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
             GpuAvailability::Available(ctx) => Some(GpuInferenceOps::new(ctx).expect("build ops")),
@@ -2295,301 +2348,69 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pooled_stage_two_block_matches_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping pooled-stage two-block test (no adapter)");
-            return;
-        };
+    test_backbone_stage!(
+        pooled_stage_two_block_matches_onnx,
+        1,
+        "Relu_11",
+        "stage1_input",
+        false
+    );
 
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping pooled-stage two-block test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
+    test_backbone_stage!(
+        stage2_blocks_match_onnx,
+        2,
+        "Relu_17",
+        "stage2_input",
+        false
+    );
 
-        let loader = load_backbone_weights(&model_path, 1, false, 0).expect("load stage1 weights");
+    test_backbone_stage!(
+        stage2_pooled_matches_onnx,
+        2,
+        "MaxPool_18",
+        "stage2_pool_input",
+        true
+    );
 
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "Relu_11", &input_data);
+    test_backbone_stage!(
+        stage3_blocks_match_onnx,
+        3,
+        "Relu_24",
+        "stage3_input",
+        false
+    );
 
-        let input_gpu = ops
-            .upload_tensor([1usize, 3, 640, 640], &input_data, Some("stage1_input"))
-            .expect("upload input");
-        let stage1 = run_backbone_to_stage(&ops, &loader, &input_gpu, 1).expect("stage1 output");
-        let gpu_vec = stage1.to_vec().expect("download stage1 block2");
+    test_backbone_stage!(
+        stage3_pooled_matches_onnx,
+        3,
+        "MaxPool_25",
+        "stage3_pool_input",
+        true
+    );
 
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage1 two-block mismatch (max diff {max_diff})"
-        );
-    }
+    test_backbone_stage!(
+        stage4_blocks_match_onnx,
+        4,
+        "Relu_31",
+        "stage4_input",
+        false
+    );
 
-    #[test]
-    fn stage2_blocks_match_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage2 test (no adapter)");
-            return;
-        };
+    test_backbone_stage!(
+        stage4_pooled_matches_onnx,
+        4,
+        "MaxPool_32",
+        "stage4_pool_input",
+        true
+    );
 
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage2 test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 2, false, 0).expect("load stage2 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "Relu_17", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor([1usize, 3, 640, 640], &input_data, Some("stage2_input"))
-            .expect("upload input");
-        let stage2 = run_backbone_to_stage(&ops, &loader, &input_gpu, 2).expect("stage2");
-        let gpu_vec = stage2.to_vec().expect("download stage2 block2");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage2 two-block mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage2_pooled_matches_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage2 pooled test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage2 pooled test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader =
-            load_backbone_weights(&model_path, 2, false, 0).expect("load stage2 pooled weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "MaxPool_18", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor(
-                [1usize, 3, 640, 640],
-                &input_data,
-                Some("stage2_pool_input"),
-            )
-            .expect("upload input");
-        let stage2 = run_backbone_to_stage(&ops, &loader, &input_gpu, 2).expect("stage2");
-        let stage2_pooled = pool_tensor(&ops, &stage2).expect("stage2 pool");
-        let gpu_vec = stage2_pooled.to_vec().expect("download stage2 pool");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage2 pooled mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage3_blocks_match_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage3 test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage3 test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 3, false, 0).expect("load stage3 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "Relu_24", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor([1usize, 3, 640, 640], &input_data, Some("stage3_input"))
-            .expect("upload input");
-        let stage3 = run_backbone_to_stage(&ops, &loader, &input_gpu, 3).expect("stage3 output");
-        let gpu_vec = stage3.to_vec().expect("download stage3 block2");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage3 two-block mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage3_pooled_matches_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage3 pooled test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage3 pooled test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 3, false, 0).expect("load stage3 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "MaxPool_25", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor(
-                [1usize, 3, 640, 640],
-                &input_data,
-                Some("stage3_pool_input"),
-            )
-            .expect("upload input");
-        let stage3 = run_backbone_to_stage(&ops, &loader, &input_gpu, 3).expect("stage3 output");
-        let pooled = pool_tensor(&ops, &stage3).expect("stage3 pool");
-        let gpu_vec = pooled.to_vec().expect("download stage3 pool");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage3 pooled mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage4_blocks_match_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage4 test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage4 test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 4, false, 0).expect("load stage4 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "Relu_31", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor([1usize, 3, 640, 640], &input_data, Some("stage4_input"))
-            .expect("upload input");
-        let stage4 = run_backbone_to_stage(&ops, &loader, &input_gpu, 4).expect("stage4 output");
-        let gpu_vec = stage4.to_vec().expect("download stage4 block2");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage4 two-block mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage4_pooled_matches_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage4 pooled test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage4 pooled test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 4, false, 0).expect("load stage4 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "MaxPool_32", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor(
-                [1usize, 3, 640, 640],
-                &input_data,
-                Some("stage4_pool_input"),
-            )
-            .expect("upload input");
-        let stage4 = run_backbone_to_stage(&ops, &loader, &input_gpu, 4).expect("stage4 output");
-        let pooled = pool_tensor(&ops, &stage4).expect("stage4 pool");
-        let gpu_vec = pooled.to_vec().expect("download stage4 pool");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage4 pooled mismatch (max diff {max_diff})"
-        );
-    }
-
-    #[test]
-    fn stage5_blocks_match_onnx() {
-        let Some(ops) = gpu_ops() else {
-            eprintln!("Skipping stage5 test (no adapter)");
-            return;
-        };
-
-        let Some(model_path) = model_file_path() else {
-            eprintln!("Skipping stage5 test (model file {MODEL_REL_PATH} missing)");
-            return;
-        };
-
-        let loader = load_backbone_weights(&model_path, 5, false, 0).expect("load stage5 weights");
-
-        let input_data = synthetic_input();
-        let cpu_vec = reference_output(&model_path, "Relu_38", &input_data);
-
-        let input_gpu = ops
-            .upload_tensor([1usize, 3, 640, 640], &input_data, Some("stage5_input"))
-            .expect("upload input");
-        let stage5 = run_backbone_to_stage(&ops, &loader, &input_gpu, 5).expect("stage5 output");
-        let gpu_vec = stage5.to_vec().expect("download stage5 block2");
-
-        assert_eq!(gpu_vec.len(), cpu_vec.len(), "shape mismatch");
-        let max_diff = gpu_vec
-            .iter()
-            .zip(cpu_vec.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0f32, f32::max);
-        assert!(
-            max_diff < 1e-3,
-            "stage5 two-block mismatch (max diff {max_diff})"
-        );
-    }
+    test_backbone_stage!(
+        stage5_blocks_match_onnx,
+        5,
+        "Relu_38",
+        "stage5_input",
+        false
+    );
 
     #[test]
     fn neck_and_detection_heads_match_onnx() {
