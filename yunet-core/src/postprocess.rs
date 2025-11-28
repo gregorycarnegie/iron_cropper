@@ -41,31 +41,27 @@ pub struct BoundingBox {
 
 impl BoundingBox {
     /// Calculates the area of the bounding box.
+    #[inline]
     pub fn area(&self) -> f32 {
         (self.width.max(0.0)) * (self.height.max(0.0))
     }
 
     /// Calculates the Intersection over Union (IoU) with another bounding box.
+    #[inline]
     pub fn iou(&self, other: &Self) -> f32 {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
         let x2 = (self.x + self.width).min(other.x + other.width);
         let y2 = (self.y + self.height).min(other.y + other.height);
 
-        let intersection_w = (x2 - x1).max(0.0);
-        let intersection_h = (y2 - y1).max(0.0);
-        let intersection = intersection_w * intersection_h;
-
-        if intersection <= 0.0 {
+        if x2 <= x1 || y2 <= y1 {
             return 0.0;
         }
 
+        let intersection = (x2 - x1) * (y2 - y1);
+
         let union = self.area() + other.area() - intersection;
-        if union <= 0.0 {
-            0.0
-        } else {
-            intersection / union
-        }
+        if union > 0.0 { intersection / union } else { 0.0 }
     }
 }
 

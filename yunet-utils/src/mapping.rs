@@ -564,6 +564,7 @@ fn resolve_selector(columns: &[String], selector: &ColumnSelector) -> Result<usi
     }
 }
 
+#[inline]
 fn sanitize_value(value: &str) -> String {
     value.trim().to_string()
 }
@@ -663,6 +664,7 @@ fn format_parquet_field(field: &Field) -> String {
     }
 }
 
+#[inline]
 fn format_sql_value(value: ValueRef<'_>) -> String {
     match value {
         ValueRef::Null => String::new(),

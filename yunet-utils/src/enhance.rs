@@ -155,7 +155,6 @@ fn build_lut(mut mapper: impl FnMut(u8) -> u8) -> [u8; 256] {
     lut
 }
 
-#[inline]
 fn apply_lut_rgb(img: &DynamicImage, lut: &[u8; 256]) -> DynamicImage {
     let mut buf = img.to_rgba8();
     for pixel in buf.as_mut().chunks_exact_mut(4) {
