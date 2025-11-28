@@ -17,7 +17,7 @@ var<storage, read_write> output_pixels : array<u32>;
 var<uniform> params : BlurUniforms;
 
 @group(0) @binding(3)
-var<storage, read> weights : array<f32, MAX_KERNEL_SIZE>;
+var<storage, read> weights : array<f32>;
 
 fn unpack_pixel(value : u32) -> vec4<f32> {
     return vec4<f32>(
