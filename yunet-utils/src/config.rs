@@ -422,6 +422,8 @@ pub struct GpuSettings {
     pub respect_env: bool,
     /// Execute YuNet inference on the GPU when supported.
     pub inference: bool,
+    /// Use GPU for image preprocessing (resize, color conversion).
+    pub preprocessing: bool,
 }
 
 impl Default for GpuSettings {
@@ -430,6 +432,7 @@ impl Default for GpuSettings {
             enabled: true,
             respect_env: true,
             inference: true,
+            preprocessing: true,  // Enable GPU preprocessing by default when GPU is available
         }
     }
 }

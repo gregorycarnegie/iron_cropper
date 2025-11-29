@@ -3,13 +3,18 @@
 //! This module centralizes routines for reading files, resizing RGB buffers, and converting to
 //! tensor-friendly layouts while preserving compatibility with OpenCV glue code.
 
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, cell::RefCell, path::Path};
 
 use anyhow::{Context, Result};
 use fast_image_resize::{self as fir, images::Image as FirImage, images::ImageRef as FirImageRef};
 use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 use rayon::prelude::*;
+
+// Thread-local buffer pool for RGB→BGR→CHW conversion to reduce allocations.
+thread_local! {
+    static CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::new());
+}
 
 /// Load an image from disk into memory.
 ///
@@ -66,6 +71,7 @@ fn resize_image_fast(image: &DynamicImage, width: u32, height: u32) -> Option<Rg
 /// CHW (channels, height, width) and swaps the red and blue channels.
 ///
 /// Uses rayon to process channels in parallel for improved performance.
+/// Uses thread-local buffer pooling to reduce allocations.
 ///
 /// # Arguments
 ///
@@ -77,7 +83,24 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let channel_len = w * h;
     let row_stride = w * 3; // Keep as multiplication since 3 is not a power of 2
     let pixels = image.as_raw();
-    let mut data = vec![0f32; 3 * channel_len];
+
+    // Use thread-local buffer pool to avoid allocation
+    let mut data = CONVERSION_BUFFER.with(|buf| {
+        let mut buffer = buf.borrow_mut();
+        let required_len = 3 * channel_len;
+
+        // Reuse existing buffer if large enough, otherwise allocate
+        if buffer.len() < required_len {
+            buffer.resize(required_len, 0.0);
+        }
+
+        // Take ownership of the buffer contents
+        std::mem::take(&mut *buffer)
+    });
+
+    // Ensure we have the exact size needed
+    data.truncate(3 * channel_len);
+
     let (b_slice, rest) = data.split_at_mut(channel_len);
     let (g_slice, r_slice) = rest.split_at_mut(channel_len);
 
@@ -97,7 +120,14 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
             }
         });
 
-    Array3::from_shape_vec((3, h, w), data).expect("shape matches data length")
+    let result = Array3::from_shape_vec((3, h, w), data.clone()).expect("shape matches data length");
+
+    // Return the buffer to the thread-local pool for reuse
+    CONVERSION_BUFFER.with(|buf| {
+        *buf.borrow_mut() = data;
+    });
+
+    result
 }
 
 /// Convert any dynamic image into a BGR CHW array by first converting to RGB.
