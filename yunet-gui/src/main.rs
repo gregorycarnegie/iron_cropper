@@ -51,7 +51,7 @@ fn main() -> eframe::Result<()> {
     }
 
     eframe::run_native(
-        "YuNet Desktop",
+        "Face Crop Studio",
         options,
         Box::new(|cc| Ok(Box::new(YuNetApp::new(cc)))),
     )
