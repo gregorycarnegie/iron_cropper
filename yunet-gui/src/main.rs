@@ -198,6 +198,7 @@ impl YuNetApp {
             preview: Default::default(),
             cache: Default::default(),
             crop_preview_cache: Default::default(),
+            image_cache: Default::default(),
             model_path_input,
             model_path_dirty: false,
             is_busy: false,

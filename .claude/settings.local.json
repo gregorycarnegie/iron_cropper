@@ -18,7 +18,9 @@
       "Bash(cargo doc:*)",
       "Bash(cargo build:*)",
       "Bash(cargo bench:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(tee:*)",
+      "Bash(cargo metadata:*)"
     ],
     "deny": [],
     "ask": []

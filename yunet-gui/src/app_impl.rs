@@ -199,6 +199,7 @@ impl YuNetApp {
             face_idx,
             detection,
             source_image: &mut self.preview.source_image,
+            image_cache: &mut self.image_cache,
             crop_settings: &crop_settings,
             crop_config: &self.settings.crop,
             enhancement_settings: &enhancement_settings,

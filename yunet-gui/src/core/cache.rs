@@ -22,12 +22,28 @@ use crate::{
     GpuStatusIndicator, ShapeSignature, YuNetApp,
 };
 
+/// Helper to get or load an image using the app-level cache.
+pub fn get_or_load_cached_image(
+    image_cache: &mut std::collections::HashMap<PathBuf, Arc<DynamicImage>>,
+    path: &PathBuf,
+) -> Result<Arc<DynamicImage>, anyhow::Error> {
+    if let Some(cached) = image_cache.get(path) {
+        return Ok(cached.clone());
+    }
+
+    let loaded = load_image(path)?;
+    let arc = Arc::new(loaded);
+    image_cache.insert(path.clone(), arc.clone());
+    Ok(arc)
+}
+
 /// Shared parameters required to build or fetch a crop preview entry.
 pub struct CropPreviewRequest<'a> {
     pub path: &'a PathBuf,
     pub face_idx: usize,
     pub detection: &'a DetectionWithQuality,
     pub source_image: &'a mut Option<Arc<DynamicImage>>,
+    pub image_cache: &'a mut std::collections::HashMap<PathBuf, Arc<DynamicImage>>,
     pub crop_settings: &'a CoreCropSettings,
     pub crop_config: &'a ConfigCropSettings,
     pub enhancement_settings: &'a EnhancementSettings,
@@ -62,6 +78,7 @@ pub fn ensure_crop_preview_entry(
         face_idx,
         detection,
         source_image,
+        image_cache,
         crop_settings,
         crop_config,
         enhancement_settings,
@@ -94,11 +111,11 @@ pub fn ensure_crop_preview_entry(
     let img = if let Some(img) = source_image.as_ref() {
         img.clone()
     } else {
-        match load_image(path) {
-            Ok(img) => {
-                let arc = Arc::new(img);
-                *source_image = Some(arc.clone());
-                arc
+        // Try app-level image cache first
+        match get_or_load_cached_image(image_cache, path) {
+            Ok(cached) => {
+                *source_image = Some(cached.clone());
+                cached
             }
             Err(err) => {
                 warn!(
