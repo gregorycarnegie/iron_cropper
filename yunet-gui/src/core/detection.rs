@@ -127,7 +127,8 @@ fn maybe_build_gpu_preprocessor(
     // Check if GPU preprocessing is explicitly disabled
     if !settings.gpu.preprocessing {
         info!("GPU preprocessing disabled by configuration");
-        let status = GpuStatusIndicator::disabled("GPU preprocessing disabled in settings".to_string());
+        let status =
+            GpuStatusIndicator::disabled("GPU preprocessing disabled in settings".to_string());
         status.emit_telemetry(None, None);
         return (None, None, status);
     }

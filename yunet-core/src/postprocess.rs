@@ -61,7 +61,11 @@ impl BoundingBox {
         let intersection = (x2 - x1) * (y2 - y1);
 
         let union = self.area() + other.area() - intersection;
-        if union > 0.0 { intersection / union } else { 0.0 }
+        if union > 0.0 {
+            intersection / union
+        } else {
+            0.0
+        }
     }
 }
 

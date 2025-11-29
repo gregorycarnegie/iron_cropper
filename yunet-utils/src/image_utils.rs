@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 // Thread-local buffer pool for RGB→BGR→CHW conversion to reduce allocations.
 thread_local! {
-    static CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::new());
+    static CONVERSION_BUFFER: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Load an image from disk into memory.
@@ -120,7 +120,8 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
             }
         });
 
-    let result = Array3::from_shape_vec((3, h, w), data.clone()).expect("shape matches data length");
+    let result =
+        Array3::from_shape_vec((3, h, w), data.clone()).expect("shape matches data length");
 
     // Return the buffer to the thread-local pool for reuse
     CONVERSION_BUFFER.with(|buf| {
