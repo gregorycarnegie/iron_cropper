@@ -22,6 +22,7 @@ image = { version = "0.25.9", default-features = false, features = [
     "png",
     "jpeg",
     "webp",
+    "rayon",  # Enable parallel processing support
 ] }
 log = "0.4.28"
 ndarray = { version = "0.17.1", features = ["rayon"] }

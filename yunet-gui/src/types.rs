@@ -141,6 +141,8 @@ pub struct YuNetApp {
     pub cache: HashMap<CacheKey, DetectionCacheEntry>,
     /// Cached cropped previews keyed by face + crop/enhancement configuration.
     pub crop_preview_cache: HashMap<CropPreviewKey, CropPreviewCacheEntry>,
+    /// Cached loaded images to avoid redundant file I/O (especially during crop adjustments).
+    pub image_cache: HashMap<PathBuf, Arc<DynamicImage>>,
     /// The current value of the model path text input.
     pub model_path_input: String,
     /// Flag indicating if the model path input has been modified.
