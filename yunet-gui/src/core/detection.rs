@@ -124,6 +124,14 @@ fn maybe_build_gpu_preprocessor(
     Option<Arc<GpuContext>>,
     GpuStatusIndicator,
 ) {
+    // Check if GPU preprocessing is explicitly disabled
+    if !settings.gpu.preprocessing {
+        info!("GPU preprocessing disabled by configuration");
+        let status = GpuStatusIndicator::disabled("GPU preprocessing disabled in settings".to_string());
+        status.emit_telemetry(None, None);
+        return (None, None, status);
+    }
+
     let options: GpuContextOptions = (&settings.gpu).into();
     let availability = GpuContext::init_with_fallback(&options);
 
@@ -152,8 +160,8 @@ fn maybe_build_gpu_preprocessor_with_context(
     Option<Arc<GpuContext>>,
     GpuStatusIndicator,
 ) {
-    // Check if GPU is disabled in settings
-    if !settings.gpu.enabled {
+    // Check if GPU preprocessing is disabled in settings
+    if !settings.gpu.enabled || !settings.gpu.preprocessing {
         info!("GPU preprocessing disabled by configuration despite shared context available");
         let status = GpuStatusIndicator::disabled("Disabled by user configuration".to_string());
         status.emit_telemetry(None, None);
