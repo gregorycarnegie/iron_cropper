@@ -563,39 +563,35 @@ fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bo
     });
     // JPEG quality
     let mut jpeg_quality = i32::from(app.settings.crop.jpeg_quality);
-    ui.scope(|ui| {
-        ui.set_max_width(250.0);
-        if widgets::slider_row(
-            ui,
-            &mut jpeg_quality,
-            1..=100,
-            "JPEG quality",
-            1.0,
-            None,
-            None,
-        ) {
+    crate::constrained_slider_row!(
+        ui,
+        &mut jpeg_quality,
+        1..=100,
+        "JPEG quality",
+        1.0,
+        None,
+        None,
+        {
             app.settings.crop.jpeg_quality = jpeg_quality as u8;
             *settings_changed = true;
         }
-    });
+    );
 
     // WebP quality
     let mut webp_quality = i32::from(app.settings.crop.webp_quality);
-    ui.scope(|ui| {
-        ui.set_max_width(250.0);
-        if widgets::slider_row(
-            ui,
-            &mut webp_quality,
-            0..=100,
-            "WebP quality",
-            1.0,
-            None,
-            None,
-        ) {
+    crate::constrained_slider_row!(
+        ui,
+        &mut webp_quality,
+        0..=100,
+        "WebP quality",
+        1.0,
+        None,
+        None,
+        {
             app.settings.crop.webp_quality = webp_quality as u8;
             *settings_changed = true;
         }
-    });
+    );
 }
 
 /// Shows the metadata settings section.
@@ -765,39 +761,35 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     match &mut shape {
         CropShape::RoundedRectangle { radius_pct } => {
             let mut radius = (*radius_pct * 100.0).clamp(0.0, 50.0);
-            ui.scope(|ui| {
-                ui.set_max_width(250.0);
-                if widgets::slider_row(
-                    ui,
-                    &mut radius,
-                    0.0..=50.0,
-                    "Corner radius (%)",
-                    1.0,
-                    None,
-                    None,
-                ) {
+            crate::constrained_slider_row!(
+                ui,
+                &mut radius,
+                0.0..=50.0,
+                "Corner radius (%)",
+                1.0,
+                None,
+                None,
+                {
                     *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
                     changed = true;
                 }
-            });
+            );
         }
         CropShape::ChamferedRectangle { size_pct } => {
             let mut size = (*size_pct * 100.0).clamp(0.0, 50.0);
-            ui.scope(|ui| {
-                ui.set_max_width(250.0);
-                if widgets::slider_row(
-                    ui,
-                    &mut size,
-                    0.0..=50.0,
-                    "Chamfer size (%)",
-                    1.0,
-                    None,
-                    None,
-                ) {
+            crate::constrained_slider_row!(
+                ui,
+                &mut size,
+                0.0..=50.0,
+                "Chamfer size (%)",
+                1.0,
+                None,
+                None,
+                {
                     *size_pct = (size / 100.0).clamp(0.0, 0.5);
                     changed = true;
                 }
-            });
+            );
         }
         CropShape::Polygon {
             sides,
@@ -817,7 +809,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 *sides = sides_u32.clamp(3, 24) as u8;
                 changed = true;
             }
-            if widgets::slider_row(
+            crate::constrained_slider_row!(
                 ui,
                 rotation_deg,
                 -180.0..=180.0,
@@ -825,63 +817,60 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 1.0,
                 None,
                 None,
-            ) {
-                changed = true;
-            }
+                {
+                    changed = true;
+                }
+            );
 
             match corner_style {
                 PolygonCornerStyle::Sharp => {}
                 PolygonCornerStyle::Rounded { radius_pct } => {
                     let mut radius = (*radius_pct * 100.0).clamp(0.0, 40.0);
-                    ui.scope(|ui| {
-                        ui.set_max_width(250.0);
-                        if widgets::slider_row(
-                            ui,
-                            &mut radius,
-                            0.0..=40.0,
-                            "Corner radius (%)",
-                            1.0,
-                            None,
-                            None,
-                        ) {
+                    crate::constrained_slider_row!(
+                        ui,
+                        &mut radius,
+                        0.0..=40.0,
+                        "Corner radius (%)",
+                        1.0,
+                        None,
+                        None,
+                        {
                             *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
                             changed = true;
                         }
-                    });
+                    );
                 }
                 PolygonCornerStyle::Chamfered { size_pct } => {
                     let mut size = (*size_pct * 100.0).clamp(0.0, 40.0);
-                    ui.scope(|ui| {
-                        ui.set_max_width(250.0);
-                        if widgets::slider_row(
-                            ui,
-                            &mut size,
-                            0.0..=40.0,
-                            "Chamfer size (%)",
-                            1.0,
-                            None,
-                            None,
-                        ) {
+                    crate::constrained_slider_row!(
+                        ui,
+                        &mut size,
+                        0.0..=40.0,
+                        "Chamfer size (%)",
+                        1.0,
+                        None,
+                        None,
+                        {
                             *size_pct = (size / 100.0).clamp(0.0, 0.5);
                             changed = true;
                         }
-                    });
+                    );
                 }
                 PolygonCornerStyle::Bezier { tension } => {
-                    ui.scope(|ui| {
-                        ui.set_max_width(250.0);
-                        if widgets::slider_row(
-                            ui,
-                            tension,
-                            0.0..=2.0,
-                            "Tension",
-                            0.01,
-                            Some("Adjusts the curvature of the corners. 0 is sharp, higher values are smoother."),
-                            None,
-                        ) {
+                    crate::constrained_slider_row!(
+                        ui,
+                        tension,
+                        0.0..=2.0,
+                        "Tension",
+                        0.01,
+                        Some(
+                            "Adjusts the curvature of the corners. 0 is sharp, higher values are smoother."
+                        ),
+                        None,
+                        {
                             changed = true;
                         }
-                    });
+                    );
                 }
             }
         }
@@ -905,7 +894,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             }
 
             let mut inner = (*inner_radius_pct * 100.0).clamp(10.0, 90.0);
-            if widgets::slider_row(
+            crate::constrained_slider_row!(
                 ui,
                 &mut inner,
                 10.0..=90.0,
@@ -913,12 +902,13 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 1.0,
                 None,
                 None,
-            ) {
-                *inner_radius_pct = (inner / 100.0).clamp(0.1, 0.9);
-                changed = true;
-            }
+                {
+                    *inner_radius_pct = (inner / 100.0).clamp(0.1, 0.9);
+                    changed = true;
+                }
+            );
 
-            if widgets::slider_row(
+            crate::constrained_slider_row!(
                 ui,
                 rotation_deg,
                 -180.0..=180.0,
@@ -926,9 +916,10 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 1.0,
                 None,
                 None,
-            ) {
-                changed = true;
-            }
+                {
+                    changed = true;
+                }
+            );
         }
         CropShape::Rectangle | CropShape::Ellipse => {}
     }

@@ -43,9 +43,9 @@
     },
     "shape": {
       "kind": "star",
-      "points": 7,
-      "inner_radius_pct": 0.6572382,
-      "rotation_deg": 55.402023
+      "points": 5,
+      "inner_radius_pct": 0.5,
+      "rotation_deg": 0.0
     }
   },
   "enhance": {

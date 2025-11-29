@@ -2,7 +2,6 @@
 
 use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, Stroke, Ui};
 
-use crate::ui::widgets;
 use crate::{YuNetApp, theme};
 
 impl YuNetApp {
@@ -133,55 +132,59 @@ impl YuNetApp {
         ui.heading("Adjustments");
         ui.add_space(6.0);
 
-        egui::Grid::new("simple_settings_grid")
-            .num_columns(3)
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                ui.label("Face fill (%)");
-                let mut face_fill = self.settings.crop.face_height_pct;
-                let r1 = widgets::custom_slider(ui, &mut face_fill, 20.0..=95.0, None, None);
-                let r2 = ui.add_sized(
-                    [50.0, 20.0],
-                    egui::DragValue::new(&mut face_fill).speed(1.0),
-                );
-                if r1.changed() || r2.changed() {
-                    self.settings.crop.face_height_pct = face_fill;
-                    self.push_crop_history();
-                    self.persist_settings_with_feedback();
-                    self.clear_crop_preview_cache();
-                }
-                ui.end_row();
+        // Face fill
+        let mut face_fill = self.settings.crop.face_height_pct;
+        crate::constrained_slider_row!(
+            ui,
+            &mut face_fill,
+            20.0..=95.0,
+            "Face fill (%)",
+            1.0,
+            None,
+            None,
+            {
+                self.settings.crop.face_height_pct = face_fill;
+                self.push_crop_history();
+                self.persist_settings_with_feedback();
+                self.clear_crop_preview_cache();
+            }
+        );
 
-                ui.label("Eye alignment");
-                let mut horizontal = self.settings.crop.horizontal_offset;
-                let r1 = widgets::custom_slider(ui, &mut horizontal, -1.0..=1.0, None, None);
-                let r2 = ui.add_sized(
-                    [50.0, 20.0],
-                    egui::DragValue::new(&mut horizontal).speed(0.01),
-                );
-                if r1.changed() || r2.changed() {
-                    self.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
-                    self.push_crop_history();
-                    self.persist_settings_with_feedback();
-                    self.clear_crop_preview_cache();
-                }
-                ui.end_row();
+        // Eye alignment
+        let mut horizontal = self.settings.crop.horizontal_offset;
+        crate::constrained_slider_row!(
+            ui,
+            &mut horizontal,
+            -1.0..=1.0,
+            "Eye alignment",
+            0.01,
+            None,
+            None,
+            {
+                self.settings.crop.horizontal_offset = horizontal.clamp(-1.0, 1.0);
+                self.push_crop_history();
+                self.persist_settings_with_feedback();
+                self.clear_crop_preview_cache();
+            }
+        );
 
-                ui.label("Vertical lift");
-                let mut vertical = self.settings.crop.vertical_offset;
-                let r1 = widgets::custom_slider(ui, &mut vertical, -1.0..=1.0, None, None);
-                let r2 = ui.add_sized(
-                    [50.0, 20.0],
-                    egui::DragValue::new(&mut vertical).speed(0.01),
-                );
-                if r1.changed() || r2.changed() {
-                    self.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
-                    self.push_crop_history();
-                    self.persist_settings_with_feedback();
-                    self.clear_crop_preview_cache();
-                }
-                ui.end_row();
-            });
+        // Vertical lift
+        let mut vertical = self.settings.crop.vertical_offset;
+        crate::constrained_slider_row!(
+            ui,
+            &mut vertical,
+            -1.0..=1.0,
+            "Vertical lift",
+            0.01,
+            None,
+            None,
+            {
+                self.settings.crop.vertical_offset = vertical.clamp(-1.0, 1.0);
+                self.push_crop_history();
+                self.persist_settings_with_feedback();
+                self.clear_crop_preview_cache();
+            }
+        );
 
         ui.add_space(8.0);
         ui.label(RichText::new("Automation").strong());

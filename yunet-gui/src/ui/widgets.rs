@@ -169,3 +169,17 @@ pub fn slider_row<Num: emath::Numeric>(
     });
     changed
 }
+
+/// Macro to render a slider row with a consistent max width constraint.
+#[macro_export]
+macro_rules! constrained_slider_row {
+    ($ui:expr, $value:expr, $range:expr, $label:expr, $speed:expr, $hover:expr, $accent:expr, $body:block) => {
+        $ui.scope(|ui| {
+            ui.set_max_width(250.0);
+            if $crate::ui::widgets::slider_row(ui, $value, $range, $label, $speed, $hover, $accent)
+            {
+                $body
+            }
+        });
+    };
+}
