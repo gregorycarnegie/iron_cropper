@@ -75,7 +75,7 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
     let w = width as usize;
     let h = height as usize;
     let channel_len = w * h;
-    let row_stride = w * 3;
+    let row_stride = w * 3; // Keep as multiplication since 3 is not a power of 2
     let pixels = image.as_raw();
     let mut data = vec![0f32; 3 * channel_len];
     let (b_slice, rest) = data.split_at_mut(channel_len);
@@ -89,7 +89,8 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
         .for_each(|(y, ((b_row, g_row), r_row))| {
             let src_row = &pixels[y * row_stride..(y + 1) * row_stride];
             for x in 0..w {
-                let src = x * 3;
+                // Optimized: x * 3 = (x << 1) + x
+                let src = (x << 1) + x;
                 b_row[x] = src_row[src + 2] as f32;
                 g_row[x] = src_row[src + 1] as f32;
                 r_row[x] = src_row[src] as f32;

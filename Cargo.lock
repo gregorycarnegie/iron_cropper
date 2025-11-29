@@ -7115,6 +7115,7 @@ dependencies = [
  "bytemuck",
  "calamine",
  "crc32fast",
+ "criterion",
  "csv",
  "env_logger",
  "fast_image_resize",
