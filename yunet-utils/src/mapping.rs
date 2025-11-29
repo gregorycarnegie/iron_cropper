@@ -13,6 +13,12 @@ use rusqlite::{Connection, types::ValueRef};
 /// Default number of rows to show in mapping previews.
 pub const DEFAULT_PREVIEW_ROWS: usize = 32;
 
+struct MappingTable {
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
+    total_rows: usize,
+}
+
 /// Supported mapping formats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MappingFormat {
@@ -682,10 +688,4 @@ fn encode_bytes<B: AsRef<[u8]>>(bytes: B) -> String {
     } else {
         general_purpose::STANDARD.encode(slice)
     }
-}
-
-struct MappingTable {
-    columns: Vec<String>,
-    rows: Vec<Vec<String>>,
-    total_rows: usize,
 }
