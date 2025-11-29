@@ -675,6 +675,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         PolygonSharp,
         PolygonRounded,
         PolygonChamfered,
+        PolygonBezier,
+        Star,
     }
 
     let mut variant = match &shape {
@@ -686,7 +688,9 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             PolygonCornerStyle::Sharp => Variant::PolygonSharp,
             PolygonCornerStyle::Rounded { .. } => Variant::PolygonRounded,
             PolygonCornerStyle::Chamfered { .. } => Variant::PolygonChamfered,
+            PolygonCornerStyle::Bezier { .. } => Variant::PolygonBezier,
         },
+        CropShape::Star { .. } => Variant::Star,
     };
 
     let current_label = match variant {
@@ -697,6 +701,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         Variant::PolygonSharp => "Polygon",
         Variant::PolygonRounded => "Polygon (rounded)",
         Variant::PolygonChamfered => "Polygon (chamfered)",
+        Variant::PolygonBezier => "Polygon (bezier)",
+        Variant::Star => "Star",
     };
 
     let mut variant_changed = false;
@@ -717,6 +723,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             select_variant("Polygon", Variant::PolygonSharp);
             select_variant("Polygon (rounded)", Variant::PolygonRounded);
             select_variant("Polygon (chamfered)", Variant::PolygonChamfered);
+            select_variant("Polygon (bezier)", Variant::PolygonBezier);
+            select_variant("Star", Variant::Star);
         });
 
     if variant_changed {
@@ -739,6 +747,16 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 sides: 6,
                 rotation_deg: 0.0,
                 corner_style: PolygonCornerStyle::Chamfered { size_pct: 0.1 },
+            },
+            Variant::PolygonBezier => CropShape::Polygon {
+                sides: 6,
+                rotation_deg: 0.0,
+                corner_style: PolygonCornerStyle::Bezier { tension: 0.5 },
+            },
+            Variant::Star => CropShape::Star {
+                points: 5,
+                inner_radius_pct: 0.5,
+                rotation_deg: 0.0,
             },
         };
         changed = true;
@@ -849,6 +867,67 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         }
                     });
                 }
+                PolygonCornerStyle::Bezier { tension } => {
+                    ui.scope(|ui| {
+                        ui.set_max_width(250.0);
+                        if widgets::slider_row(
+                            ui,
+                            tension,
+                            0.0..=2.0,
+                            "Tension",
+                            0.01,
+                            Some("Adjusts the curvature of the corners. 0 is sharp, higher values are smoother."),
+                            None,
+                        ) {
+                            changed = true;
+                        }
+                    });
+                }
+            }
+        }
+        CropShape::Star {
+            points,
+            inner_radius_pct,
+            rotation_deg,
+        } => {
+            let mut points_u32 = *points as u32;
+            if ui
+                .add(
+                    DragValue::new(&mut points_u32)
+                        .range(3..=24)
+                        .speed(1.0)
+                        .suffix(" points"),
+                )
+                .changed()
+            {
+                *points = points_u32.clamp(3, 24) as u8;
+                changed = true;
+            }
+
+            let mut inner = (*inner_radius_pct * 100.0).clamp(10.0, 90.0);
+            if widgets::slider_row(
+                ui,
+                &mut inner,
+                10.0..=90.0,
+                "Inner radius (%)",
+                1.0,
+                None,
+                None,
+            ) {
+                *inner_radius_pct = (inner / 100.0).clamp(0.1, 0.9);
+                changed = true;
+            }
+
+            if widgets::slider_row(
+                ui,
+                rotation_deg,
+                -180.0..=180.0,
+                "Rotation (°)",
+                1.0,
+                None,
+                None,
+            ) {
+                changed = true;
             }
         }
         CropShape::Rectangle | CropShape::Ellipse => {}

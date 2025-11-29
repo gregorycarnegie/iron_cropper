@@ -328,6 +328,7 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
                 PolygonCornerStyle::Sharp => (4_u8, 0_u32, 0_u32),
                 PolygonCornerStyle::Rounded { radius_pct } => (5_u8, radius_pct.to_bits(), 0_u32),
                 PolygonCornerStyle::Chamfered { size_pct } => (6_u8, size_pct.to_bits(), 0_u32),
+                PolygonCornerStyle::Bezier { tension } => (7_u8, tension.to_bits(), 0_u32),
             };
             ShapeSignature {
                 kind,
@@ -337,6 +338,17 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
                 rotation_bits: rotation_deg.to_bits(),
             }
         }
+        CropShape::Star {
+            points,
+            inner_radius_pct,
+            rotation_deg,
+        } => ShapeSignature {
+            kind: 8,
+            primary_bits: inner_radius_pct.to_bits(),
+            secondary_bits: 0,
+            sides: points,
+            rotation_bits: rotation_deg.to_bits(),
+        },
     }
 }
 

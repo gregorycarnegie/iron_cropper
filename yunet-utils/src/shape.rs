@@ -16,6 +16,7 @@ pub enum PolygonCornerStyle {
     Sharp,
     Rounded { radius_pct: f32 },
     Chamfered { size_pct: f32 },
+    Bezier { tension: f32 },
 }
 
 impl Default for PolygonCornerStyle {
@@ -41,6 +42,11 @@ pub enum CropShape {
         rotation_deg: f32,
         #[serde(default)]
         corner_style: PolygonCornerStyle,
+    },
+    Star {
+        points: u8,
+        inner_radius_pct: f32,
+        rotation_deg: f32,
     },
 }
 
@@ -71,11 +77,28 @@ impl CropShape {
                     PolygonCornerStyle::Chamfered { size_pct } => PolygonCornerStyle::Chamfered {
                         size_pct: size_pct.clamp(0.0, 0.5),
                     },
+                    PolygonCornerStyle::Bezier { tension } => PolygonCornerStyle::Bezier {
+                        tension: tension.clamp(0.0, 2.0),
+                    },
                 };
                 Self::Polygon {
                     sides,
                     rotation_deg,
                     corner_style,
+                }
+            }
+            Self::Star {
+                points,
+                inner_radius_pct,
+                rotation_deg,
+            } => {
+                let points = (*points).clamp(3u8, 24u8);
+                let inner_radius_pct = inner_radius_pct.clamp(0.1, 0.9);
+                let rotation_deg = normalize_angle(*rotation_deg);
+                Self::Star {
+                    points,
+                    inner_radius_pct,
+                    rotation_deg,
                 }
             }
         }
@@ -147,6 +170,11 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
             rotation_deg,
             corner_style,
         } => polygon_points(w, h, sides, rotation_deg, corner_style),
+        CropShape::Star {
+            points,
+            inner_radius_pct,
+            rotation_deg,
+        } => star_points(w, h, points, inner_radius_pct, rotation_deg),
     }
 }
 
@@ -260,6 +288,7 @@ fn polygon_points(
             let r = (width.min(height) * radius_pct).clamp(0.0, radius);
             rounded_polygon(&base_vertices, r, 8)
         }
+        PolygonCornerStyle::Bezier { tension } => bezier_polygon(&base_vertices, tension, 16),
     }
 }
 
@@ -372,6 +401,78 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
     points
 }
 
+fn bezier_polygon(vertices: &[Point], tension: f32, segments: usize) -> Vec<Point> {
+    if tension <= 0.0 {
+        return vertices.to_vec();
+    }
+
+    let len = vertices.len();
+    let mut points = Vec::with_capacity(len * segments);
+
+    // Calculate control points for each vertex
+    // We use a simple cardinal spline approach where the control points are derived
+    // from the previous and next vertices.
+    let mut control_points = Vec::with_capacity(len * 2);
+
+    for i in 0..len {
+        let prev = vertices[(i + len - 1) % len];
+        let current = vertices[i];
+        let next = vertices[(i + 1) % len];
+
+        // Tangent vector at current point
+        let tangent_x = next.x - prev.x;
+        let tangent_y = next.y - prev.y;
+
+        // Scale by tension
+        // tension of 0.5 is standard Catmull-Rom
+        let cp_dist = tension * 0.5; // Adjust scaling factor as needed
+
+        // Control point "before" current (incoming)
+        let cp1 = Point {
+            x: current.x - tangent_x * cp_dist,
+            y: current.y - tangent_y * cp_dist,
+        };
+        // Control point "after" current (outgoing)
+        let cp2 = Point {
+            x: current.x + tangent_x * cp_dist,
+            y: current.y + tangent_y * cp_dist,
+        };
+
+        control_points.push((cp1, cp2));
+    }
+
+    // Generate curve segments between vertices
+    for i in 0..len {
+        let p0 = vertices[i];
+        let p1 = vertices[(i + 1) % len];
+
+        // Control points for this segment:
+        // p0 -> cp_after_p0 -> cp_before_p1 -> p1
+        let cp1 = control_points[i].1;
+        let cp2 = control_points[(i + 1) % len].0;
+
+        for j in 0..segments {
+            let t = j as f32 / segments as f32;
+            points.push(cubic_bezier(p0, cp1, cp2, p1, t));
+        }
+    }
+
+    points
+}
+
+fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f32) -> Point {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let mt = 1.0 - t;
+    let mt2 = mt * mt;
+    let mt3 = mt2 * mt;
+
+    Point {
+        x: mt3 * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t3 * p3.x,
+        y: mt3 * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t3 * p3.y,
+    }
+}
+
 fn distance(a: Point, b: Point) -> f32 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
 }
@@ -440,6 +541,42 @@ pub fn apply_shape_mask(image: &mut RgbaImage, shape: &CropShape) {
             pixel[3] = alpha;
         }
     }
+}
+
+fn star_points(
+    width: f32,
+    height: f32,
+    points: u8,
+    inner_radius_pct: f32,
+    rotation_deg: f32,
+) -> Vec<Point> {
+    let n = points.max(3) as usize;
+    let cx = width / 2.0;
+    let cy = height / 2.0;
+    let outer_radius = 0.5 * width.min(height);
+    let inner_radius = outer_radius * inner_radius_pct;
+    let rotation = rotation_deg.to_radians();
+
+    let mut vertices = Vec::with_capacity(n * 2);
+    let step_angle = PI / n as f32;
+
+    for i in 0..n {
+        // Outer point
+        let angle_outer = rotation + 2.0 * PI * i as f32 / n as f32;
+        vertices.push(Point {
+            x: cx + outer_radius * angle_outer.cos(),
+            y: cy + outer_radius * angle_outer.sin(),
+        });
+
+        // Inner point
+        let angle_inner = angle_outer + step_angle;
+        vertices.push(Point {
+            x: cx + inner_radius * angle_inner.cos(),
+            y: cy + inner_radius * angle_inner.sin(),
+        });
+    }
+
+    vertices
 }
 
 /// Apply the shape mask to a dynamic image, upgrading to RGBA as needed.

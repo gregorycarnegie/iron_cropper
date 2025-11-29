@@ -28,6 +28,9 @@ pub mod telemetry;
 /// Webcam capture utilities for real-time face detection.
 pub mod webcam;
 
+#[cfg(test)]
+mod shape_tests;
+
 use std::path::Path;
 
 use anyhow::Result;

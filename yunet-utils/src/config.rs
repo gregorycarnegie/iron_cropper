@@ -432,7 +432,7 @@ impl Default for GpuSettings {
             enabled: true,
             respect_env: true,
             inference: true,
-            preprocessing: true,  // Enable GPU preprocessing by default when GPU is available
+            preprocessing: true, // Enable GPU preprocessing by default when GPU is available
         }
     }
 }
@@ -489,7 +489,7 @@ mod tests {
             InputDimensions {
                 width: 640,
                 height: 640,
-                resize_quality: ResizeQuality::Quality,
+                resize_quality: ResizeQuality::Speed,
             }
         );
         assert_eq!(loaded.detection.top_k, 123);

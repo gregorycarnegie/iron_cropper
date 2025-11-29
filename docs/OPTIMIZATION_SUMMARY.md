@@ -9,7 +9,8 @@ This document summarizes the performance optimizations implemented across Phase 
 ## Baseline Performance
 
 From telemetry (CPU-only mode):
-```
+
+```text
 yunet_gui::load_image:       34.09ms (31.6%)
 yunet_core::onnx_inference:  82.52ms (76.5%)
 yunet_core::postprocess:      0.03ms (0.02%)
@@ -42,7 +43,7 @@ Total:                      107.85ms
 
 ### CPU-Only Mode
 
-```
+```text
 Before:  107.85ms
 Phase 1: ~105ms    (2ms saved, 1.9%)
 Phase 2: ~100ms    (5ms additional from buffer pooling)
@@ -52,7 +53,7 @@ Total:   ~100ms    (7ms saved, 6.5%)
 
 ### GPU-Accelerated Mode (When Available)
 
-```
+```text
 Before:  107.85ms
 Phase 1: ~105ms    (2ms saved)
 Phase 2: ~75-80ms  (25-30ms additional from GPU preprocessing)
@@ -62,7 +63,7 @@ Total:   ~75-80ms  (27-32ms saved, 25-30%)
 
 ### Crop Preview Regeneration (Cached Image)
 
-```
+```text
 Before:  107ms     (34ms reload + 73ms processing)
 After:   ~68-70ms  (0ms cached + 68-70ms processing)
 ─────────────────────────────────────
@@ -76,6 +77,7 @@ Saved:   35-40ms   (34% improvement)
 ### 1. Rayon Parallel Processing (Phase 1)
 
 **Change:**
+
 ```toml
 image = { version = "0.25.9", features = ["rayon"] }
 ```
@@ -89,6 +91,7 @@ image = { version = "0.25.9", features = ["rayon"] }
 **Change:** Added `HashMap<PathBuf, Arc<DynamicImage>>` to GUI app state
 
 **Code:**
+
 ```rust
 pub fn get_or_load_cached_image(
     image_cache: &mut HashMap<PathBuf, Arc<DynamicImage>>,
@@ -110,6 +113,7 @@ pub fn get_or_load_cached_image(
 **Change:** Thread-local buffer pool for RGB→BGR→CHW conversion
 
 **Code:**
+
 ```rust
 thread_local! {
     static CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::new());
@@ -145,6 +149,7 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
 **Change:** Automatic GPU preprocessor when GPU enabled
 
 **Code:**
+
 ```rust
 fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
     let availability = GpuContext::init_with_fallback(&options);
@@ -165,11 +170,13 @@ fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
 ```
 
 **Configuration:**
+
 - GUI Settings → GPU → Enable GPU acceleration
 - Uses egui's shared WGPU context automatically
 - Falls back to CPU if GPU unavailable
 
 **Benefit:**
+
 - GPU-accelerated image resizing
 - GPU-accelerated RGB→BGR→CHW conversion
 - 20-25ms faster than CPU preprocessing
@@ -179,6 +186,7 @@ fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
 ## Files Modified
 
 ### Phase 1
+
 1. `Cargo.toml` - Added rayon feature
 2. `yunet-gui/src/types.rs` - Added image_cache field
 3. `yunet-gui/src/main.rs` - Initialize cache
@@ -186,8 +194,9 @@ fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
 5. `yunet-gui/src/app_impl.rs` - Pass cache to requests
 
 ### Phase 2
-6. `yunet-utils/src/image_utils.rs` - Buffer pooling implementation
-7. `yunet-gui/src/core/detection.rs` - GPU preprocessor integration (already present, verified)
+
+1. `yunet-utils/src/image_utils.rs` - Buffer pooling implementation
+2. `yunet-gui/src/core/detection.rs` - GPU preprocessor integration (already present, verified)
 
 ---
 
@@ -214,6 +223,7 @@ No configuration needed! All Phase 1 and Phase 2 (buffer pooling) optimizations 
 ### For GPU Users
 
 **Enable GPU in GUI settings:**
+
 1. Open GUI application
 2. Go to Settings → GPU
 3. Check "Enable GPU acceleration"
@@ -222,6 +232,7 @@ No configuration needed! All Phase 1 and Phase 2 (buffer pooling) optimizations 
 **Expected improvement:** 25-30% faster (27-32ms saved per detection)
 
 **Requirements:**
+
 - Compatible GPU (NVIDIA, AMD, Intel)
 - Updated GPU drivers
 - Supported backends: Vulkan, DirectX 12, Metal
@@ -233,11 +244,13 @@ No configuration needed! All Phase 1 and Phase 2 (buffer pooling) optimizations 
 ### GPU Preprocessing Not Working
 
 Check telemetry output:
+
 ```bash
 RUST_LOG=yunet::telemetry=debug cargo run -p yunet-gui
 ```
 
 Look for:
+
 - ✅ `"GUI using GPU preprocessing on 'NVIDIA GeForce...'"`
 - ⚠️ `"Failed to initialize GUI GPU preprocessor"` → Check drivers
 - ⚠️ `"GPU preprocessing disabled"` → Check settings
@@ -286,16 +299,19 @@ See `PERFORMANCE_OPTIMIZATIONS.md` for details.
 ## Summary
 
 **Total improvements:**
+
 - **CPU mode:** 6.5% faster (107ms → 100ms)
 - **GPU mode:** 25-30% faster (107ms → 75-80ms)
 - **Cached crops:** 34% faster (107ms → 68-70ms)
 
 **User experience:**
+
 - ✨ Crop previews regenerate **instantly** when adjusting settings
 - ✨ GPU users get **25-30% faster** face detection
 - ✨ All users benefit from **memory efficiency** improvements
 
 **Code quality:**
+
 - ✅ Zero breaking changes
 - ✅ Automatic GPU fallback
 - ✅ Thread-safe buffer pooling

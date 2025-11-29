@@ -7,7 +7,8 @@ This document tracks performance optimizations implemented in the YuNet face det
 ## Baseline Performance (Before Optimizations)
 
 From telemetry logs:
-```
+
+```text
 [2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_gui::load_image completed in 34.09ms
 [2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_core::onnx_inference completed in 82.52ms
 [2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_core::postprocess completed in 26.70µs
@@ -17,6 +18,7 @@ From telemetry logs:
 ```
 
 **Breakdown:**
+
 - Image loading: 34.09ms (31.6%)
 - ONNX inference: 82.52ms (76.5%)
 - Postprocessing: 26.70µs (0.02%)
@@ -28,6 +30,7 @@ From telemetry logs:
 
 **File:** `Cargo.toml`
 **Change:** Added `rayon` feature to image crate
+
 ```toml
 image = { version = "0.25.9", default-features = false, features = [
     "png",
@@ -38,6 +41,7 @@ image = { version = "0.25.9", default-features = false, features = [
 ```
 
 **Expected Impact:**
+
 - Parallel JPEG/PNG decoding where applicable
 - Est. 5-10% improvement in image loading
 - **Est. savings: 2-4ms**
@@ -49,12 +53,14 @@ image = { version = "0.25.9", default-features = false, features = [
 ### 2. Implement App-Level Image Caching in GUI
 
 **Files Modified:**
+
 - `yunet-gui/src/types.rs` - Added `image_cache: HashMap<PathBuf, Arc<DynamicImage>>` field
 - `yunet-gui/src/main.rs` - Initialize cache in app creation
 - `yunet-gui/src/core/cache.rs` - Added `get_or_load_cached_image()` helper
 - `yunet-gui/src/app_impl.rs` - Pass cache to crop preview requests
 
 **Implementation:**
+
 ```rust
 /// Helper to get or load an image using the app-level cache.
 pub fn get_or_load_cached_image(
@@ -73,11 +79,13 @@ pub fn get_or_load_cached_image(
 ```
 
 **Expected Impact:**
+
 - **First load**: No change (still ~34ms)
 - **Subsequent loads** (e.g., when adjusting crop settings): ~0ms (cache hit)
 - **Practical savings: 34ms per cached access**
 
 **Use Cases:**
+
 - User adjusts crop position/size → regenerates preview → uses cached source image
 - User toggles enhancement settings → regenerates preview → uses cached source image
 - Switching between faces in same image → uses cached source image
@@ -109,11 +117,13 @@ pub fn get_or_load_cached_image(
 ### Telemetry Points Added
 
 To measure improvements, ensure telemetry is enabled:
+
 ```bash
 export RUST_LOG=yunet::telemetry=debug
 ```
 
 Key timing guards to monitor:
+
 - `yunet_gui::load_image` - Should improve slightly with rayon
 - `yunet_core::onnx_inference` - Monitor for any regressions
 - `yunet_core::detect_image` - Overall detection time
@@ -134,7 +144,8 @@ cargo bench --bench inference_pipeline -- --baseline before_opt
 
 ### Phase 1 + Phase 2 Combined
 
-#### CPU-Only Mode (No GPU):
+#### CPU-Only Mode (No GPU)
+
 - **Before:** 107.85ms total
   - Image load: 34.09ms
   - Inference: 82.52ms
@@ -147,7 +158,8 @@ cargo bench --bench inference_pipeline -- --baseline before_opt
   - Additional 2-5ms saved from buffer pooling
 - **Total CPU-only improvement: ~5-8ms (4.6-7.4%)**
 
-#### GPU-Accelerated Mode (GPU enabled):
+#### GPU-Accelerated Mode (GPU enabled)
+
 - **Before:** 107.85ms total
 - **After Phase 1:** ~105ms
 - **After Phase 2:** ~75-80ms total
@@ -157,7 +169,8 @@ cargo bench --bench inference_pipeline -- --baseline before_opt
   - Buffer pooling: applies to fallback path
 - **Total GPU improvement: ~25-32ms (23-30%)**
 
-#### Crop Preview Regeneration (Image Cached):
+#### Crop Preview Regeneration (Image Cached)
+
 - **Before:** 34ms image reload + 73ms processing = 107ms
 - **After:** ~0ms reload + 68-70ms processing = **68-70ms**
 - **Improvement:** 35-40ms saved (34%)
@@ -173,9 +186,11 @@ cargo bench --bench inference_pipeline -- --baseline before_opt
 ### 1. **Preprocessing Buffer Pooling**
 
 **Files Modified:**
+
 - `yunet-utils/src/image_utils.rs` - Thread-local buffer pool implementation
 
 **Implementation:**
+
 ```rust
 // Thread-local buffer pool for RGB→BGR→CHW conversion to reduce allocations.
 thread_local! {
@@ -208,6 +223,7 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
 ```
 
 **Expected Impact:**
+
 - Eliminates repeated `Vec::new()` allocations in hot path
 - Reduces GC pressure and memory fragmentation
 - **Est. savings: 2-5ms per detection**
@@ -219,6 +235,7 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
 ### 2. **GPU Preprocessing Integration**
 
 **Files Modified:**
+
 - `yunet-gui/src/core/detection.rs` - Builds GPU preprocessor when available
 - `yunet-core/src/detector.rs` - Already supports custom preprocessors via `with_preprocessor()`
 
@@ -248,12 +265,14 @@ fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
 ```
 
 **Expected Impact:**
+
 - GPU-accelerated image resizing and color conversion
 - **Est. savings: 20-25ms when GPU available**
 - Automatic fallback to CPU if GPU unavailable
 
 **Configuration:**
 GPU preprocessing is controlled via GUI settings:
+
 - `settings.gpu.enabled = true` - Enable GPU support
 - Automatically uses egui's shared WGPU context when available
 
@@ -330,7 +349,7 @@ GPU preprocessing is controlled via GUI settings:
 
 ## Commit Message Template
 
-```
+```text
 perf: implement Phase 1 performance optimizations
 
 - Add rayon feature to image crate for parallel processing
