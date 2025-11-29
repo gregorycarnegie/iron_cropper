@@ -35,3 +35,8 @@ nokhwa.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "bitwise_optimizations"
+harness = false

@@ -672,11 +672,13 @@ fn gpu_preprocess(
 }
 
 fn align_to(value: usize, alignment: usize) -> usize {
-    if value.is_multiple_of(alignment) {
-        value
-    } else {
-        value + (alignment - (value % alignment))
-    }
+    debug_assert!(
+        alignment.is_power_of_two(),
+        "alignment must be a power of two for bitwise optimization"
+    );
+    // Optimized for power-of-2 alignment using bitwise operations
+    // (value + alignment - 1) & !(alignment - 1)
+    (value + alignment - 1) & !(alignment - 1)
 }
 
 #[cfg(test)]

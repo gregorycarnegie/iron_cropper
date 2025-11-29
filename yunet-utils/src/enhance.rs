@@ -307,7 +307,7 @@ fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
         let mut b = [0.0f32; 4];
         let mut a = [0u8; 4];
         for lane in 0..4 {
-            let base = idx + lane * 4;
+            let base = idx + (lane << 2); // Optimized: lane * 4
             r[lane] = data[base] as f32;
             g[lane] = data[base + 1] as f32;
             b[lane] = data[base + 2] as f32;
@@ -324,7 +324,7 @@ fn apply_saturation(img: &DynamicImage, saturation: f32) -> DynamicImage {
         let new_b = clamp_vec_to_u8(gray * vec_inv + bv * vec_mul);
 
         for lane in 0..4 {
-            let base = idx + lane * 4;
+            let base = idx + (lane << 2); // Optimized: lane * 4
             data[base] = new_r[lane];
             data[base + 1] = new_g[lane];
             data[base + 2] = new_b[lane];
@@ -381,7 +381,7 @@ fn apply_skin_smoothing(
 
     let max_y = h as i32 - 1;
     let max_x = w as i32 - 1;
-    let row_stride = w as usize * 4;
+    let row_stride = (w as usize) << 2; // Optimized: w * 4
     let src_data = src.as_raw();
     let out_data = out_buffer.as_mut();
 
@@ -392,7 +392,7 @@ fn apply_skin_smoothing(
             let y_i = y as i32;
             let base_y = y * row_stride;
             for x in 0..w as usize {
-                let src_idx = base_y + x * 4;
+                let src_idx = base_y + (x << 2); // Optimized: x * 4
                 let center = &src_data[src_idx..src_idx + 4];
                 let mut sum_r = 0.0f32;
                 let mut sum_g = 0.0f32;
@@ -405,7 +405,7 @@ fn apply_skin_smoothing(
                     let spatial_row = (dy + radius) as usize * kernel_side;
                     for dx in -radius..=radius {
                         let nx = (x as i32 + dx).clamp(0, max_x) as usize;
-                        let neighbor_idx = ny_offset + nx * 4;
+                        let neighbor_idx = ny_offset + (nx << 2); // Optimized: nx * 4
                         let neighbor = &src_data[neighbor_idx..neighbor_idx + 4];
 
                         let spatial_w = spatial_weights[spatial_row + (dx + radius) as usize];
@@ -443,7 +443,7 @@ fn apply_skin_smoothing(
                         .round()
                         .clamp(0.0, 255.0) as u8;
 
-                    let out_idx = x * 4;
+                    let out_idx = x << 2; // Optimized: x * 4
                     row[out_idx] = final_r;
                     row[out_idx + 1] = final_g;
                     row[out_idx + 2] = final_b;
@@ -539,7 +539,7 @@ fn background_blur_from_rgba(
     let outer_thresh_sq = 1.21; // 1.1 * 1.1
 
     let mut out: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::new(w, h);
-    let row_stride = w as usize * 4;
+    let row_stride = (w as usize) << 2; // Optimized: w * 4
     let sharp_raw = sharp.as_raw();
     let blur_raw = blurred.as_raw();
     let out_raw = out.as_mut();
@@ -567,7 +567,7 @@ fn background_blur_from_rgba(
                     (dist - 0.9) / 0.2
                 };
 
-                let idx = x * 4;
+                let idx = x << 2; // Optimized: x * 4
                 if blend <= 0.0 {
                     row[idx..idx + 4].copy_from_slice(&sharp_row[idx..idx + 4]);
                 } else if blend >= 1.0 {
