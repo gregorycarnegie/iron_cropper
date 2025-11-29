@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "idcard",
-    "output_width": 332,
-    "output_height": 498,
+    "preset": "avatar",
+    "output_width": 512,
+    "output_height": 512,
     "face_height_pct": 50.930832,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,
@@ -42,8 +42,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "rounded_rectangle",
-      "radius_pct": 0.12
+      "kind": "ellipse"
     }
   },
   "enhance": {

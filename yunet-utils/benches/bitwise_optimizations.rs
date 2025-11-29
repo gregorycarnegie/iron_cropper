@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use image::{DynamicImage, ImageBuffer, Rgba, RgbaImage};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use image::Rgba;
+use std::hint::black_box;
 use yunet_utils::image_utils::rgb_to_bgr_chw;
 
 /// Benchmark for RGB→BGR CHW conversion (tests x * 3 optimization)
@@ -28,7 +29,7 @@ fn bench_rgba_indexing(c: &mut Criterion) {
     let mut group = c.benchmark_group("rgba_indexing");
 
     for size in [256, 512, 640].iter() {
-        let mut data = vec![128u8; size * size * 4];
+        let data = vec![128u8; size * size * 4];
 
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}x{}_multiply", size, size)),
