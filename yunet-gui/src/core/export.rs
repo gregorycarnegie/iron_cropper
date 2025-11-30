@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, mpsc::Sender};
 
 use image::DynamicImage;
 use log::{info, warn};
@@ -16,7 +16,7 @@ use yunet_utils::{
 };
 
 use crate::{
-    BatchFileStatus, BatchJobConfig, YuNetApp,
+    BatchFileStatus, BatchJobConfig, JobMessage, YuNetApp,
     core::cache::{apply_mask_with_gpu, enhance_with_gpu},
 };
 
@@ -320,11 +320,18 @@ pub fn run_batch_export(
     tasks: Vec<(usize, PathBuf, Option<PathBuf>)>,
     detector: Arc<YuNetDetector>,
     config: Arc<BatchJobConfig>,
+    tx: Option<Sender<JobMessage>>,
 ) -> Vec<(usize, BatchFileStatus)> {
     tasks
         .into_par_iter()
         .map(|(idx, path, override_path)| {
             let status = run_batch_job(detector.clone(), path, config.clone(), override_path);
+            if let Some(tx) = &tx {
+                let _ = tx.send(JobMessage::BatchProgress {
+                    index: idx,
+                    status: status.clone(),
+                });
+            }
             (idx, status)
         })
         .collect()
@@ -494,28 +501,22 @@ pub fn start_batch_export(app: &mut YuNetApp) {
     }
 
     let total = tasks.len();
+
     app.show_success(format!("Starting batch export of {} file(s)...", total));
-    let results = run_batch_export(tasks, detector, config);
 
-    for (idx, status) in results {
-        if let Some(file) = app.batch_files.get_mut(idx) {
-            file.status = status;
-        }
-    }
+    let tx = app.job_tx.clone();
+    std::thread::spawn(move || {
+        let results = run_batch_export(tasks, detector, config, Some(tx.clone()));
 
-    let completed = app
-        .batch_files
-        .iter()
-        .filter(|f| matches!(f.status, BatchFileStatus::Completed { .. }))
-        .count();
-    let failed = app
-        .batch_files
-        .iter()
-        .filter(|f| matches!(f.status, BatchFileStatus::Failed { .. }))
-        .count();
+        let completed = results
+            .iter()
+            .filter(|(_, s)| matches!(s, BatchFileStatus::Completed { .. }))
+            .count();
+        let failed = results
+            .iter()
+            .filter(|(_, s)| matches!(s, BatchFileStatus::Failed { .. }))
+            .count();
 
-    app.show_success(format!(
-        "Batch export complete: {} succeeded, {} failed",
-        completed, failed
-    ));
+        let _ = tx.send(JobMessage::BatchComplete { completed, failed });
+    });
 }

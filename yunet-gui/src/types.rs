@@ -612,6 +612,13 @@ pub enum JobMessage {
     WebcamError(String),
     /// Webcam has been stopped.
     WebcamStopped,
+    /// Progress update for a batch file.
+    BatchProgress {
+        index: usize,
+        status: BatchFileStatus,
+    },
+    /// Batch export process finished.
+    BatchComplete { completed: usize, failed: usize },
 }
 
 /// The data returned from a successful detection job.

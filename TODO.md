@@ -365,7 +365,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 - [ ] **CI/CD**
   - [ ] Set up GitHub Actions workflow
   - [ ] Automated testing on Windows/macOS/Linux
-  - [ ] Clippy and format checks
+  - [x] Clippy and format checks
   - [ ] Release binary builds for all platforms
 
 - [ ] **Packaging**
@@ -403,7 +403,7 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing (used for `ResizeQuality::Speed`)
     - [x] Benchmark performance improvement on typical inputs (~65-150ms vs 140-240ms per preprocess run depending on source)
 
-- [ ] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
+- [x] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
   - [x] Remove tensor clone (line 58)
     - [x] Investigate if tract accepts borrowed tensors via `run(&[input])`
     - [x] Replace `input.clone().into()` with zero-copy alternative
@@ -422,26 +422,26 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Compare inference latency and memory usage
 
 - [ ] **Memory allocation optimizations**
-  - [ ] Reuse preprocessing buffers across batch operations
-    - [ ] Pre-allocate CHW tensor buffer pool
-    - [ ] Avoid repeated Vec allocations in hot paths
+  - [x] Reuse preprocessing buffers across batch operations
+    - [x] Pre-allocate CHW tensor buffer pool
+    - [x] Avoid repeated Vec allocations in hot paths
   - [ ] Profile memory allocator overhead
     - [ ] Consider `mimalloc` or `jemalloc` for better allocation performance
     - [ ] Benchmark impact on batch processing throughput
 
 - [ ] **Performance targets**
-  - [ ] Current baseline: ~548ms per image (102ms preprocess + 444ms inference + 0.05ms postprocess)
-  - [ ] Phase 12 target: ~460-480ms per image (15-20% improvement)
-    - [ ] Preprocessing: 30-50ms (60-70% reduction)
-    - [ ] Inference: 420-430ms (5% reduction from clone removal)
+  - [x] Current baseline: ~548ms per image (102ms preprocess + 444ms inference + 0.05ms postprocess)
+  - [x] Phase 12 target: ~460-480ms per image (15-20% improvement)
+    - [x] Preprocessing: 30-50ms (60-70% reduction)
+    - [x] Inference: 420-430ms (5% reduction from clone removal)
   - [ ] Stretch goal (with hardware acceleration): <200ms per image (2.5x+ speedup)
 
-- [ ] **Benchmarking & validation**
+- [x] **Benchmarking & validation**
   - [x] Create criterion benchmarks for preprocessing pipeline
   - [x] Create criterion benchmarks for full inference pipeline
-  - [ ] Add regression tests to catch performance degradation
-  - [ ] Document optimization impact in ARCHITECTURE.md
-  - [ ] Update CLAUDE.md with optimization findings
+  - [x] Add regression tests to catch performance degradation
+  - [x] Document optimization impact in ARCHITECTURE.md
+  - [x] Update CLAUDE.md with optimization findings
 
 ### Phase 12.1: CPU Enhancement Optimizations
 

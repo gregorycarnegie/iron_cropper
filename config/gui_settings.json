@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "avatar",
-    "output_width": 512,
-    "output_height": 512,
+    "preset": "instagram",
+    "output_width": 1080,
+    "output_height": 1080,
     "face_height_pct": 53.369854,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,
@@ -24,7 +24,7 @@
       "blue": 145,
       "alpha": 255
     },
-    "output_format": "png",
+    "output_format": "jpeg",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
@@ -42,10 +42,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "star",
-      "points": 5,
-      "inner_radius_pct": 0.5,
-      "rotation_deg": 0.0
+      "kind": "ellipse"
     }
   },
   "enhance": {

@@ -671,6 +671,17 @@ impl YuNetApp {
             JobMessage::WebcamStopped => {
                 self.handle_webcam_stopped();
             }
+            JobMessage::BatchProgress { index, status } => {
+                if let Some(file) = self.batch_files.get_mut(index) {
+                    file.status = status;
+                }
+            }
+            JobMessage::BatchComplete { completed, failed } => {
+                self.show_success(format!(
+                    "Batch export complete: {} succeeded, {} failed",
+                    completed, failed
+                ));
+            }
         }
     }
 }
