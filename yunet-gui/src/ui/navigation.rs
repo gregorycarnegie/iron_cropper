@@ -59,7 +59,7 @@ impl YuNetApp {
                             .add_sized(
                                 [btn_width, button_height],
                                 egui::Button::image_and_text(
-                                    self.icons.spreadsheet(icon_size),
+                                    self.icons.batch(icon_size),
                                     "Batch Queue",
                                 ),
                             )
@@ -71,7 +71,7 @@ impl YuNetApp {
                             .add_sized(
                                 [btn_width, button_height],
                                 egui::Button::image_and_text(
-                                    self.icons.folder_open(icon_size),
+                                    self.icons.network(icon_size),
                                     "Mapping Import",
                                 ),
                             )
@@ -105,7 +105,7 @@ impl YuNetApp {
                             .add_enabled(
                                 batch_enabled,
                                 egui::Button::image_and_text(
-                                    self.icons.spreadsheet(icon_size),
+                                    self.icons.run(icon_size),
                                     "Run batch",
                                 )
                                 .min_size(egui::vec2(btn_width, button_height)),
@@ -226,7 +226,7 @@ impl YuNetApp {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.add(self.icons.folder_open(icon_size).tint(palette.subtle_text));
+            ui.add(self.icons.automation(icon_size).tint(palette.subtle_text));
             ui.label(RichText::new("Automation").strong());
         });
         if ui
