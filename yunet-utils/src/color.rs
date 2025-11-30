@@ -146,3 +146,150 @@ fn replicate_nibble(slice: &str) -> Option<u8> {
     let nib = u8::from_str_radix(slice, 16).ok()?;
     Some((nib << 4) | nib)
 }
+
+/// Convert RGB channels (0-255) to HSL (hue in degrees 0-360, saturation 0-1, lightness 0-1).
+pub fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
+    let rf = r as f32 / 255.0;
+    let gf = g as f32 / 255.0;
+    let bf = b as f32 / 255.0;
+
+    let max = rf.max(gf).max(bf);
+    let min = rf.min(gf).min(bf);
+    let delta = max - min;
+
+    let hue = if delta.abs() < f32::EPSILON {
+        0.0
+    } else if (max - rf).abs() < f32::EPSILON {
+        60.0 * (((gf - bf) / delta) % 6.0)
+    } else if (max - gf).abs() < f32::EPSILON {
+        60.0 * (((bf - rf) / delta) + 2.0)
+    } else {
+        60.0 * (((rf - gf) / delta) + 4.0)
+    };
+
+    let hue = if hue < 0.0 { hue + 360.0 } else { hue };
+
+    let lightness = (max + min) / 2.0;
+
+    let saturation = if delta.abs() < f32::EPSILON {
+        0.0
+    } else {
+        delta / (1.0 - (2.0 * lightness - 1.0).abs())
+    };
+
+    (hue, saturation, lightness)
+}
+
+/// Convert HSL (hue in degrees, saturation 0-1, lightness 0-1) to RGB channels (0-255).
+pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let hue = if h.is_nan() { 0.0 } else { h.rem_euclid(360.0) };
+    let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (r1, g1, b1) = match hue {
+        h if h < 60.0 => (c, x, 0.0),
+        h if h < 120.0 => (x, c, 0.0),
+        h if h < 180.0 => (0.0, c, x),
+        h if h < 240.0 => (0.0, x, c),
+        h if h < 300.0 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+
+    let to_byte = |value: f32| -> u8 { ((value + m) * 255.0).round().clamp(0.0, 255.0) as u8 };
+
+    (to_byte(r1), to_byte(g1), to_byte(b1))
+}
+
+/// Convert RGB channels (0-255) to CMYK (0-1 for all channels).
+pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> (f32, f32, f32, f32) {
+    let rf = r as f32 / 255.0;
+    let gf = g as f32 / 255.0;
+    let bf = b as f32 / 255.0;
+
+    let k = 1.0 - rf.max(gf).max(bf);
+    if (1.0 - k).abs() < f32::EPSILON {
+        return (0.0, 0.0, 0.0, 1.0);
+    }
+
+    let c = (1.0 - rf - k) / (1.0 - k);
+    let m = (1.0 - gf - k) / (1.0 - k);
+    let y = (1.0 - bf - k) / (1.0 - k);
+
+    (c, m, y, k)
+}
+
+/// Convert CMYK (0-1 for all channels) to RGB channels (0-255).
+pub fn cmyk_to_rgb(c: f32, m: f32, y: f32, k: f32) -> (u8, u8, u8) {
+    let r = 255.0 * (1.0 - c) * (1.0 - k);
+    let g = 255.0 * (1.0 - m) * (1.0 - k);
+    let b = 255.0 * (1.0 - y) * (1.0 - k);
+
+    (
+        r.round().clamp(0.0, 255.0) as u8,
+        g.round().clamp(0.0, 255.0) as u8,
+        b.round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rgb_to_hsl_and_back() {
+        let (r, g, b) = (255, 0, 0); // Red
+        let (h, s, l) = rgb_to_hsl(r, g, b);
+        assert_eq!(h, 0.0);
+        assert_eq!(s, 1.0);
+        assert_eq!(l, 0.5);
+        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
+        assert_eq!((r, g, b), (r2, g2, b2));
+
+        let (r, g, b) = (0, 255, 0); // Green
+        let (h, s, l) = rgb_to_hsl(r, g, b);
+        assert_eq!(h, 120.0);
+        assert_eq!(s, 1.0);
+        assert_eq!(l, 0.5);
+        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
+        assert_eq!((r, g, b), (r2, g2, b2));
+
+        let (r, g, b) = (128, 128, 128); // Gray
+        let (h, s, l) = rgb_to_hsl(r, g, b);
+        assert_eq!(h, 0.0); // Hue is undefined/0 for grayscale
+        assert_eq!(s, 0.0);
+        assert!((l - 0.5).abs() < 0.01);
+        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
+        assert_eq!((r, g, b), (r2, g2, b2));
+    }
+
+    #[test]
+    fn test_rgb_to_cmyk_and_back() {
+        let (r, g, b) = (255, 0, 0); // Red
+        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
+        assert_eq!(c, 0.0);
+        assert_eq!(m, 1.0);
+        assert_eq!(y, 1.0);
+        assert_eq!(k, 0.0);
+        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
+        assert_eq!((r, g, b), (r2, g2, b2));
+
+        let (r, g, b) = (0, 0, 0); // Black
+        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
+        assert_eq!(c, 0.0);
+        assert_eq!(m, 0.0);
+        assert_eq!(y, 0.0);
+        assert_eq!(k, 1.0);
+        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
+        assert_eq!((r, g, b), (r2, g2, b2));
+
+        let (r, g, b) = (255, 255, 255); // White
+        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
+        assert_eq!(c, 0.0);
+        assert_eq!(m, 0.0);
+        assert_eq!(y, 0.0);
+        assert_eq!(k, 0.0);
+        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
+        assert_eq!((r, g, b), (r2, g2, b2));
+    }
+}

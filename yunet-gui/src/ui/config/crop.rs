@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use yunet_core::preset_by_name;
 use yunet_utils::quality::Quality;
 use yunet_utils::{
-    CropShape, PolygonCornerStyle, RgbaColor, config::MetadataMode, hsv_to_rgb, parse_hex_color,
-    rgb_to_hsv,
+    CropShape, PolygonCornerStyle, RgbaColor, cmyk_to_rgb, config::MetadataMode, hsl_to_rgb,
+    hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl, rgb_to_hsv,
 };
 
 use crate::YuNetApp;
@@ -218,6 +218,29 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     let mut val_pct = v0 * 100.0;
     let mut hsv_changed = false;
 
+    // Prepare HSL variables
+    let (h_l, s_l, l_l) = rgb_to_hsl(
+        app.settings.crop.fill_color.red,
+        app.settings.crop.fill_color.green,
+        app.settings.crop.fill_color.blue,
+    );
+    let mut hue_l = h_l;
+    let mut sat_l_pct = s_l * 100.0;
+    let mut light_pct = l_l * 100.0;
+    let mut hsl_changed = false;
+
+    // Prepare CMYK variables
+    let (c0, m0, y0, k0) = rgb_to_cmyk(
+        app.settings.crop.fill_color.red,
+        app.settings.crop.fill_color.green,
+        app.settings.crop.fill_color.blue,
+    );
+    let mut c_pct = c0 * 100.0;
+    let mut m_pct = m0 * 100.0;
+    let mut y_pct = y0 * 100.0;
+    let mut k_pct = k0 * 100.0;
+    let mut cmyk_changed = false;
+
     egui::Grid::new("color_picker_grid")
         .num_columns(2)
         .spacing([8.0, 8.0])
@@ -328,6 +351,106 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                     }
                 });
             ui.end_row();
+
+            ui.label("HSL");
+            egui::Grid::new("hsl_inner_grid")
+                .num_columns(3)
+                .spacing([8.0, 0.0])
+                .show(ui, |ui| {
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut hue_l)
+                                .range(0.0..=360.0)
+                                .speed(1.0)
+                                .suffix("°"),
+                        )
+                        .changed()
+                    {
+                        hsl_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut sat_l_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% S"),
+                        )
+                        .changed()
+                    {
+                        hsl_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [80.0, 20.0],
+                            DragValue::new(&mut light_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% L"),
+                        )
+                        .changed()
+                    {
+                        hsl_changed = true;
+                    }
+                });
+            ui.end_row();
+
+            ui.label("CMYK");
+            egui::Grid::new("cmyk_inner_grid")
+                .num_columns(4)
+                .spacing([8.0, 0.0])
+                .show(ui, |ui| {
+                    if ui
+                        .add_sized(
+                            [60.0, 20.0],
+                            DragValue::new(&mut c_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% C"),
+                        )
+                        .changed()
+                    {
+                        cmyk_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [60.0, 20.0],
+                            DragValue::new(&mut m_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% M"),
+                        )
+                        .changed()
+                    {
+                        cmyk_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [60.0, 20.0],
+                            DragValue::new(&mut y_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% Y"),
+                        )
+                        .changed()
+                    {
+                        cmyk_changed = true;
+                    }
+                    if ui
+                        .add_sized(
+                            [60.0, 20.0],
+                            DragValue::new(&mut k_pct)
+                                .range(0.0..=100.0)
+                                .speed(1.0)
+                                .suffix("% K"),
+                        )
+                        .changed()
+                    {
+                        cmyk_changed = true;
+                    }
+                });
+            ui.end_row();
         });
 
     if hex_error {
@@ -354,6 +477,39 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             hue,
             (sat_pct / 100.0).clamp(0.0, 1.0),
             (val_pct / 100.0).clamp(0.0, 1.0),
+        );
+        if app.set_fill_color(RgbaColor {
+            red: nr,
+            green: ng,
+            blue: nb,
+            alpha,
+        }) {
+            changed = true;
+        }
+    }
+
+    if hsl_changed {
+        let (nr, ng, nb) = hsl_to_rgb(
+            hue_l,
+            (sat_l_pct / 100.0).clamp(0.0, 1.0),
+            (light_pct / 100.0).clamp(0.0, 1.0),
+        );
+        if app.set_fill_color(RgbaColor {
+            red: nr,
+            green: ng,
+            blue: nb,
+            alpha,
+        }) {
+            changed = true;
+        }
+    }
+
+    if cmyk_changed {
+        let (nr, ng, nb) = cmyk_to_rgb(
+            (c_pct / 100.0).clamp(0.0, 1.0),
+            (m_pct / 100.0).clamp(0.0, 1.0),
+            (y_pct / 100.0).clamp(0.0, 1.0),
+            (k_pct / 100.0).clamp(0.0, 1.0),
         );
         if app.set_fill_color(RgbaColor {
             red: nr,

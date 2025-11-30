@@ -36,7 +36,10 @@ use std::path::Path;
 use anyhow::Result;
 use log::LevelFilter;
 
-pub use color::{RgbaColor, hsv_to_rgb, parse_hex_color, rgb_to_hsv};
+pub use color::{
+    RgbaColor, cmyk_to_rgb, hsl_to_rgb, hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl,
+    rgb_to_hsv,
+};
 pub use enhance::{EnhancementSettings, WgpuEnhancer, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,

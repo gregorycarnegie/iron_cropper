@@ -18,7 +18,7 @@ impl YuNetApp {
 
                 // Quick actions
                 ui.horizontal(|ui| {
-                    ui.add(self.icons.gallery(icon_size).tint(palette.accent));
+                    ui.add(self.icons.workflow(icon_size).tint(palette.accent));
                     ui.heading("Quick Actions");
                 });
                 ui.add_space(8.0);

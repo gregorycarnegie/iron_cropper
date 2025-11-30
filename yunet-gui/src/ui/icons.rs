@@ -65,6 +65,10 @@ declare_icon_set!(
     passport,
     portrait,
     account,
+    workflow,
+    selection,
+    rgb,
+    cmyk,
 );
 
 #[derive(Clone, Copy)]
