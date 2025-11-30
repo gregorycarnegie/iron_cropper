@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "custom",
-    "output_width": 400,
-    "output_height": 400,
+    "preset": "instagram",
+    "output_width": 1080,
+    "output_height": 1080,
     "face_height_pct": 73.68874,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,

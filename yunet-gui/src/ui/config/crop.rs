@@ -79,12 +79,27 @@ fn show_preset_selector(
                 ("headshot", "Headshot (600×800)"),
                 ("custom", "Custom size"),
             ];
+            let icon_size = app.icons.default_size();
             for (value, label) in presets {
-                if ui
-                    .selectable_label(app.settings.crop.preset == value, label)
-                    .clicked()
-                    && app.settings.crop.preset != value
-                {
+                let selected = app.settings.crop.preset == value;
+                let icon = match value {
+                    "linkedin" => Some(app.icons.linkedin(icon_size)),
+                    "passport" => Some(app.icons.passport(icon_size)),
+                    "instagram" => Some(app.icons.instagram(icon_size)),
+                    "idcard" => Some(app.icons.id_card(icon_size)),
+                    "avatar" => Some(app.icons.account(icon_size)),
+                    "headshot" => Some(app.icons.portrait(icon_size)),
+                    _ => None,
+                };
+
+                let clicked = if let Some(icon) = icon {
+                    ui.add(egui::Button::image_and_text(icon, label).selected(selected))
+                        .clicked()
+                } else {
+                    ui.selectable_label(selected, label).clicked()
+                };
+
+                if clicked && !selected {
                     app.settings.crop.preset = value.to_string();
                     if value != "custom"
                         && let Some(preset) = preset_by_name(value)
