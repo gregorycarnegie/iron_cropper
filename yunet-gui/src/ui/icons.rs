@@ -58,6 +58,7 @@ declare_icon_set!(
     network,
     batch,
     automation,
+    enhance,
 );
 
 #[derive(Clone, Copy)]

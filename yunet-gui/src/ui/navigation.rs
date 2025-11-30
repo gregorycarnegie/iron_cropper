@@ -253,7 +253,7 @@ impl YuNetApp {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            ui.add(self.icons.palette(icon_size).tint(palette.accent));
+            ui.add(self.icons.enhance(icon_size).tint(palette.accent));
             ui.label(RichText::new("Enhancements").strong());
         });
 
