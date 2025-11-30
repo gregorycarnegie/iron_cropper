@@ -11,7 +11,7 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "linkedin",
+    "preset": "custom",
     "output_width": 400,
     "output_height": 400,
     "face_height_pct": 73.68874,

@@ -59,6 +59,12 @@ declare_icon_set!(
     batch,
     automation,
     enhance,
+    instagram,
+    id_card,
+    linkedin,
+    passport,
+    portrait,
+    account,
 );
 
 #[derive(Clone, Copy)]
