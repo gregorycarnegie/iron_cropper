@@ -8,6 +8,7 @@ impl YuNetApp {
     /// Renders the left panel with common settings and actions.
     pub fn show_navigation_panel(&mut self, ui: &mut Ui) {
         let palette = theme::palette();
+        let icon_size = self.icons.default_size();
 
         ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -16,22 +17,38 @@ impl YuNetApp {
                 ui.add_space(18.0);
 
                 // Quick actions
-                ui.heading("Quick Actions");
+                ui.horizontal(|ui| {
+                    ui.add(self.icons.gallery(icon_size).tint(palette.accent));
+                    ui.heading("Quick Actions");
+                });
                 ui.add_space(8.0);
 
                 let btn_width = (ui.available_width() - 8.0) / 2.0;
+                let button_height = 32.0;
                 egui::Grid::new("quick_actions_grid")
                     .num_columns(2)
                     .spacing([8.0, 8.0])
                     .show(ui, |ui| {
                         if ui
-                            .add_sized([btn_width, 30.0], egui::Button::new("Open image"))
+                            .add_sized(
+                                [btn_width, button_height],
+                                egui::Button::image_and_text(
+                                    self.icons.photo(icon_size),
+                                    "Open image",
+                                ),
+                            )
                             .clicked()
                         {
                             self.open_image_dialog();
                         }
                         if ui
-                            .add_sized([btn_width, 30.0], egui::Button::new("Load batch"))
+                            .add_sized(
+                                [btn_width, button_height],
+                                egui::Button::image_and_text(
+                                    self.icons.gallery(icon_size),
+                                    "Load batch",
+                                ),
+                            )
                             .clicked()
                         {
                             self.open_batch_dialog();
@@ -39,13 +56,25 @@ impl YuNetApp {
                         ui.end_row();
 
                         if ui
-                            .add_sized([btn_width, 30.0], egui::Button::new("Batch Queue"))
+                            .add_sized(
+                                [btn_width, button_height],
+                                egui::Button::image_and_text(
+                                    self.icons.spreadsheet(icon_size),
+                                    "Batch Queue",
+                                ),
+                            )
                             .clicked()
                         {
                             self.show_batch_window = true;
                         }
                         if ui
-                            .add_sized([btn_width, 30.0], egui::Button::new("Mapping Import"))
+                            .add_sized(
+                                [btn_width, button_height],
+                                egui::Button::image_and_text(
+                                    self.icons.folder_open(icon_size),
+                                    "Mapping Import",
+                                ),
+                            )
                             .clicked()
                         {
                             self.show_mapping_window = true;
@@ -61,8 +90,11 @@ impl YuNetApp {
                         if ui
                             .add_enabled(
                                 export_enabled,
-                                egui::Button::new("Export selected")
-                                    .min_size(egui::vec2(btn_width, 30.0)),
+                                egui::Button::image_and_text(
+                                    self.icons.export(icon_size),
+                                    "Export selected",
+                                )
+                                .min_size(egui::vec2(btn_width, button_height)),
                             )
                             .clicked()
                         {
@@ -72,8 +104,11 @@ impl YuNetApp {
                         if ui
                             .add_enabled(
                                 batch_enabled,
-                                egui::Button::new("Run batch")
-                                    .min_size(egui::vec2(btn_width, 30.0)),
+                                egui::Button::image_and_text(
+                                    self.icons.spreadsheet(icon_size),
+                                    "Run batch",
+                                )
+                                .min_size(egui::vec2(btn_width, button_height)),
                             )
                             .clicked()
                         {
@@ -87,21 +122,24 @@ impl YuNetApp {
                 ui.add_space(8.0);
 
                 // Webcam section
-                self.show_webcam_controls(ui);
+                self.show_webcam_controls(ui, icon_size);
 
                 ui.add_space(12.0);
                 ui.separator();
                 ui.add_space(8.0);
 
                 // Simple settings
-                self.show_simple_settings(ui, palette);
+                self.show_simple_settings(ui, palette, icon_size);
 
                 ui.add_space(12.0);
                 ui.separator();
                 ui.add_space(8.0);
 
                 // Stats
-                ui.heading("Status");
+                ui.horizontal(|ui| {
+                    ui.add(self.icons.spreadsheet(icon_size).tint(palette.subtle_text));
+                    ui.heading("Status");
+                });
                 ui.add_space(8.0);
                 self.nav_stat(
                     ui,
@@ -128,11 +166,13 @@ impl YuNetApp {
             });
     }
 
-    fn show_simple_settings(&mut self, ui: &mut Ui, _palette: theme::Palette) {
-        ui.heading("Adjustments");
+    fn show_simple_settings(&mut self, ui: &mut Ui, palette: theme::Palette, icon_size: f32) {
+        ui.horizontal(|ui| {
+            ui.add(self.icons.palette(icon_size).tint(palette.accent));
+            ui.heading("Adjustments");
+        });
         ui.add_space(6.0);
 
-        // Face fill
         let mut face_fill = self.settings.crop.face_height_pct;
         crate::constrained_slider_row!(
             ui,
@@ -150,7 +190,6 @@ impl YuNetApp {
             }
         );
 
-        // Eye alignment
         let mut horizontal = self.settings.crop.horizontal_offset;
         crate::constrained_slider_row!(
             ui,
@@ -168,7 +207,6 @@ impl YuNetApp {
             }
         );
 
-        // Vertical lift
         let mut vertical = self.settings.crop.vertical_offset;
         crate::constrained_slider_row!(
             ui,
@@ -187,7 +225,10 @@ impl YuNetApp {
         );
 
         ui.add_space(8.0);
-        ui.label(RichText::new("Automation").strong());
+        ui.horizontal(|ui| {
+            ui.add(self.icons.folder_open(icon_size).tint(palette.subtle_text));
+            ui.label(RichText::new("Automation").strong());
+        });
         if ui
             .checkbox(
                 &mut self.settings.crop.quality_rules.auto_select_best_face,
@@ -211,7 +252,10 @@ impl YuNetApp {
         }
 
         ui.add_space(8.0);
-        ui.label(RichText::new("Enhancements").strong());
+        ui.horizontal(|ui| {
+            ui.add(self.icons.palette(icon_size).tint(palette.accent));
+            ui.label(RichText::new("Enhancements").strong());
+        });
 
         let mut enhance_enabled = self.settings.enhance.enabled;
         if ui
@@ -301,9 +345,10 @@ impl YuNetApp {
             });
     }
 
-    fn show_webcam_controls(&mut self, ui: &mut Ui) {
+    fn show_webcam_controls(&mut self, ui: &mut Ui, icon_size: f32) {
         use crate::types::WebcamStatus;
 
+        let palette = theme::palette();
         ui.heading("Webcam");
         ui.add_space(8.0);
 
@@ -315,13 +360,21 @@ impl YuNetApp {
 
         // Start/Stop button
         let btn_text = if is_active {
-            "⏹ Stop Webcam"
+            "Stop Webcam"
         } else {
-            "▶ Start Webcam"
+            "Start Webcam"
         };
+        let button_icon = self.icons.webcam(icon_size).tint(if is_active {
+            palette.danger
+        } else {
+            palette.success
+        });
 
         if ui
-            .add_sized([ui.available_width(), 32.0], egui::Button::new(btn_text))
+            .add_sized(
+                [ui.available_width(), 32.0],
+                egui::Button::image_and_text(button_icon, btn_text),
+            )
             .clicked()
         {
             if is_active {
@@ -332,14 +385,21 @@ impl YuNetApp {
         }
 
         // Status indicator
-        let status_text = match self.webcam_state.status {
-            WebcamStatus::Inactive => "⚪ Inactive",
-            WebcamStatus::Starting => "🟡 Starting...",
-            WebcamStatus::Active => "🟢 Active",
-            WebcamStatus::Stopping => "🟡 Stopping...",
-            WebcamStatus::Error => "🔴 Error",
+        let (status_text, status_color) = match self.webcam_state.status {
+            WebcamStatus::Inactive => ("Inactive", palette.subtle_text),
+            WebcamStatus::Starting => ("Starting...", palette.accent),
+            WebcamStatus::Active => ("Active", palette.success),
+            WebcamStatus::Stopping => ("Stopping...", palette.warning),
+            WebcamStatus::Error => ("Error", palette.danger),
         };
-        ui.label(status_text);
+        ui.horizontal(|ui| {
+            ui.add(
+                self.icons
+                    .webcam((icon_size - 2.0).max(14.0))
+                    .tint(status_color),
+            );
+            ui.colored_label(status_color, status_text);
+        });
 
         // Show stats when active
         if is_active {
@@ -355,7 +415,7 @@ impl YuNetApp {
         // Show error message if any
         if let Some(ref error) = self.webcam_state.error_message {
             ui.add_space(4.0);
-            ui.colored_label(egui::Color32::from_rgb(255, 100, 100), error);
+            ui.colored_label(palette.danger, error);
         }
 
         // Configuration (only when inactive)
@@ -375,7 +435,7 @@ impl YuNetApp {
                         .speed(1.0)
                         .range(320..=1920),
                 );
-                ui.label("×");
+                ui.label("x");
                 ui.add(
                     egui::DragValue::new(&mut self.webcam_state.height)
                         .speed(1.0)

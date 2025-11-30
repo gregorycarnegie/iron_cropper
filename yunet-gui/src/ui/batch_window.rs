@@ -35,6 +35,8 @@ fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Pal
     use crate::BatchFileStatus;
     use egui::{Color32, ProgressBar, RichText, ScrollArea};
 
+    let icon_size = app.icons.default_size();
+
     if !app.batch_files.is_empty() {
         let total = app.batch_files.len();
         let completed = app
@@ -116,10 +118,22 @@ fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Pal
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button("Export All Batch Files").clicked() {
+            if ui
+                .add(egui::Button::image_and_text(
+                    app.icons.export(icon_size),
+                    "Export All Batch Files",
+                ))
+                .clicked()
+            {
                 app.start_batch_export();
             }
-            if ui.button("Clear Batch").clicked() {
+            if ui
+                .add(egui::Button::image_and_text(
+                    app.icons.folder_open(icon_size),
+                    "Clear Batch",
+                ))
+                .clicked()
+            {
                 app.batch_files.clear();
                 app.batch_current_index = None;
             }

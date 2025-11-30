@@ -41,13 +41,20 @@ impl YuNetApp {
 
     /// Renders the mapping import panel content.
     pub fn show_mapping_content(&mut self, ui: &mut Ui, palette: theme::Palette) {
+        let icon_size = self.icons.default_size();
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("mapping_file_grid")
                 .num_columns(2)
                 .spacing([8.0, 8.0])
                 .show(ui, |ui| {
                     if ui
-                        .add_sized([200.0, 20.0], egui::Button::new("Select mapping file…"))
+                        .add_sized(
+                            [200.0, 24.0],
+                            egui::Button::image_and_text(
+                                self.icons.spreadsheet(icon_size),
+                                "Select mapping file",
+                            ),
+                        )
                         .clicked()
                         && let Some(path) = FileDialog::new()
                             .add_filter(
@@ -92,7 +99,13 @@ impl YuNetApp {
 
             self.mapping_options_ui(ui, palette);
 
-            if ui.button("Reload preview").clicked() {
+            if ui
+                .add(egui::Button::image_and_text(
+                    self.icons.spreadsheet(icon_size - 2.0),
+                    "Reload preview",
+                ))
+                .clicked()
+            {
                 match self.mapping.reload_preview() {
                     Ok(_) => self.show_success("Mapping preview updated"),
                     Err(err) => {
@@ -112,7 +125,13 @@ impl YuNetApp {
                     let ready = self.mapping.source_selector().is_some()
                         && self.mapping.output_selector().is_some();
                     if ui
-                        .add_enabled(ready, Button::new("Load mapping entries"))
+                        .add_enabled(
+                            ready,
+                            Button::image_and_text(
+                                self.icons.spreadsheet(icon_size - 2.0),
+                                "Load mapping entries",
+                            ),
+                        )
                         .clicked()
                     {
                         match self.mapping.load_entries() {
@@ -128,7 +147,10 @@ impl YuNetApp {
                     if ui
                         .add_enabled(
                             !self.mapping.entries.is_empty(),
-                            Button::new("Replace batch queue"),
+                            Button::image_and_text(
+                                self.icons.export(icon_size - 2.0),
+                                "Replace batch queue",
+                            ),
                         )
                         .clicked()
                     {
@@ -142,10 +164,10 @@ impl YuNetApp {
                         self.mapping.entries.len()
                     ));
                     for entry in self.mapping.entries.iter().take(3) {
-                        ui.monospace(format!("{} → {}", entry.source_path, entry.output_name));
+                        ui.monospace(format!("{} -> {}", entry.source_path, entry.output_name));
                     }
                     if self.mapping.entries.len() > 3 {
-                        ui.label(RichText::new("…").color(palette.subtle_text));
+                        ui.label(RichText::new("...").color(palette.subtle_text));
                     }
                 }
             } else {
@@ -400,7 +422,7 @@ impl YuNetApp {
                         dest,
                         self.settings.crop.output_format.as_str(),
                     );
-                    ui.monospace(format!("{src} → {display}"));
+                    ui.monospace(format!("{src} -> {display}"));
                 }
             }
         }
@@ -428,7 +450,7 @@ impl YuNetApp {
             };
             if !path.exists() {
                 warn!(
-                    "Mapping entry skipped—source {} not found",
+                    "Mapping entry skipped: source {} not found",
                     entry.source_path
                 );
                 continue;

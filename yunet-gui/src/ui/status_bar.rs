@@ -49,13 +49,23 @@ impl YuNetApp {
                     let (gpu_text, gpu_color) = self.gpu_status_chip(palette);
                     self.status_chip(ui, palette, gpu_text, gpu_color);
 
-                    // Right side: status badge
+                    // Right side: status badge + settings
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        self.draw_status_badge(ui, palette);
-                        ui.add_space(8.0);
-                        if ui.button("⚙").clicked() {
+                        let settings_icon = self
+                            .icons
+                            .settings(self.icons.default_size() - 2.0)
+                            .tint(palette.subtle_text);
+                        if ui
+                            .add(
+                                egui::Button::image_and_text(settings_icon, "Settings")
+                                    .frame(false),
+                            )
+                            .clicked()
+                        {
                             self.show_settings_window = true;
                         }
+                        ui.add_space(8.0);
+                        self.draw_status_badge(ui, palette);
                     });
                 });
             });
@@ -67,7 +77,7 @@ impl YuNetApp {
 
     fn draw_status_badge(&self, ui: &mut Ui, palette: theme::Palette) {
         let (label, color) = if self.is_busy {
-            ("Detecting…", palette.accent)
+            ("Detecting...", palette.accent)
         } else if self.detector.is_none() {
             ("Model required", palette.warning)
         } else {

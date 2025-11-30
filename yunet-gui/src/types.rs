@@ -22,6 +22,8 @@ use yunet_utils::{
     quality::Quality,
 };
 
+use crate::ui::icons::IconSet;
+
 /// Status of a batch file being processed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BatchFileStatus {
@@ -117,6 +119,8 @@ pub struct YuNetApp {
     pub settings: AppSettings,
     /// Path to the settings file on disk.
     pub settings_path: PathBuf,
+    /// Shared icon set for the UI.
+    pub icons: IconSet,
     /// The current status message displayed in the top bar.
     pub status_line: String,
     /// The last error message, if any.

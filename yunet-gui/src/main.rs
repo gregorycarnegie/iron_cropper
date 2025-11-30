@@ -226,6 +226,7 @@ impl YuNetApp {
             show_mapping_window: false,
             show_detection_window: false,
             webcam_state: Default::default(),
+            icons: crate::ui::icons::IconSet::new(ctx),
         }
     }
 

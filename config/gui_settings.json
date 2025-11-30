@@ -24,7 +24,7 @@
       "blue": 145,
       "alpha": 255
     },
-    "output_format": "jpeg",
+    "output_format": "png",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,

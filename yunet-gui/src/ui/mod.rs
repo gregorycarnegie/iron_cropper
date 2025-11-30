@@ -2,6 +2,7 @@
 
 pub mod batch_window;
 pub mod config;
+pub mod icons;
 pub mod mapping;
 pub mod navigation;
 pub mod preview;
