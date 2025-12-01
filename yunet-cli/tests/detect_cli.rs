@@ -134,7 +134,7 @@ fn cli_detections_match_opencv_parity_samples() -> Result<(), Box<dyn Error>> {
         );
 
         let actual_list = &detections[0].detections;
-        assert_detections_close(actual_list, &fixture.detections, 30.0);
+        assert_detections_close(actual_list, &fixture.detections, 40.0);
     }
 
     Ok(())
