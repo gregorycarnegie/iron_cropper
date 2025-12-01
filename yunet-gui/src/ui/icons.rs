@@ -69,6 +69,8 @@ declare_icon_set!(
     selection,
     rgb,
     cmyk,
+    hsl,
+    hsv,
 );
 
 #[derive(Clone, Copy)]
