@@ -1,23 +1,26 @@
 //! Webcam capture and real-time detection for GUI.
 
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
+use crate::types::WebcamStatus;
+use crate::{JobMessage, YuNetApp};
 
 use anyhow::Result;
 use image::DynamicImage;
 use log::{error, info, warn};
-
-use crate::types::WebcamStatus;
-use crate::{JobMessage, YuNetApp};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::Duration,
+};
 use yunet_core::YuNetDetector;
-use yunet_utils::WebcamCapture;
+use yunet_utils::{WebcamCapture, estimate_sharpness};
 
 impl YuNetApp {
     /// Start the webcam capture in a background thread.
     pub fn start_webcam(&mut self) {
-        use std::sync::atomic::AtomicBool;
-
         if !matches!(self.webcam_state.status, WebcamStatus::Inactive) {
             return;
         }
@@ -71,8 +74,6 @@ impl YuNetApp {
 
     /// Stop the webcam capture.
     pub fn stop_webcam(&mut self) {
-        use std::sync::atomic::Ordering;
-
         if matches!(self.webcam_state.status, WebcamStatus::Inactive) {
             return;
         }
@@ -134,12 +135,10 @@ fn run_webcam_loop(
     height: u32,
     fps: u32,
     detector: Arc<YuNetDetector>,
-    job_tx: std::sync::mpsc::Sender<JobMessage>,
-    stop_flag: Arc<std::sync::atomic::AtomicBool>,
+    job_tx: mpsc::Sender<JobMessage>,
+    stop_flag: Arc<AtomicBool>,
 ) -> Result<()> {
     use crate::{DetectionOrigin, DetectionWithQuality};
-    use std::sync::atomic::Ordering;
-    use yunet_utils::estimate_sharpness;
 
     let mut webcam = WebcamCapture::with_device_index(device_index, width, height, fps)?;
 

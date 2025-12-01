@@ -5,6 +5,7 @@
 //! preserves the output aspect ratio and records any padding required when the region extends past the image boundaries.
 
 use crate::postprocess::BoundingBox;
+
 use yunet_utils::color::RgbaColor;
 
 /// Alias exported alongside [`CropSettings`] so downstream crates don't need to depend on `yunet_utils::color`.

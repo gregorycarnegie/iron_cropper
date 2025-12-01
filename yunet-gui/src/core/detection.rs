@@ -1,12 +1,18 @@
 //! Face detection workflow and detector management.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, mpsc};
+use crate::{
+    CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, GpuStatusIndicator,
+    JobMessage,
+};
 
 use anyhow::{Context as AnyhowContext, Result};
 use egui::{Context as EguiContext, TextureOptions};
 use image::DynamicImage;
 use log::{error, info, warn};
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, mpsc},
+};
 use yunet_core::{
     CpuPreprocessor, PostprocessConfig, PreprocessConfig, Preprocessor, WgpuPreprocessor,
     YuNetDetector,
@@ -14,11 +20,6 @@ use yunet_core::{
 use yunet_utils::{
     GpuAvailability, GpuContext, GpuContextOptions, config::AppSettings, load_image,
     quality::estimate_sharpness, timing_guard,
-};
-
-use crate::{
-    CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, GpuStatusIndicator,
-    JobMessage,
 };
 
 /// Builds a `YuNetDetector` from the given application settings, returning the resolved GPU status.

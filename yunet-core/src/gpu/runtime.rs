@@ -1,11 +1,3 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Arc;
-
-use anyhow::{Context, Result, anyhow};
-use tract_onnx::prelude::Tensor;
-use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
-
 use crate::gpu::graph::{
     self, BACKBONE_STAGES, DETECTION_HEADS, DetectionLevelOutputs, WeightProvider,
 };
@@ -14,6 +6,11 @@ use crate::gpu::ops::GpuInferenceOps;
 use crate::gpu::tensor::GpuTensor;
 use crate::model::decode_yunet_outputs;
 use crate::preprocess::InputSize;
+
+use anyhow::{Context, Result, anyhow};
+use std::{collections::HashMap, path::Path, sync::Arc};
+use tract_onnx::prelude::Tensor;
+use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
 #[derive(Debug)]
 pub struct GpuYuNet {

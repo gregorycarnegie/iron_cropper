@@ -1,8 +1,10 @@
 //! Left panel with simple/common settings and quick actions.
 
-use egui::{Align, Frame, Layout, Margin, RichText, ScrollArea, Stroke, Ui};
-
 use crate::{YuNetApp, theme};
+
+use egui::{
+    Align, Button, DragValue, Frame, Grid, Image, Layout, Margin, RichText, ScrollArea, Stroke, Ui,
+};
 
 impl YuNetApp {
     /// Renders the left panel with common settings and actions.
@@ -25,17 +27,14 @@ impl YuNetApp {
 
                 let btn_width = (ui.available_width() - 8.0) / 2.0;
                 let button_height = 32.0;
-                egui::Grid::new("quick_actions_grid")
+                Grid::new("quick_actions_grid")
                     .num_columns(2)
                     .spacing([8.0, 8.0])
                     .show(ui, |ui| {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
-                                egui::Button::image_and_text(
-                                    self.icons.photo(icon_size),
-                                    "Open image",
-                                ),
+                                Button::image_and_text(self.icons.photo(icon_size), "Open image"),
                             )
                             .clicked()
                         {
@@ -44,10 +43,7 @@ impl YuNetApp {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
-                                egui::Button::image_and_text(
-                                    self.icons.gallery(icon_size),
-                                    "Load batch",
-                                ),
+                                Button::image_and_text(self.icons.gallery(icon_size), "Load batch"),
                             )
                             .clicked()
                         {
@@ -58,10 +54,7 @@ impl YuNetApp {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
-                                egui::Button::image_and_text(
-                                    self.icons.batch(icon_size),
-                                    "Batch Queue",
-                                ),
+                                Button::image_and_text(self.icons.batch(icon_size), "Batch Queue"),
                             )
                             .clicked()
                         {
@@ -70,7 +63,7 @@ impl YuNetApp {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
-                                egui::Button::image_and_text(
+                                Button::image_and_text(
                                     self.icons.network(icon_size),
                                     "Mapping Import",
                                 ),
@@ -82,7 +75,7 @@ impl YuNetApp {
                         ui.end_row();
                     });
 
-                egui::Grid::new("quick_actions_grid_2")
+                Grid::new("quick_actions_grid_2")
                     .num_columns(2)
                     .spacing([8.0, 8.0])
                     .show(ui, |ui| {
@@ -90,7 +83,7 @@ impl YuNetApp {
                         if ui
                             .add_enabled(
                                 export_enabled,
-                                egui::Button::image_and_text(
+                                Button::image_and_text(
                                     self.icons.export(icon_size),
                                     "Export selected",
                                 )
@@ -104,11 +97,8 @@ impl YuNetApp {
                         if ui
                             .add_enabled(
                                 batch_enabled,
-                                egui::Button::image_and_text(
-                                    self.icons.run(icon_size),
-                                    "Run batch",
-                                )
-                                .min_size(egui::vec2(btn_width, button_height)),
+                                Button::image_and_text(self.icons.run(icon_size), "Run batch")
+                                    .min_size(egui::vec2(btn_width, button_height)),
                             )
                             .clicked()
                         {
@@ -302,7 +292,7 @@ impl YuNetApp {
             // Load and display the SVG logo using egui_extras
             let logo_size = egui::vec2(160.0, 160.0);
             ui.add(
-                egui::Image::from_bytes(
+                Image::from_bytes(
                     "bytes://app_logo.svg",
                     include_bytes!("../../assets/app_logo.svg"),
                 )
@@ -373,7 +363,7 @@ impl YuNetApp {
         if ui
             .add_sized(
                 [ui.available_width(), 32.0],
-                egui::Button::image_and_text(button_icon, btn_text),
+                Button::image_and_text(button_icon, btn_text),
             )
             .clicked()
         {
@@ -423,7 +413,7 @@ impl YuNetApp {
             ui.add_space(8.0);
             ui.label("Device:");
             ui.add(
-                egui::DragValue::new(&mut self.webcam_state.device_index)
+                DragValue::new(&mut self.webcam_state.device_index)
                     .speed(1.0)
                     .range(0..=10),
             );
@@ -431,13 +421,13 @@ impl YuNetApp {
             ui.horizontal(|ui| {
                 ui.label("Resolution:");
                 ui.add(
-                    egui::DragValue::new(&mut self.webcam_state.width)
+                    DragValue::new(&mut self.webcam_state.width)
                         .speed(1.0)
                         .range(320..=1920),
                 );
                 ui.label("x");
                 ui.add(
-                    egui::DragValue::new(&mut self.webcam_state.height)
+                    DragValue::new(&mut self.webcam_state.height)
                         .speed(1.0)
                         .range(240..=1080),
                 );
@@ -446,7 +436,7 @@ impl YuNetApp {
             ui.horizontal(|ui| {
                 ui.label("FPS:");
                 ui.add(
-                    egui::DragValue::new(&mut self.webcam_state.fps)
+                    DragValue::new(&mut self.webcam_state.fps)
                         .speed(1.0)
                         .range(1..=60),
                 );

@@ -1,5 +1,5 @@
 /// Common test utilities and macros for CLI integration tests
-use std::path::PathBuf;
+use std::{fs, io::Result, path::PathBuf};
 
 pub fn find_model_path() -> Option<PathBuf> {
     let candidates = vec![
@@ -21,8 +21,8 @@ pub fn find_fixture_image() -> Option<PathBuf> {
 }
 
 #[allow(dead_code)]
-pub fn copy_fixture_to(src: &PathBuf, dest: &PathBuf) -> std::io::Result<()> {
-    std::fs::copy(src, dest)?;
+pub fn copy_fixture_to(src: &PathBuf, dest: &PathBuf) -> Result<()> {
+    fs::copy(src, dest)?;
     Ok(())
 }
 
@@ -102,8 +102,8 @@ macro_rules! cli_test_setup {
         let temp_dir = tempfile::TempDir::new().expect("create temp dir");
         let input_dir = temp_dir.path().join("input");
         let output_dir = temp_dir.path().join("output");
-        std::fs::create_dir_all(&input_dir).expect("create input dir");
-        std::fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(&input_dir).expect("create input dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
 
         (model, fixture, temp_dir, input_dir, output_dir)
     }};
@@ -122,7 +122,7 @@ macro_rules! cli_test_setup {
 #[macro_export]
 macro_rules! verify_output_files {
     ($output_dir:expr, $ext:literal) => {{
-        std::fs::read_dir(&$output_dir)
+        fs::read_dir(&$output_dir)
             .expect("read output dir")
             .filter_map(Result::ok)
             .filter(|e| {

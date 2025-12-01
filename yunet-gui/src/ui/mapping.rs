@@ -1,32 +1,33 @@
 //! Mapping panel UI components for the YuNet GUI.
 
-use std::path::PathBuf;
+use crate::{BatchFile, BatchFileStatus, YuNetApp, theme};
 
-use egui::{Button, ComboBox, RichText, Ui};
+use egui::{
+    Button, CentralPanel, ComboBox, Context, Grid, RichText, ScrollArea, Ui, ViewportBuilder,
+    ViewportClass, ViewportId,
+};
 use egui_extras::{Column as TableColumn, TableBuilder};
 use log::warn;
 use rfd::FileDialog;
-
+use std::path::PathBuf;
 use yunet_utils::mapping::{MappingFormat, MappingPreview};
-
-use crate::{BatchFile, BatchFileStatus, YuNetApp, theme};
 
 impl YuNetApp {
     /// Renders the mapping import window.
-    pub fn show_mapping_window(&mut self, ctx: &egui::Context) {
+    pub fn show_mapping_window(&mut self, ctx: &Context) {
         let mut open = self.show_mapping_window;
         ctx.show_viewport_immediate(
-            egui::ViewportId::from_hash_of("mapping_viewport"),
-            egui::ViewportBuilder::default()
+            ViewportId::from_hash_of("mapping_viewport"),
+            ViewportBuilder::default()
                 .with_title("Mapping Import")
                 .with_inner_size([600.0, 500.0]),
             |ctx, class| {
                 assert!(
-                    class == egui::ViewportClass::Immediate,
+                    class == ViewportClass::Immediate,
                     "This egui backend doesn't support multiple viewports"
                 );
 
-                egui::CentralPanel::default().show(ctx, |ui| {
+                CentralPanel::default().show(ctx, |ui| {
                     if ctx.input(|i| i.viewport().close_requested()) {
                         open = false;
                     }
@@ -42,15 +43,15 @@ impl YuNetApp {
     /// Renders the mapping import panel content.
     pub fn show_mapping_content(&mut self, ui: &mut Ui, palette: theme::Palette) {
         let icon_size = self.icons.default_size();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::Grid::new("mapping_file_grid")
+        ScrollArea::vertical().show(ui, |ui| {
+            Grid::new("mapping_file_grid")
                 .num_columns(2)
                 .spacing([8.0, 8.0])
                 .show(ui, |ui| {
                     if ui
                         .add_sized(
                             [200.0, 24.0],
-                            egui::Button::image_and_text(
+                            Button::image_and_text(
                                 self.icons.spreadsheet(icon_size),
                                 "Select mapping file",
                             ),
@@ -100,7 +101,7 @@ impl YuNetApp {
             self.mapping_options_ui(ui, palette);
 
             if ui
-                .add(egui::Button::image_and_text(
+                .add(Button::image_and_text(
                     self.icons.spreadsheet(icon_size - 2.0),
                     "Reload preview",
                 ))
@@ -182,7 +183,7 @@ impl YuNetApp {
     /// Renders format-specific mapping options UI.
     fn mapping_options_ui(&mut self, ui: &mut Ui, palette: theme::Palette) {
         let prev_format = self.mapping.effective_format();
-        egui::ComboBox::from_label("Format")
+        ComboBox::from_label("Format")
             .width(200.0)
             .selected_text(
                 self.mapping

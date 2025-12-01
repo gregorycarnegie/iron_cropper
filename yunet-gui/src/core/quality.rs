@@ -1,13 +1,11 @@
 //! Quality assessment and filtering helpers.
 
-use std::cmp::Ordering;
-use std::collections::HashSet;
+use crate::DetectionWithQuality;
 
 use egui::{Context as EguiContext, TextureOptions};
 use image::DynamicImage;
+use std::{cmp::Ordering, collections::HashSet};
 use yunet_utils::quality::Quality;
-
-use crate::DetectionWithQuality;
 
 /// Applies quality rules to preview detections and updates selection.
 pub fn apply_quality_rules_to_preview(

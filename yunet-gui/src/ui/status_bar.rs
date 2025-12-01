@@ -1,18 +1,19 @@
 //! Status bar UI components for the YuNet GUI.
 
-use egui::{
-    Align, Color32, CornerRadius, Layout, Margin, RichText, Spinner, Stroke, TopBottomPanel, Ui,
-};
-
 use crate::{GpuStatusMode, YuNetApp, theme};
+
+use egui::{
+    Align, Button, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, Spinner,
+    Stroke, TopBottomPanel, Ui,
+};
 
 impl YuNetApp {
     /// Renders the slim bottom status bar with stats and status badge.
-    pub fn show_status_bar(&mut self, ctx: &egui::Context) {
+    pub fn show_status_bar(&mut self, ctx: &Context) {
         let palette = theme::palette();
         TopBottomPanel::bottom("yunet_status_bar")
             .frame(
-                egui::Frame::new()
+                Frame::new()
                     .fill(palette.canvas)
                     .stroke(Stroke::new(1.0, palette.outline))
                     .inner_margin(Margin::symmetric(16, 8)),
@@ -56,10 +57,7 @@ impl YuNetApp {
                             .settings(self.icons.default_size() - 2.0)
                             .tint(palette.subtle_text);
                         if ui
-                            .add(
-                                egui::Button::image_and_text(settings_icon, "Settings")
-                                    .frame(false),
-                            )
+                            .add(Button::image_and_text(settings_icon, "Settings").frame(false))
                             .clicked()
                         {
                             self.show_settings_window = true;
@@ -84,7 +82,7 @@ impl YuNetApp {
             ("Ready", palette.success)
         };
 
-        egui::Frame::new()
+        Frame::new()
             .fill(palette.panel_light)
             .stroke(Stroke::new(1.0, color))
             .corner_radius(CornerRadius::same(20))

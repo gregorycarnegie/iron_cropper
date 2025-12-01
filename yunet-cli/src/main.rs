@@ -5,7 +5,11 @@ use std::{
     fs::{self, File},
     num::NonZeroUsize,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Instant,
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -14,8 +18,6 @@ use image::{DynamicImage, GenericImageView};
 use log::{debug, info, warn};
 use rayon::prelude::*;
 use serde::Serialize;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 use walkdir::WalkDir;
 use yunet_core::{
     BoundingBox, CpuPreprocessor, Detection, PostprocessConfig, PreprocessConfig, Preprocessor,
@@ -36,11 +38,10 @@ use yunet_utils::{
     configure_telemetry, estimate_sharpness,
     gpu::{GpuStatusIndicator, GpuStatusMode},
     hsv_to_rgb, init_logging, list_webcam_devices, load_image,
-    mapping::ColumnSelector,
-    mapping::MappingFormat,
-    mapping::MappingReadOptions,
-    mapping::detect_format as detect_mapping_format,
-    mapping::load_mapping_entries,
+    mapping::{
+        ColumnSelector, MappingFormat, MappingReadOptions, detect_format as detect_mapping_format,
+        load_mapping_entries,
+    },
     normalize_path, parse_hex_color, save_dynamic_image,
 };
 

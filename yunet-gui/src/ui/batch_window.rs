@@ -1,23 +1,28 @@
 //! Batch queue window.
 
+use crate::BatchFileStatus;
 use crate::{YuNetApp, theme};
-use egui::Context;
+
+use egui::{
+    Button, CentralPanel, Color32, Context, ProgressBar, RichText, ScrollArea, ViewportBuilder,
+    ViewportClass, ViewportId,
+};
 
 /// Shows the batch queue window.
 pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
     let mut open = app.show_batch_window;
     ctx.show_viewport_immediate(
-        egui::ViewportId::from_hash_of("batch_viewport"),
-        egui::ViewportBuilder::default()
+        ViewportId::from_hash_of("batch_viewport"),
+        ViewportBuilder::default()
             .with_title("Batch Queue")
             .with_inner_size([500.0, 400.0]),
         |ctx, class| {
             assert!(
-                class == egui::ViewportClass::Immediate,
+                class == ViewportClass::Immediate,
                 "This egui backend doesn't support multiple viewports"
             );
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            CentralPanel::default().show(ctx, |ui| {
                 if ctx.input(|i| i.viewport().close_requested()) {
                     open = false;
                 }
@@ -32,9 +37,6 @@ pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
 
 /// Shows the content of the batch processing section.
 fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Palette) {
-    use crate::BatchFileStatus;
-    use egui::{Color32, ProgressBar, RichText, ScrollArea};
-
     let icon_size = app.icons.default_size();
 
     if !app.batch_files.is_empty() {
@@ -119,7 +121,7 @@ fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Pal
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if ui
-                .add(egui::Button::image_and_text(
+                .add(Button::image_and_text(
                     app.icons.export(icon_size),
                     "Export All Batch Files",
                 ))
@@ -128,7 +130,7 @@ fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Pal
                 app.start_batch_export();
             }
             if ui
-                .add(egui::Button::image_and_text(
+                .add(Button::image_and_text(
                     app.icons.folder_open(icon_size),
                     "Clear Batch",
                 ))

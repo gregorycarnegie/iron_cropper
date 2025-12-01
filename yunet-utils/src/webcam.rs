@@ -6,6 +6,7 @@ use log::{debug, info, warn};
 use nokhwa::{
     Camera,
     pixel_format::RgbFormat,
+    query,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType, Resolution},
 };
 
@@ -145,8 +146,6 @@ impl Drop for WebcamCapture {
 ///
 /// Returns a vector of tuples containing (device_index, device_name).
 pub fn list_webcam_devices() -> Result<Vec<(u32, String)>> {
-    use nokhwa::query;
-
     let devices =
         query(nokhwa::utils::ApiBackend::Auto).context("Failed to query webcam devices")?;
 

@@ -3,13 +3,13 @@
 use crate::YuNetApp;
 use crate::types::ColorMode;
 use crate::ui::widgets;
+
 use egui::{Color32, ComboBox, DragValue, TextEdit, Ui, color_picker};
 use std::collections::BTreeMap;
 use yunet_core::preset_by_name;
-use yunet_utils::quality::Quality;
 use yunet_utils::{
     CropShape, PolygonCornerStyle, RgbaColor, cmyk_to_rgb, config::MetadataMode, hsl_to_rgb,
-    hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl, rgb_to_hsv,
+    hsv_to_rgb, parse_hex_color, quality::Quality, rgb_to_cmyk, rgb_to_hsl, rgb_to_hsv,
 };
 
 /// Shows the crop settings section.

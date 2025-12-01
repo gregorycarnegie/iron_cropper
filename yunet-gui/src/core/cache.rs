@@ -1,11 +1,14 @@
 //! Caching logic for crop previews and textures.
 
-use std::path::PathBuf;
-use std::sync::Arc;
+use crate::{
+    CropPreviewCacheEntry, CropPreviewKey, DetectionWithQuality, EnhancementSignature,
+    GpuStatusIndicator, ShapeSignature, YuNetApp,
+};
 
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
 use image::DynamicImage;
 use log::warn;
+use std::{path::PathBuf, sync::Arc};
 use yunet_core::{
     CropSettings as CoreCropSettings, FillColor, PositioningMode, calculate_crop_region,
     crop_face_from_image,
@@ -15,11 +18,6 @@ use yunet_utils::{
     config::CropSettings as ConfigCropSettings,
     enhance::{EnhancementSettings, apply_enhancements},
     load_image,
-};
-
-use crate::{
-    CropPreviewCacheEntry, CropPreviewKey, DetectionWithQuality, EnhancementSignature,
-    GpuStatusIndicator, ShapeSignature, YuNetApp,
 };
 
 /// Helper to get or load an image using the app-level cache.

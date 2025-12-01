@@ -1,13 +1,13 @@
 //! Manual bounding box drawing functionality.
 
-use egui::{Pos2, Rect};
-use yunet_core::{BoundingBox, Detection, Landmark};
+use super::coords::clamp_bbox_to_image;
 
 use crate::{
     DetectionOrigin, DetectionWithQuality, ManualBoxDraft, PointerSnapshot, PreviewSpace, Quality,
 };
 
-use super::coords::clamp_bbox_to_image;
+use egui::{Pos2, Rect};
+use yunet_core::{BoundingBox, Detection, Landmark};
 
 /// Converts a draft box (with start and current positions) into a bounding box.
 /// Returns None if the box is too small.

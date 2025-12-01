@@ -1,10 +1,11 @@
 //! Bounding box dragging and resizing functionality.
 
+use super::coords::clamp_bbox_to_image;
+
+use crate::{ActiveBoxDrag, DetectionWithQuality, DragHandle, PointerSnapshot, PreviewSpace};
+
 use egui::{Rect, pos2, vec2};
 use yunet_core::BoundingBox;
-
-use super::coords::clamp_bbox_to_image;
-use crate::{ActiveBoxDrag, DetectionWithQuality, DragHandle, PointerSnapshot, PreviewSpace};
 
 /// Gets the screen rectangle for a drag handle control.
 pub fn handle_rect_for(rect: Rect, handle: DragHandle) -> Rect {

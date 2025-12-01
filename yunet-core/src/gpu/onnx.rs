@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 
 use anyhow::{Context, Result, anyhow};
 use bytemuck::cast_slice;
@@ -14,12 +18,12 @@ pub struct OnnxInitializerMap {
 impl OnnxInitializerMap {
     /// Load the ONNX model at `model_path` and retain only the requested initializer names.
     pub fn load<P: AsRef<Path>>(model_path: P, names: &[&str]) -> Result<Self> {
-        let bytes = std::fs::read(model_path.as_ref())
+        let bytes = fs::read(model_path.as_ref())
             .with_context(|| format!("failed to read {}", model_path.as_ref().display()))?;
         let proto = pb::ModelProto::decode(&*bytes).context("failed to decode ONNX protobuf")?;
         let graph = proto.graph.context("ONNX model missing GraphProto")?;
 
-        let wanted: std::collections::HashSet<&str> = names.iter().copied().collect();
+        let wanted: HashSet<&str> = names.iter().copied().collect();
         let mut tensors = HashMap::with_capacity(wanted.len());
 
         for tensor in &graph.initializer {

@@ -1,6 +1,8 @@
-use std::error::Error;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use image::{ImageBuffer, Rgb};

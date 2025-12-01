@@ -1,5 +1,3 @@
-use std::{fs, path::PathBuf};
-
 use anyhow::{Context, Result, bail};
 use image::{ColorType, ImageEncoder, Rgba, RgbaImage, codecs::png::PngEncoder};
 use imageproc::{
@@ -8,6 +6,7 @@ use imageproc::{
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::{fs, path::PathBuf};
 use yunet_utils::{fixture_path, load_fixture_json};
 
 const SNAPSHOT_FILE: &str = "tests/snapshots/gui_preview_045.sha256";

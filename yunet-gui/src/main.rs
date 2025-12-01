@@ -9,15 +9,18 @@ mod theme;
 mod types;
 mod ui;
 
+use crate::types::WebcamStatus;
+
+use core::{detection::build_detector, settings::load_settings};
+use eframe::{App, CreationContext, Frame, NativeOptions, egui};
+use egui_extras::{Size, StripBuilder};
+use ico::IconDir;
+use log::{LevelFilter, info, warn};
 use std::{
     io::Cursor,
     path::PathBuf,
     sync::{Arc, mpsc},
 };
-
-use eframe::{App, CreationContext, Frame, NativeOptions, egui};
-use ico::IconDir;
-use log::{LevelFilter, info, warn};
 
 // Re-export types for use by submodules
 pub use types::{
@@ -27,8 +30,8 @@ pub use types::{
     ManualBoxDraft, MappingUiState, PointerSnapshot, PreviewSpace, PreviewState, ShapeSignature,
     YuNetApp,
 };
+use yunet_utils::configure_telemetry;
 pub use yunet_utils::gpu::{GpuStatusIndicator, GpuStatusMode};
-
 use yunet_utils::{
     WgpuEnhancer,
     config::default_settings_path,
@@ -138,10 +141,6 @@ impl YuNetApp {
         settings_path: PathBuf,
         shared_gpu_context: Option<Arc<GpuContext>>,
     ) -> Self {
-        use core::{detection::build_detector, settings::load_settings};
-        use types::MappingUiState;
-        use yunet_utils::configure_telemetry;
-
         theme::apply(ctx);
 
         info!("Loading GUI settings from {}", settings_path.display());
@@ -274,9 +273,6 @@ impl YuNetApp {
 
 impl App for YuNetApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
-        use crate::types::WebcamStatus;
-        use egui_extras::{Size, StripBuilder};
-
         self.process_import_payloads(ctx);
         self.poll_worker(ctx);
         self.show_status_bar(ctx);

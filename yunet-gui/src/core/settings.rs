@@ -1,9 +1,8 @@
 //! Settings persistence and loading.
 
-use std::path::Path;
-
 use anyhow::{Context as AnyhowContext, Result};
 use log::warn;
+use std::path::Path;
 use yunet_utils::config::AppSettings;
 
 /// Loads application settings from a file, or returns default settings if loading fails.

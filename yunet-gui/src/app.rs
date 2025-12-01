@@ -1,12 +1,15 @@
-use crate::types::YuNetApp;
+use crate::theme;
+use crate::types::{BatchFile, BatchFileStatus, YuNetApp};
+
 use egui::{Color32, RichText, Sense, Ui, vec2};
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use log::info;
+use rfd::FileDialog;
+use std::{collections::BTreeMap, path::PathBuf};
 use yunet_core::{CropSettings as CoreCropSettings, PositioningMode, preset_by_name};
-use yunet_utils::{RgbaColor, enhance::EnhancementSettings, quality::Quality};
+use yunet_utils::{RgbaColor, config::AppSettings, enhance::EnhancementSettings, quality::Quality};
 
 impl YuNetApp {
-    pub(crate) fn quality_legend(&self, ui: &mut Ui, palette: crate::theme::Palette) {
+    pub(crate) fn quality_legend(&self, ui: &mut Ui, palette: theme::Palette) {
         ui.horizontal(|ui| {
             self.legend_dot(ui, palette, palette.success, "High");
             ui.add_space(8.0);
@@ -19,7 +22,7 @@ impl YuNetApp {
     pub(crate) fn legend_dot(
         &self,
         ui: &mut Ui,
-        palette: crate::theme::Palette,
+        palette: theme::Palette,
         color: Color32,
         label: &str,
     ) {
@@ -301,9 +304,6 @@ impl YuNetApp {
 
     /// Updates the model path in the settings and invalidates the detector.
     pub(crate) fn update_model_path(&mut self, new_path: Option<String>) {
-        use log::info;
-        use yunet_utils::config::AppSettings;
-
         let normalized = new_path.and_then(|value| {
             let trimmed = value.trim().to_owned();
             if trimmed.is_empty() {
@@ -333,8 +333,6 @@ impl YuNetApp {
 
     /// Opens a file dialog to select an image.
     pub(crate) fn open_image_dialog(&mut self) {
-        use rfd::FileDialog;
-
         if let Some(path) = FileDialog::new()
             .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp"])
             .pick_file()
@@ -345,8 +343,6 @@ impl YuNetApp {
 
     /// Opens a file dialog to select an ONNX model.
     pub(crate) fn open_model_dialog(&mut self) {
-        use rfd::FileDialog;
-
         if let Some(path) = FileDialog::new()
             .add_filter("ONNX model", &["onnx"])
             .pick_file()
@@ -358,10 +354,6 @@ impl YuNetApp {
 
     /// Opens a file dialog to select multiple images for batch processing.
     pub(crate) fn open_batch_dialog(&mut self) {
-        use crate::types::{BatchFile, BatchFileStatus};
-        use log::info;
-        use rfd::FileDialog;
-
         if let Some(paths) = FileDialog::new()
             .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp"])
             .pick_files()
@@ -384,8 +376,6 @@ impl YuNetApp {
 
     /// Enqueues additional image paths for batch processing, deduplicating existing entries.
     pub(crate) fn enqueue_batch_images(&mut self, paths: Vec<PathBuf>) -> usize {
-        use crate::types::{BatchFile, BatchFileStatus};
-
         let mut added = 0;
         for path in paths {
             if self

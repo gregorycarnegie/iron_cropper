@@ -3,10 +3,9 @@
 //! Provides the `CropShape` enum shared across the workspace together with helpers
 //! for generating polygon outlines and applying alpha masks to RGBA images.
 
-use std::f32::consts::PI;
-
 use image::{DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
+use std::f32::consts::PI;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
 /// Polygon corner styles.

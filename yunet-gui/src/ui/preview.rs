@@ -1,15 +1,15 @@
 //! Preview panel UI components for the YuNet GUI.
 
-use egui::{
-    Align, Color32, CornerRadius, Layout, Margin, Rect, Rgba, RichText, Sense, Spinner, Stroke, Ui,
-    UiBuilder, pos2, vec2,
-};
-
 use crate::{YuNetApp, theme};
+
+use egui::{
+    Align, Button, Color32, Context, CornerRadius, Frame, Image, Layout, Margin, Pos2, Rect, Rgba,
+    RichText, Sense, Spinner, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
+};
 
 impl YuNetApp {
     /// Renders the main image preview panel.
-    pub fn show_preview(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+    pub fn show_preview(&mut self, ui: &mut Ui, ctx: &Context) {
         let palette = theme::palette();
 
         let total_height = ui.available_height();
@@ -23,7 +23,7 @@ impl YuNetApp {
             vec2(width, preview_height),
             Layout::top_down(Align::Center),
             |ui| {
-                egui::Frame::new()
+                Frame::new()
                     .fill(palette.panel_dark)
                     .stroke(Stroke::new(1.0, palette.outline))
                     .corner_radius(CornerRadius::same(28))
@@ -45,7 +45,7 @@ impl YuNetApp {
                 } else {
                     "Draw manual box"
                 };
-                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                if ui.add_enabled(enabled, Button::new(label)).clicked() {
                     self.manual_box_tool_enabled = !self.manual_box_tool_enabled;
                     if !self.manual_box_tool_enabled {
                         self.manual_box_draft = None;
@@ -58,7 +58,7 @@ impl YuNetApp {
         });
     }
 
-    fn render_preview_area(&mut self, ui: &mut Ui, ctx: &egui::Context, palette: theme::Palette) {
+    fn render_preview_area(&mut self, ui: &mut Ui, ctx: &Context, palette: theme::Palette) {
         if let Some(texture) = self.preview.texture.clone() {
             let image_dimensions = self.preview.image_size;
             let available = ui.available_size();
@@ -76,7 +76,7 @@ impl YuNetApp {
                     let scaled = tex_size * scale;
                     let preview_bounds = ui.max_rect();
                     ui.centered_and_justified(|ui| {
-                        let image_widget = egui::Image::new(&texture).fit_to_exact_size(scaled);
+                        let image_widget = Image::new(&texture).fit_to_exact_size(scaled);
                         let response = ui.add(image_widget);
                         if let Some(dimensions) = image_dimensions {
                             let image_rect = Rect::from_center_size(response.rect.center(), scaled);
@@ -142,7 +142,7 @@ impl YuNetApp {
             overlay_rect,
             16.0,
             Stroke::new(1.0, palette.outline),
-            egui::StrokeKind::Outside,
+            StrokeKind::Outside,
         );
 
         let content_rect = overlay_rect.shrink2(vec2(14.0, 10.0));
@@ -234,7 +234,7 @@ impl YuNetApp {
         }
     }
 
-    fn preview_hud_size(&self) -> egui::Vec2 {
+    fn preview_hud_size(&self) -> Vec2 {
         if self.preview_hud_minimized {
             vec2(230.0, 80.0)
         } else {
@@ -242,7 +242,7 @@ impl YuNetApp {
         }
     }
 
-    fn preview_hud_rect(&self, boundary_rect: Rect, overlay_size: egui::Vec2) -> Rect {
+    fn preview_hud_rect(&self, boundary_rect: Rect, overlay_size: Vec2) -> Rect {
         let available_width = (boundary_rect.width() - overlay_size.x).max(0.0);
         let available_height = (boundary_rect.height() - overlay_size.y).max(0.0);
         let anchor_x = self.preview_hud_anchor.x.clamp(0.0, 1.0);
@@ -257,20 +257,15 @@ impl YuNetApp {
     fn update_hud_anchor_from_top_left(
         &mut self,
         boundary_rect: Rect,
-        overlay_size: egui::Vec2,
-        desired_top_left: egui::Pos2,
+        overlay_size: Vec2,
+        desired_top_left: Pos2,
     ) -> Rect {
         let clamped = self.clamp_hud_top_left(boundary_rect, overlay_size, desired_top_left);
         self.preview_hud_anchor = self.anchor_from_top_left(boundary_rect, overlay_size, clamped);
         Rect::from_min_size(clamped, overlay_size)
     }
 
-    fn clamp_hud_top_left(
-        &self,
-        boundary_rect: Rect,
-        overlay_size: egui::Vec2,
-        desired: egui::Pos2,
-    ) -> egui::Pos2 {
+    fn clamp_hud_top_left(&self, boundary_rect: Rect, overlay_size: Vec2, desired: Pos2) -> Pos2 {
         let min_x = boundary_rect.left();
         let min_y = boundary_rect.top();
         let max_x = (boundary_rect.right() - overlay_size.x).max(min_x);
@@ -281,9 +276,9 @@ impl YuNetApp {
     fn anchor_from_top_left(
         &self,
         boundary_rect: Rect,
-        overlay_size: egui::Vec2,
-        top_left: egui::Pos2,
-    ) -> egui::Vec2 {
+        overlay_size: Vec2,
+        top_left: Pos2,
+    ) -> Vec2 {
         let denom_x = (boundary_rect.width() - overlay_size.x).max(1.0);
         let denom_y = (boundary_rect.height() - overlay_size.y).max(1.0);
         vec2(

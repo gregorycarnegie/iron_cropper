@@ -5,6 +5,7 @@
 
 use crate::cropper::{CropRegion, CropSettings, calculate_crop_region};
 use crate::postprocess::Detection;
+
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage, imageops::FilterType};
 
 /// Crop a face from `img` according to `detection` and `settings`.

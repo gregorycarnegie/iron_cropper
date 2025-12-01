@@ -1,5 +1,3 @@
-use std::{fs::File, path::Path};
-
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use calamine::{Data as ExcelData, Reader as _, open_workbook_auto};
@@ -9,6 +7,7 @@ use parquet::{
     record::{Field, Row},
 };
 use rusqlite::{Connection, types::ValueRef};
+use std::{fs::File, path::Path};
 
 /// Default number of rows to show in mapping previews.
 pub const DEFAULT_PREVIEW_ROWS: usize = 32;

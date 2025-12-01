@@ -1,4 +1,7 @@
-use egui::{Align2, Color32, FontId, Rect, Response, Sense, Ui, emath, lerp, pos2, remap, vec2};
+use egui::{
+    Align, Align2, Color32, CornerRadius, CursorIcon, DragValue, FontId, Layout, Rect, Response,
+    Sense, Ui, emath, lerp, pos2, remap, vec2,
+};
 
 /// A custom slider with specific styling:
 /// - Dark rounded background container
@@ -16,10 +19,10 @@ pub fn custom_slider<Num: emath::Numeric>(
     let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
     if response.hovered() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        ui.ctx().set_cursor_icon(CursorIcon::Grab);
     }
     if response.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
     }
 
     if response.dragged() || response.clicked() {
@@ -50,7 +53,7 @@ pub fn custom_slider<Num: emath::Numeric>(
         // Using a very dark color for the "cutout" look
         let container_color = Color32::from_rgb(14, 20, 30);
         ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(12), container_color);
+            .rect_filled(rect, CornerRadius::same(12), container_color);
 
         // 2. Draw Track
         // The track sits in the middle vertically
@@ -80,13 +83,13 @@ pub fn custom_slider<Num: emath::Numeric>(
         // Draw Inactive Track (Right side)
         ui.painter().rect_filled(
             inactive_rect,
-            egui::CornerRadius::same(3), // Fully rounded caps (6.0 / 2)
-            Color32::from_gray(220),     // Bright/White-ish
+            CornerRadius::same(3),   // Fully rounded caps (6.0 / 2)
+            Color32::from_gray(220), // Bright/White-ish
         );
 
         // Draw Active Track (Left side)
         ui.painter()
-            .rect_filled(active_rect, egui::CornerRadius::same(3), accent);
+            .rect_filled(active_rect, CornerRadius::same(3), accent);
 
         // 3. Draw Thumb (Circle)
         let thumb_radius = 8.0;
@@ -128,7 +131,7 @@ pub fn custom_slider<Num: emath::Numeric>(
         }
     }
 
-    response.on_hover_cursor(egui::CursorIcon::Grab)
+    response.on_hover_cursor(CursorIcon::Grab)
 }
 
 /// Helper function to render a slider row with label and drag value.
@@ -151,7 +154,7 @@ pub fn slider_row<Num: emath::Numeric>(
 
         ui.allocate_ui_with_layout(
             vec2(slider_width, 24.0),
-            egui::Layout::left_to_right(egui::Align::Center),
+            Layout::left_to_right(Align::Center),
             |ui| {
                 if custom_slider(ui, value, range, None, accent_color).changed() {
                     changed = true;
@@ -159,7 +162,7 @@ pub fn slider_row<Num: emath::Numeric>(
             },
         );
 
-        let response = ui.add_sized([drag_width, 20.0], egui::DragValue::new(value).speed(speed));
+        let response = ui.add_sized([drag_width, 20.0], DragValue::new(value).speed(speed));
         if response.changed() {
             changed = true;
         }

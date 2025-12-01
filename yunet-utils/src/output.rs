@@ -3,11 +3,9 @@
 //! This module centralizes output-format selection, compression tuning, and metadata
 //! preservation so that both the CLI and GUI can share a single implementation.
 
-use std::{
-    fs,
-    fs::File,
-    io::{BufWriter, Write},
-    path::Path,
+use crate::{
+    config::{CropSettings, MetadataMode, MetadataSettings},
+    quality::Quality,
 };
 
 use anyhow::{Context, Result};
@@ -23,10 +21,11 @@ use image::{
 };
 use log::{debug, warn};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-
-use crate::{
-    config::{CropSettings, MetadataMode, MetadataSettings},
-    quality::Quality,
+use std::{
+    fs,
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
 };
 
 /// Canonical image formats supported by the exporter.

@@ -6,13 +6,12 @@
 //! caller explicitly opts in (via [`timing_guard_if`]). This keeps the overhead
 //! negligible when tracing is disabled.
 
+use log::{Level, LevelFilter, log, log_enabled};
 use std::{
     borrow::Cow,
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     time::{Duration, Instant},
 };
-
-use log::{Level, LevelFilter, log, log_enabled};
 
 static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(false);
 static TELEMETRY_LEVEL: AtomicU8 = AtomicU8::new(LevelFilter::Off as u8);

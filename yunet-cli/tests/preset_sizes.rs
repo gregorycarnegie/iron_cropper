@@ -1,7 +1,6 @@
 /// Integration tests for crop preset sizes
 use image::GenericImageView;
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf, process};
 use tempfile::TempDir;
 
 fn find_model_path() -> Option<PathBuf> {
@@ -51,7 +50,7 @@ macro_rules! preset_test {
                 .save(&input_path)
                 .expect("save input");
 
-            let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
+            let output = process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
                 .args([
                     "--input",
                     input_path.to_str().unwrap(),

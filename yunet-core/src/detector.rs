@@ -3,18 +3,16 @@
 //! This module exposes [`YuNetDetector`], the primary interface used by both the CLI and GUI
 //! front-ends to run YuNet against images.
 
-use std::{path::Path, sync::Arc};
-
-use anyhow::{Context, Result};
-use image::DynamicImage;
-
 use crate::gpu::runtime::GpuYuNet;
 use crate::model::YuNetModel;
 use crate::postprocess::{Detection, PostprocessConfig, apply_postprocess};
 use crate::preprocess::{CpuPreprocessor, PreprocessConfig, PreprocessOutput, Preprocessor};
+
+use anyhow::{Context, Result};
+use image::DynamicImage;
+use std::{path::Path, sync::Arc};
 use tract_onnx::prelude::Tensor;
-use yunet_utils::load_image;
-use yunet_utils::timing_guard;
+use yunet_utils::{load_image, timing_guard};
 
 /// Result of running YuNet on an image.
 ///

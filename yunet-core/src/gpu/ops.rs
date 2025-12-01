@@ -1,17 +1,16 @@
-use std::sync::Arc;
+use super::tensor::GpuTensor;
+
+use crate::gpu::{ADD_WGSL, MAX_POOL_WGSL, UPSAMPLE2X_WGSL};
 
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable, bytes_of};
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use yunet_utils::gpu::GpuContext;
-
-use super::tensor::GpuTensor;
-use yunet_utils::gpu::GpuBufferPool;
+use yunet_utils::gpu::{GpuBufferPool, GpuContext};
 
 const CONV2D_WGSL: &str = include_str!("conv2d.wgsl");
 const BATCH_NORM_WGSL: &str = include_str!("batch_norm.wgsl");
 const ACTIVATION_WGSL: &str = include_str!("activation.wgsl");
-use crate::gpu::{ADD_WGSL, MAX_POOL_WGSL, UPSAMPLE2X_WGSL};
 
 const CONV_WORKGROUP_X: u32 = 8;
 const CONV_WORKGROUP_Y: u32 = 8;

@@ -23,19 +23,14 @@ pub mod output;
 pub mod quality;
 /// Shape metadata and masking helpers for custom crop geometry.
 pub mod shape;
+#[cfg(test)]
+mod shape_tests;
 /// Instrumentation helpers for optional performance tracing.
 pub mod telemetry;
 /// Webcam capture utilities for real-time face detection.
 pub mod webcam;
 
-#[cfg(test)]
-mod shape_tests;
-
-use std::path::{Path, PathBuf};
-
 use anyhow::Result;
-use log::LevelFilter;
-
 pub use color::{
     RgbaColor, cmyk_to_rgb, hsl_to_rgb, hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl,
     rgb_to_hsv,
@@ -51,6 +46,7 @@ pub use gpu::{
 pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
 };
+use log::LevelFilter;
 pub use mapping::{
     ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
     MappingReadOptions, detect_format as detect_mapping_format, inspect_mapping_sources,
@@ -64,6 +60,7 @@ pub use shape::{
     CropShape, PolygonCornerStyle, apply_shape_mask, apply_shape_mask_dynamic,
     outline_points_for_rect,
 };
+use std::path::{Path, PathBuf};
 pub use telemetry::{
     TimingGuard, configure as configure_telemetry, telemetry_allows, telemetry_enabled,
     telemetry_level, timing_guard, timing_guard_if,

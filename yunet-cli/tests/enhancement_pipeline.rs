@@ -1,6 +1,5 @@
 /// Integration tests for enhancement pipeline
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf, process};
 use tempfile::TempDir;
 
 fn find_model_path() -> Option<PathBuf> {
@@ -42,7 +41,7 @@ fn test_enhancement_preset_natural() {
         .save(&input_path)
         .expect("save input");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
+    let output = process::Command::new(env!("CARGO_BIN_EXE_yunet-cli"))
         .args([
             "--input",
             input_path.to_str().unwrap(),
@@ -356,7 +355,7 @@ fn test_preset_override_with_explicit_flags() {
     let temp_dir = TempDir::new().expect("create temp dir");
     let input_path = temp_dir.path().join("input.png");
     let output_dir = temp_dir.path().join("output");
-    fs::create_dir_all(&output_dir).expect("create output dir");
+    std::fs::create_dir_all(&output_dir).expect("create output dir");
 
     image::open(find_fixture_image().expect("fixture"))
         .expect("load fixture")

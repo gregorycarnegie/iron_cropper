@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::sync::Arc;
-
-use yunet_core::preprocess::{InputSize, PreprocessConfig, Preprocessor, WgpuPreprocessor};
-use yunet_core::{DetectionOutput, PostprocessConfig, YuNetDetector};
+use std::{path::Path, sync::Arc};
+use yunet_core::{
+    DetectionOutput, PostprocessConfig, YuNetDetector,
+    preprocess::{InputSize, PreprocessConfig, Preprocessor, WgpuPreprocessor},
+};
 use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
 const MODEL_PATH: &str = "models/face_detection_yunet_2023mar_640.onnx";

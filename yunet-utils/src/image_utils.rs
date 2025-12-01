@@ -3,13 +3,12 @@
 //! This module centralizes routines for reading files, resizing RGB buffers, and converting to
 //! tensor-friendly layouts while preserving compatibility with OpenCV glue code.
 
-use std::{borrow::Cow, cell::RefCell, path::Path};
-
 use anyhow::{Context, Result};
 use fast_image_resize::{self as fir, images::Image as FirImage, images::ImageRef as FirImageRef};
 use image::{DynamicImage, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 use rayon::prelude::*;
+use std::{borrow::Cow, cell::RefCell, path::Path};
 
 // Thread-local buffer pool for RGB→BGR→CHW conversion to reduce allocations.
 thread_local! {

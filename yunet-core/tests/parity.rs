@@ -1,6 +1,5 @@
-use std::path::Path;
-
 use serde::Deserialize;
+use std::path::Path;
 use yunet_core::{DetectionOutput, InputSize, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use yunet_utils::load_fixture_json;
 

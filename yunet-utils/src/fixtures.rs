@@ -1,11 +1,10 @@
+use anyhow::{Context, Result};
+use image::DynamicImage;
+use serde::de::DeserializeOwned;
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
-
-use anyhow::{Context, Result};
-use image::DynamicImage;
-use serde::de::DeserializeOwned;
 
 const FIXTURE_ENV: &str = "YUNET_FIXTURE_ROOT";
 

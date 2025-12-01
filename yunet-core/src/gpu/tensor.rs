@@ -1,12 +1,11 @@
-use std::fmt;
-use std::sync::{Arc, mpsc};
-
 use anyhow::{Context, Result, anyhow};
 use bytemuck::cast_slice;
+use std::{
+    fmt,
+    sync::{Arc, mpsc},
+};
 use wgpu::util::DeviceExt;
-use yunet_utils::gpu::GpuContext;
-
-use yunet_utils::gpu::GpuBufferPool;
+use yunet_utils::gpu::{GpuBufferPool, GpuContext};
 
 /// Describes the dimensionality of a GPU tensor.
 #[derive(Debug, Clone, PartialEq, Eq)]

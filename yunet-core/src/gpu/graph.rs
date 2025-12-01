@@ -1,10 +1,9 @@
-use std::path::Path;
-
-use anyhow::{Context, Result};
-
 use crate::gpu::onnx::OnnxInitializerMap;
 use crate::gpu::ops::{Conv2dChannels, GpuInferenceOps, SpatialDims};
 use crate::gpu::tensor::GpuTensor;
+
+use anyhow::{Context, Result};
+use std::path::Path;
 
 #[derive(Clone, Copy)]
 pub struct StageBlock {

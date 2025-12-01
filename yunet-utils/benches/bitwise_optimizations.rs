@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use image::Rgba;
+use image::{DynamicImage, Rgba, RgbaImage};
 use std::hint::black_box;
 use yunet_utils::image_utils::rgb_to_bgr_chw;
 
@@ -8,8 +8,8 @@ fn bench_rgb_to_bgr_chw(c: &mut Criterion) {
     let mut group = c.benchmark_group("rgb_to_bgr_chw");
 
     for size in [256, 512, 640, 1024].iter() {
-        let img = image::RgbaImage::from_pixel(*size, *size, Rgba([128, 128, 128, 255]));
-        let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
+        let img = RgbaImage::from_pixel(*size, *size, Rgba([128, 128, 128, 255]));
+        let rgb_img = DynamicImage::ImageRgba8(img).to_rgb8();
 
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}x{}", size, size)),

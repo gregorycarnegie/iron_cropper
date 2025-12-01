@@ -3,22 +3,21 @@
 //! The helpers in this module resize images, convert them into the expected tensor layout, and
 //! return the scale factors necessary to map detections back to the source image.
 
+use anyhow::{Context, Result};
+use bytemuck::{Pod, Zeroable, bytes_of};
+use image::{DynamicImage, GenericImageView, RgbImage, imageops::FilterType};
 use std::{
     borrow::Cow,
     path::Path,
     sync::{Arc, Mutex, mpsc},
 };
-
-use anyhow::{Context, Result};
-use bytemuck::{Pod, Zeroable, bytes_of};
-use image::{DynamicImage, GenericImageView, RgbImage, imageops::FilterType};
 use tract_onnx::prelude::Tensor;
-use yunet_utils::gpu::{GpuContext, PREPROCESS_WGSL};
-use yunet_utils::telemetry::timing_guard;
 use yunet_utils::{
     compute_resize_scales,
     config::{InputDimensions, ResizeQuality},
+    gpu::{GpuContext, PREPROCESS_WGSL},
     load_image, resize_image, rgb_to_bgr_chw,
+    telemetry::timing_guard,
 };
 
 /// Desired input resolution for YuNet.

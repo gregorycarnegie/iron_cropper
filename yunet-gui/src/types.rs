@@ -1,13 +1,15 @@
 //! Type definitions for the YuNet GUI application.
 
+use crate::ui::icons::IconSet;
+
+use anyhow::anyhow;
+use egui::{Context as EguiContext, Rect, TextureHandle};
+use image::DynamicImage;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
-
-use egui::{Context as EguiContext, Rect, TextureHandle};
-use image::DynamicImage;
 use tempfile::TempPath;
 use yunet_core::{BoundingBox, CropSettings as CoreCropSettings, Detection};
 use yunet_utils::{
@@ -17,12 +19,10 @@ use yunet_utils::{
     gpu::{GpuBatchCropper, GpuContext, GpuStatusIndicator},
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
-        MappingReadOptions,
+        MappingReadOptions, inspect_mapping_sources, load_mapping_entries, load_mapping_preview,
     },
     quality::Quality,
 };
-
-use crate::ui::icons::IconSet;
 
 /// Status of a batch file being processed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -473,8 +473,6 @@ impl MappingUiState {
     }
 
     pub fn refresh_catalog(&mut self) {
-        use yunet_utils::mapping::inspect_mapping_sources;
-
         if let Some(path) = &self.file_path {
             match inspect_mapping_sources(path, &self.read_options()) {
                 Ok(catalog) => {
@@ -539,9 +537,6 @@ impl MappingUiState {
     }
 
     pub fn reload_preview(&mut self) -> anyhow::Result<()> {
-        use anyhow::anyhow;
-        use yunet_utils::mapping::load_mapping_preview;
-
         let path = self
             .file_path
             .clone()
@@ -580,9 +575,6 @@ impl MappingUiState {
     }
 
     pub fn load_entries(&mut self) -> anyhow::Result<()> {
-        use anyhow::anyhow;
-        use yunet_utils::mapping::load_mapping_entries;
-
         let path = self
             .file_path
             .clone()

@@ -1,6 +1,7 @@
 //! Enhancement settings UI controls.
 
 use crate::YuNetApp;
+
 use egui::{ComboBox, Ui};
 
 /// Shows the enhancement settings section.

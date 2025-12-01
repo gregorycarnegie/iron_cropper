@@ -1,11 +1,18 @@
 //! Additional YuNetApp implementation methods that delegate to module functions.
 
-use crate::{GpuStatusMode, YuNetApp};
+use crate::PointerSnapshot;
+use crate::core::{
+    cache, cache::CropPreviewRequest, detection, detection::create_thumbnails, export, quality,
+};
+use crate::interaction::{bbox_drag, drawing, shortcuts};
+use crate::{DetectionCacheEntry, DetectionJobSuccess, GpuStatusMode, JobMessage, YuNetApp};
+
 use anyhow::{Context, anyhow};
 #[cfg(not(target_arch = "wasm32"))]
 use arboard::{Clipboard, Error as ClipboardError};
-use egui::{Context as EguiContext, DroppedFile, Event};
+use egui::{Context as EguiContext, DroppedFile, Event, TextureHandle, TextureOptions};
 use image::{DynamicImage, RgbaImage};
+use log::info;
 use std::{
     collections::VecDeque,
     fs,
@@ -29,8 +36,6 @@ impl YuNetApp {
 
     /// Applies quality rules to the preview detections.
     pub(crate) fn apply_quality_rules_to_preview(&mut self) {
-        use crate::core::quality;
-
         quality::apply_quality_rules_to_preview(
             &self.preview.detections,
             &mut self.selected_faces,
@@ -41,8 +46,6 @@ impl YuNetApp {
 
     /// Refreshes the thumbnail for a specific detection.
     pub(crate) fn refresh_detection_thumbnail_at(&mut self, ctx: &EguiContext, index: usize) {
-        use crate::core::quality;
-
         if let Some(source) = &self.preview.source_image {
             quality::refresh_detection_thumbnail_at(
                 ctx,
@@ -56,16 +59,12 @@ impl YuNetApp {
 
     /// Resets a detection's bounding box to its original state.
     pub(crate) fn reset_detection_bbox(&mut self, ctx: &EguiContext, index: usize) {
-        use crate::core::quality;
-
         quality::reset_detection_bbox(&mut self.preview.detections, index);
         self.refresh_detection_thumbnail_at(ctx, index);
     }
 
     /// Removes a detection from the preview.
     pub(crate) fn remove_detection(&mut self, index: usize) {
-        use crate::core::quality;
-
         quality::remove_detection(
             &mut self.preview.detections,
             &mut self.selected_faces,
@@ -75,15 +74,11 @@ impl YuNetApp {
 
     /// Exports the selected faces to disk.
     pub(crate) fn export_selected_faces(&mut self) {
-        use crate::core::export;
-
         export::export_selected_faces(self);
     }
 
     /// Starts batch export processing.
     pub(crate) fn start_batch_export(&mut self) {
-        use crate::core::export;
-
         export::start_batch_export(self);
     }
 
@@ -94,9 +89,6 @@ impl YuNetApp {
         preview_rect: egui::Rect,
         image_size: (u32, u32),
     ) {
-        use crate::PointerSnapshot;
-        use crate::interaction::{bbox_drag, drawing};
-
         let preview_space = crate::PreviewSpace {
             rect: preview_rect,
             image_size,
@@ -125,9 +117,7 @@ impl YuNetApp {
     }
 
     /// Starts a face detection job for the given image path.
-    pub(crate) fn start_detection(&mut self, path: std::path::PathBuf) {
-        use crate::core::detection;
-
+    pub(crate) fn start_detection(&mut self, path: PathBuf) {
         let cache_key = detection::cache_key_for_path(&path, &self.settings);
 
         if let Some(cached) = self.cache.get(&cache_key) {
@@ -185,10 +175,7 @@ impl YuNetApp {
         &mut self,
         ctx: &EguiContext,
         face_idx: usize,
-    ) -> Option<egui::TextureHandle> {
-        use crate::core::cache;
-        use crate::core::cache::CropPreviewRequest;
-
+    ) -> Option<TextureHandle> {
         let path = self.preview.image_path.as_ref()?;
         let detection = self.preview.detections.get(face_idx)?;
         let crop_settings = self.build_crop_settings();
@@ -536,8 +523,6 @@ impl YuNetApp {
 
     /// Handles keyboard shortcuts.
     pub(crate) fn handle_shortcuts(&mut self, ctx: &EguiContext) {
-        use crate::interaction::shortcuts;
-
         let wants_text = ctx.wants_keyboard_input();
         let actions = shortcuts::capture_shortcut_actions(ctx, wants_text);
 
@@ -571,12 +556,7 @@ impl YuNetApp {
     }
 
     /// Handles a message from a detection job.
-    pub(crate) fn handle_job_message(&mut self, ctx: &EguiContext, message: crate::JobMessage) {
-        use crate::core::detection::create_thumbnails;
-        use crate::{DetectionCacheEntry, DetectionJobSuccess, JobMessage};
-        use egui::TextureOptions;
-        use log::info;
-
+    pub(crate) fn handle_job_message(&mut self, ctx: &EguiContext, message: JobMessage) {
         match message {
             JobMessage::DetectionFinished {
                 job_id,

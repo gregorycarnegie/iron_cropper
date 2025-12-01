@@ -3,18 +3,17 @@
 //! These structures provide a common representation for inference, detection, cropping, and
 //! enhancement settings that can be serialized to disk and reused by CLI and GUI front-ends.
 
+use crate::{color::RgbaColor, gpu::GpuContextOptions, quality::Quality, shape::CropShape};
+
+use anyhow::{Context, Result};
+use log::LevelFilter;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     env, fmt, fs,
     path::{Path, PathBuf},
     str::FromStr,
 };
-
-use anyhow::{Context, Result};
-use log::LevelFilter;
-use serde::{Deserialize, Serialize};
-
-use crate::{color::RgbaColor, gpu::GpuContextOptions, quality::Quality, shape::CropShape};
 
 /// Shared detection parameters that should mirror YuNet defaults.
 ///

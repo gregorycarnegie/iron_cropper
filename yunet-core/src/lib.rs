@@ -25,6 +25,7 @@ pub use crate::cropper::{
 };
 pub use crate::face_cropper::crop_face_from_image;
 pub use crate::presets::{CropPreset, preset_by_name, standard_presets};
+
 pub use detector::{DetectionOutput, YuNetDetector};
 pub use model::YuNetModel;
 pub use postprocess::{BoundingBox, Detection, Landmark, PostprocessConfig, apply_postprocess};

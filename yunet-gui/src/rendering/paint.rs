@@ -1,6 +1,7 @@
 use crate::interaction;
 use crate::types::YuNetApp;
-use egui::{Color32, Rect, Stroke, pos2, vec2};
+
+use egui::{Color32, Rect, Stroke, StrokeKind, pos2, vec2};
 use yunet_core::calculate_crop_region;
 use yunet_utils::outline_points_for_rect;
 
@@ -43,7 +44,7 @@ impl YuNetApp {
 
             // Draw selection highlight if selected
             if is_selected {
-                painter.rect_stroke(rect, 2.0, selected_stroke, egui::StrokeKind::Outside);
+                painter.rect_stroke(rect, 2.0, selected_stroke, StrokeKind::Outside);
             }
 
             // Draw detection bounding box
@@ -53,7 +54,7 @@ impl YuNetApp {
                 base_bbox_color
             };
             let bbox_stroke = Stroke::new(bbox_width, bbox_color);
-            painter.rect_stroke(rect, 0.0, bbox_stroke, egui::StrokeKind::Inside);
+            painter.rect_stroke(rect, 0.0, bbox_stroke, StrokeKind::Inside);
 
             if !det_with_quality.is_manual() {
                 for landmark in &det_with_quality.detection.landmarks {
@@ -104,7 +105,7 @@ impl YuNetApp {
                     }
                     painter.add(egui::Shape::closed_line(outline, crop_stroke));
                 } else {
-                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
+                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, StrokeKind::Inside);
                 }
             }
         }
@@ -118,7 +119,7 @@ impl YuNetApp {
                 (2.5 * stroke_scale).clamp(1.0, 4.0),
                 Color32::from_rgb(100, 200, 255),
             );
-            painter.rect_stroke(draft_rect, 0.0, draft_stroke, egui::StrokeKind::Inside);
+            painter.rect_stroke(draft_rect, 0.0, draft_stroke, StrokeKind::Inside);
         }
     }
 

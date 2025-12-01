@@ -1,22 +1,28 @@
 use crate::YuNetApp;
 use crate::theme;
 use crate::ui::widgets;
-use egui::{ComboBox, Context, DragValue, RichText, ScrollArea, Ui};
+
+use egui::{
+    CentralPanel, Color32, ComboBox, Context, DragValue, Key, Label, RichText, ScrollArea, Ui,
+    ViewportBuilder, ViewportClass, ViewportId,
+};
+use log::{LevelFilter, info};
+use yunet_utils::{config::ResizeQuality, configure_telemetry};
 
 pub fn show_settings_window(app: &mut YuNetApp, ctx: &Context) {
     let mut open = app.show_settings_window;
     ctx.show_viewport_immediate(
-        egui::ViewportId::from_hash_of("settings_viewport"),
-        egui::ViewportBuilder::default()
+        ViewportId::from_hash_of("settings_viewport"),
+        ViewportBuilder::default()
             .with_title("Settings")
             .with_inner_size([400.0, 600.0]),
         |ctx, class| {
             assert!(
-                class == egui::ViewportClass::Immediate,
+                class == ViewportClass::Immediate,
                 "This egui backend doesn't support multiple viewports"
             );
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            CentralPanel::default().show(ctx, |ui| {
                 if ctx.input(|i| i.viewport().close_requested()) {
                     open = false;
                 }
@@ -66,9 +72,6 @@ fn show_model_settings(
     requires_detector_reset: &mut bool,
     requires_cache_refresh: &mut bool,
 ) {
-    use egui::Key;
-    use yunet_utils::config::ResizeQuality;
-
     ui.label("Model path");
     ui.horizontal(|ui| {
         let response = ui.text_edit_singleline(&mut app.model_path_input);
@@ -153,7 +156,7 @@ fn show_model_settings(
         "Score threshold",
         0.01,
         None,
-        Some(egui::Color32::RED),
+        Some(Color32::RED),
     ) {
         app.settings.detection.score_threshold = score;
         *settings_changed = true;
@@ -167,7 +170,7 @@ fn show_model_settings(
         "NMS threshold",
         0.01,
         None,
-        Some(egui::Color32::RED),
+        Some(Color32::RED),
     ) {
         app.settings.detection.nms_threshold = nms;
         *settings_changed = true;
@@ -288,10 +291,6 @@ fn show_gpu_section(
 }
 
 fn show_diagnostics_section(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bool) {
-    use log::LevelFilter;
-    use log::info;
-    use yunet_utils::configure_telemetry;
-
     let mut telemetry_changed = false;
     if ui
         .checkbox(
@@ -320,7 +319,7 @@ fn show_diagnostics_section(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &
             .map(|(_, label)| *label)
             .unwrap_or("Debug");
         let mut selected_level = current_level;
-        egui::ComboBox::from_id_salt("telemetry_level_combo")
+        ComboBox::from_id_salt("telemetry_level_combo")
             .selected_text(current_label)
             .show_ui(ui, |ui| {
                 for (level, label) in level_options.iter() {
@@ -337,7 +336,7 @@ fn show_diagnostics_section(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &
             *settings_changed = true;
             telemetry_changed = true;
         }
-        ui.add(egui::Label::new("Timings are written to the application log.").wrap());
+        ui.add(Label::new("Timings are written to the application log.").wrap());
     });
 
     if telemetry_changed {

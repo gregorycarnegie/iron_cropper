@@ -4,14 +4,6 @@
 //! when `--enhance` is requested. The implementations are intentionally
 //! lightweight and pure-Rust using the `image` crate.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
-
-use anyhow::{Context, Result};
-use image::{DynamicImage, ImageBuffer, Rgba};
-use rayon::prelude::*;
-use wide::f32x4;
-
 use crate::{
     gpu::{
         GpuBackgroundBlur, GpuBilateralFilter, GpuContext, GpuGaussianBlur, GpuHistogramEqualizer,
@@ -19,6 +11,15 @@ use crate::{
     },
     shape::CropShape,
 };
+
+use anyhow::{Context, Result};
+use image::{DynamicImage, ImageBuffer, Rgba};
+use rayon::prelude::*;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
+};
+use wide::f32x4;
 
 const EPSILON: f32 = 1e-6;
 

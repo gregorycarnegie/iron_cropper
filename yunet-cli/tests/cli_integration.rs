@@ -1,9 +1,12 @@
 use std::fs;
 
-use image::DynamicImage;
+use image::{DynamicImage, RgbaImage};
 use tempfile::tempdir;
 
-use yunet_core::{BoundingBox, CropSettings, Detection, FillColor, crop_face_from_image};
+use yunet_core::{
+    BoundingBox, CropSettings, Detection, FillColor, Landmark, PositioningMode,
+    crop_face_from_image,
+};
 use yunet_utils::{EnhancementSettings, apply_enhancements};
 
 #[test]
@@ -14,7 +17,7 @@ fn cli_like_crop_and_enhance_saves_file() {
 
     // Create synthetic input image
     let img_path = base.join("input.png");
-    let img = image::RgbaImage::from_pixel(300, 300, image::Rgba([150, 120, 200, 255]));
+    let img = RgbaImage::from_pixel(300, 300, image::Rgba([150, 120, 200, 255]));
     let dyn_img = DynamicImage::ImageRgba8(img.clone());
     dyn_img.save(&img_path).expect("save input");
 
@@ -27,11 +30,11 @@ fn cli_like_crop_and_enhance_saves_file() {
             height: 150.0,
         },
         landmarks: [
-            yunet_core::Landmark { x: 100.0, y: 100.0 },
-            yunet_core::Landmark { x: 200.0, y: 100.0 },
-            yunet_core::Landmark { x: 150.0, y: 140.0 },
-            yunet_core::Landmark { x: 115.0, y: 200.0 },
-            yunet_core::Landmark { x: 185.0, y: 200.0 },
+            Landmark { x: 100.0, y: 100.0 },
+            Landmark { x: 200.0, y: 100.0 },
+            Landmark { x: 150.0, y: 140.0 },
+            Landmark { x: 115.0, y: 200.0 },
+            Landmark { x: 185.0, y: 200.0 },
         ],
         score: 0.98,
     };
@@ -41,7 +44,7 @@ fn cli_like_crop_and_enhance_saves_file() {
         output_width: 256,
         output_height: 256,
         face_height_pct: 60.0,
-        positioning_mode: yunet_core::PositioningMode::Center,
+        positioning_mode: PositioningMode::Center,
         horizontal_offset: 0.0,
         vertical_offset: 0.0,
         fill_color: FillColor::default(),

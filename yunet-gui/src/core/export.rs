@@ -1,24 +1,34 @@
 //! Export and batch processing operations.
 
-use std::cmp::Ordering;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, mpsc::Sender};
-
-use image::DynamicImage;
-use log::{info, warn};
-use rayon::prelude::*;
-use yunet_core::{YuNetDetector, calculate_crop_region, crop_face_from_image};
-use yunet_utils::gpu::BatchCropRequest;
-use yunet_utils::{
-    MetadataContext, OutputOptions, append_suffix_to_filename, load_image,
-    quality::{Quality, estimate_sharpness},
-    save_dynamic_image,
-};
-
 use crate::{
     BatchFileStatus, BatchJobConfig, JobMessage, YuNetApp,
     core::cache::{apply_mask_with_gpu, enhance_with_gpu},
 };
+
+use image::DynamicImage;
+use log::{info, warn};
+use rayon::prelude::*;
+use rfd::FileDialog;
+use std::{
+    cmp::Ordering,
+    path::{Path, PathBuf},
+    sync::{Arc, mpsc::Sender},
+};
+use yunet_core::{YuNetDetector, calculate_crop_region, crop_face_from_image};
+use yunet_utils::{
+    MetadataContext, OutputOptions, append_suffix_to_filename,
+    gpu::BatchCropRequest,
+    load_image,
+    quality::{Quality, estimate_sharpness},
+    save_dynamic_image,
+};
+
+struct FaceCandidate {
+    index: usize,
+    quality: Quality,
+    quality_score: f64,
+    score: f32,
+}
 
 /// Runs a single batch job for one image file.
 pub fn run_batch_job(
@@ -48,13 +58,6 @@ pub fn run_batch_job(
     };
 
     let faces_detected = detection_output.detections.len();
-
-    struct FaceCandidate {
-        index: usize,
-        quality: Quality,
-        quality_score: f64,
-        score: f32,
-    }
 
     let crop_regions: Vec<_> = detection_output
         .detections
@@ -339,8 +342,6 @@ pub fn run_batch_export(
 
 /// Exports selected faces from the preview to disk.
 pub fn export_selected_faces(app: &mut YuNetApp) {
-    use rfd::FileDialog;
-
     if app.selected_faces.is_empty() {
         app.show_error("Export failed", "No faces selected for export");
         return;
@@ -449,9 +450,6 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
 
 /// Starts batch export processing for all batch files.
 pub fn start_batch_export(app: &mut YuNetApp) {
-    use crate::BatchFileStatus;
-    use rfd::FileDialog;
-
     if app.batch_files.is_empty() {
         app.show_error("Batch export failed", "No batch files loaded");
         return;

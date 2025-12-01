@@ -1,12 +1,11 @@
-use std::{fmt::Write, path::Path};
+use crate::preprocess::InputSize;
 
 use anyhow::{Context, Result};
 use log::{debug, warn};
+use std::{fmt::Write, path::Path};
 use tract_onnx::prelude::{
     Framework, Graph, InferenceModelExt, IntoTensor, SimplePlan, Tensor, TypedFact, TypedOp, tvec,
 };
-
-use crate::preprocess::InputSize;
 
 type RunnableModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
