@@ -9,18 +9,23 @@ mod theme;
 mod types;
 mod ui;
 
-use std::{io::Cursor, sync::Arc};
+use std::{
+    io::Cursor,
+    path::PathBuf,
+    sync::{Arc, mpsc},
+};
 
 use eframe::{App, CreationContext, Frame, NativeOptions, egui};
 use ico::IconDir;
-use log::{info, warn};
+use log::{LevelFilter, info, warn};
 
 // Re-export types for use by submodules
 pub use types::{
-    ActiveBoxDrag, BatchFile, BatchFileStatus, BatchJobConfig, CacheKey, CropPreviewCacheEntry,
-    CropPreviewKey, DetectionCacheEntry, DetectionJobSuccess, DetectionOrigin,
-    DetectionWithQuality, DragHandle, EnhancementSignature, JobMessage, ManualBoxDraft,
-    MappingUiState, PointerSnapshot, PreviewSpace, PreviewState, ShapeSignature, YuNetApp,
+    ActiveBoxDrag, BatchFile, BatchFileStatus, BatchJobConfig, CacheKey, ColorMode,
+    CropPreviewCacheEntry, CropPreviewKey, DetectionCacheEntry, DetectionJobSuccess,
+    DetectionOrigin, DetectionWithQuality, DragHandle, EnhancementSignature, JobMessage,
+    ManualBoxDraft, MappingUiState, PointerSnapshot, PreviewSpace, PreviewState, ShapeSignature,
+    YuNetApp,
 };
 pub use yunet_utils::gpu::{GpuStatusIndicator, GpuStatusMode};
 
@@ -40,7 +45,7 @@ type GpuPipelineInit = (
 
 /// Main entry point for the GUI application.
 fn main() -> eframe::Result<()> {
-    init_logging(log::LevelFilter::Info).expect("failed to initialize logging");
+    init_logging(LevelFilter::Info).expect("failed to initialize logging");
     let mut options = NativeOptions::default();
 
     // Set initial window size to avoid scrunched UI on first launch
@@ -130,11 +135,10 @@ impl YuNetApp {
     /// Creates a new `YuNetApp` instance with a specific settings path.
     pub(crate) fn create(
         ctx: &egui::Context,
-        settings_path: std::path::PathBuf,
+        settings_path: PathBuf,
         shared_gpu_context: Option<Arc<GpuContext>>,
     ) -> Self {
         use core::{detection::build_detector, settings::load_settings};
-        use std::sync::mpsc;
         use types::MappingUiState;
         use yunet_utils::configure_telemetry;
 
@@ -227,6 +231,7 @@ impl YuNetApp {
             show_detection_window: false,
             webcam_state: Default::default(),
             icons: crate::ui::icons::IconSet::new(ctx),
+            fill_color_mode: ColorMode::Rgb,
         }
     }
 

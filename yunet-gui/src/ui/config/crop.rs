@@ -1,5 +1,7 @@
 //! Crop settings UI controls.
 
+use crate::YuNetApp;
+use crate::types::ColorMode;
 use crate::ui::widgets;
 use egui::{Color32, ComboBox, DragValue, TextEdit, Ui, color_picker};
 use std::collections::BTreeMap;
@@ -9,8 +11,6 @@ use yunet_utils::{
     CropShape, PolygonCornerStyle, RgbaColor, cmyk_to_rgb, config::MetadataMode, hsl_to_rgb,
     hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl, rgb_to_hsv,
 };
-
-use crate::YuNetApp;
 
 /// Shows the crop settings section.
 pub fn show_crop_section(
@@ -264,192 +264,224 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             }
             ui.end_row();
 
-            ui.label("RGB");
-            egui::Grid::new("rgb_inner_grid")
-                .num_columns(3)
-                .spacing([8.0, 0.0])
-                .show(ui, |ui| {
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut r)
-                                .range(0..=255)
-                                .speed(1.0)
-                                .suffix(" R"),
-                        )
-                        .changed()
-                    {
-                        rgb_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut g)
-                                .range(0..=255)
-                                .speed(1.0)
-                                .suffix(" G"),
-                        )
-                        .changed()
-                    {
-                        rgb_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut b)
-                                .range(0..=255)
-                                .speed(1.0)
-                                .suffix(" B"),
-                        )
-                        .changed()
-                    {
-                        rgb_changed = true;
-                    }
+            ui.label("Model");
+            egui::ComboBox::from_id_salt("color_mode_combo")
+                .selected_text(match app.fill_color_mode {
+                    ColorMode::Rgb => "RGB",
+                    ColorMode::Hsv => "HSV",
+                    ColorMode::Hsl => "HSL",
+                    ColorMode::Cmyk => "CMYK",
+                })
+                .show_ui(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add(app.icons.rgb(14.0));
+                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Rgb, "RGB");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add(app.icons.hsv(14.0));
+                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Hsv, "HSV");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add(app.icons.hsl(14.0));
+                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Hsl, "HSL");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add(app.icons.cmyk(14.0));
+                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Cmyk, "CMYK");
+                    });
                 });
             ui.end_row();
 
-            ui.label("HSV");
-            egui::Grid::new("hsv_inner_grid")
-                .num_columns(3)
-                .spacing([8.0, 0.0])
-                .show(ui, |ui| {
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut hue)
-                                .range(0.0..=360.0)
-                                .speed(1.0)
-                                .suffix("°"),
-                        )
-                        .changed()
-                    {
-                        hsv_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut sat_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% S"),
-                        )
-                        .changed()
-                    {
-                        hsv_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut val_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% V"),
-                        )
-                        .changed()
-                    {
-                        hsv_changed = true;
-                    }
-                });
-            ui.end_row();
-
-            ui.label("HSL");
-            egui::Grid::new("hsl_inner_grid")
-                .num_columns(3)
-                .spacing([8.0, 0.0])
-                .show(ui, |ui| {
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut hue_l)
-                                .range(0.0..=360.0)
-                                .speed(1.0)
-                                .suffix("°"),
-                        )
-                        .changed()
-                    {
-                        hsl_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut sat_l_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% S"),
-                        )
-                        .changed()
-                    {
-                        hsl_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [80.0, 20.0],
-                            DragValue::new(&mut light_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% L"),
-                        )
-                        .changed()
-                    {
-                        hsl_changed = true;
-                    }
-                });
-            ui.end_row();
-
-            ui.label("CMYK");
-            egui::Grid::new("cmyk_inner_grid")
-                .num_columns(4)
-                .spacing([8.0, 0.0])
-                .show(ui, |ui| {
-                    if ui
-                        .add_sized(
-                            [60.0, 20.0],
-                            DragValue::new(&mut c_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% C"),
-                        )
-                        .changed()
-                    {
-                        cmyk_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [60.0, 20.0],
-                            DragValue::new(&mut m_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% M"),
-                        )
-                        .changed()
-                    {
-                        cmyk_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [60.0, 20.0],
-                            DragValue::new(&mut y_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% Y"),
-                        )
-                        .changed()
-                    {
-                        cmyk_changed = true;
-                    }
-                    if ui
-                        .add_sized(
-                            [60.0, 20.0],
-                            DragValue::new(&mut k_pct)
-                                .range(0.0..=100.0)
-                                .speed(1.0)
-                                .suffix("% K"),
-                        )
-                        .changed()
-                    {
-                        cmyk_changed = true;
-                    }
-                });
+            match app.fill_color_mode {
+                ColorMode::Rgb => {
+                    ui.label("RGB");
+                    egui::Grid::new("rgb_inner_grid")
+                        .num_columns(3)
+                        .spacing([8.0, 0.0])
+                        .show(ui, |ui| {
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut r)
+                                        .range(0..=255)
+                                        .speed(1.0)
+                                        .suffix(" R"),
+                                )
+                                .changed()
+                            {
+                                rgb_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut g)
+                                        .range(0..=255)
+                                        .speed(1.0)
+                                        .suffix(" G"),
+                                )
+                                .changed()
+                            {
+                                rgb_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut b)
+                                        .range(0..=255)
+                                        .speed(1.0)
+                                        .suffix(" B"),
+                                )
+                                .changed()
+                            {
+                                rgb_changed = true;
+                            }
+                        });
+                }
+                ColorMode::Hsv => {
+                    ui.label("HSV");
+                    egui::Grid::new("hsv_inner_grid")
+                        .num_columns(3)
+                        .spacing([8.0, 0.0])
+                        .show(ui, |ui| {
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut hue)
+                                        .range(0.0..=360.0)
+                                        .speed(1.0)
+                                        .suffix("°"),
+                                )
+                                .changed()
+                            {
+                                hsv_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut sat_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% S"),
+                                )
+                                .changed()
+                            {
+                                hsv_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut val_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% V"),
+                                )
+                                .changed()
+                            {
+                                hsv_changed = true;
+                            }
+                        });
+                }
+                ColorMode::Hsl => {
+                    ui.label("HSL");
+                    egui::Grid::new("hsl_inner_grid")
+                        .num_columns(3)
+                        .spacing([8.0, 0.0])
+                        .show(ui, |ui| {
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut hue_l)
+                                        .range(0.0..=360.0)
+                                        .speed(1.0)
+                                        .suffix("°"),
+                                )
+                                .changed()
+                            {
+                                hsl_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut sat_l_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% S"),
+                                )
+                                .changed()
+                            {
+                                hsl_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [80.0, 20.0],
+                                    DragValue::new(&mut light_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% L"),
+                                )
+                                .changed()
+                            {
+                                hsl_changed = true;
+                            }
+                        });
+                }
+                ColorMode::Cmyk => {
+                    ui.label("CMYK");
+                    egui::Grid::new("cmyk_inner_grid")
+                        .num_columns(4)
+                        .spacing([8.0, 0.0])
+                        .show(ui, |ui| {
+                            if ui
+                                .add_sized(
+                                    [60.0, 20.0],
+                                    DragValue::new(&mut c_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% C"),
+                                )
+                                .changed()
+                            {
+                                cmyk_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [60.0, 20.0],
+                                    DragValue::new(&mut m_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% M"),
+                                )
+                                .changed()
+                            {
+                                cmyk_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [60.0, 20.0],
+                                    DragValue::new(&mut y_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% Y"),
+                                )
+                                .changed()
+                            {
+                                cmyk_changed = true;
+                            }
+                            if ui
+                                .add_sized(
+                                    [60.0, 20.0],
+                                    DragValue::new(&mut k_pct)
+                                        .range(0.0..=100.0)
+                                        .speed(1.0)
+                                        .suffix("% K"),
+                                )
+                                .changed()
+                            {
+                                cmyk_changed = true;
+                            }
+                        });
+                }
+            }
             ui.end_row();
         });
 

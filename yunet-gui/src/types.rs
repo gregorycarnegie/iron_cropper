@@ -3,7 +3,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{Arc, mpsc},
+    sync::{Arc, atomic::AtomicBool, mpsc},
 };
 
 use egui::{Context as EguiContext, Rect, TextureHandle};
@@ -200,6 +200,8 @@ pub struct YuNetApp {
     pub show_detection_window: bool,
     /// Webcam state management.
     pub webcam_state: WebcamState,
+    /// Selected color mode for the fill color picker.
+    pub fill_color_mode: ColorMode,
 }
 
 /// Webcam capture state.
@@ -210,6 +212,15 @@ pub enum WebcamStatus {
     Active,
     Stopping,
     Error,
+}
+
+/// Supported color modes for the fill color picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+    Rgb,
+    Hsv,
+    Hsl,
+    Cmyk,
 }
 
 /// Webcam configuration and runtime state.
@@ -235,7 +246,7 @@ pub struct WebcamState {
     /// Whether to automatically crop detected faces.
     pub auto_crop: bool,
     /// Atomic flag to signal the webcam thread to stop.
-    pub stop_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    pub stop_flag: Option<Arc<AtomicBool>>,
 }
 
 impl Default for WebcamState {

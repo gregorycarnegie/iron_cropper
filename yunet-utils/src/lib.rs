@@ -31,7 +31,7 @@ pub mod webcam;
 #[cfg(test)]
 mod shape_tests;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use log::LevelFilter;
@@ -59,8 +59,7 @@ pub use mapping::{
 pub use output::{
     ImageFormatHint, MetadataContext, OutputOptions, append_suffix_to_filename, save_dynamic_image,
 };
-pub use quality::QualityFilter;
-pub use quality::{Quality, estimate_sharpness, laplacian_variance};
+pub use quality::{Quality, QualityFilter, estimate_sharpness, laplacian_variance};
 pub use shape::{
     CropShape, PolygonCornerStyle, apply_shape_mask, apply_shape_mask_dynamic,
     outline_points_for_rect,
@@ -96,7 +95,7 @@ pub fn init_logging(default_filter: LevelFilter) -> Result<()> {
 /// # Arguments
 ///
 /// * `path` - The path to validate and normalize.
-pub fn normalize_path<P: AsRef<Path>>(path: P) -> Result<std::path::PathBuf> {
+pub fn normalize_path<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let path = path.as_ref();
     anyhow::ensure!(path.exists(), "path does not exist: {}", path.display());
     Ok(path.canonicalize()?)
