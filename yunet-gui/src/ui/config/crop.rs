@@ -1038,7 +1038,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 PolygonCornerStyle::Sharp => {}
                 PolygonCornerStyle::Rounded { radius_pct } => {
                     let angle = std::f32::consts::PI / sides_u32 as f32;
-                    let max_radius_pct = 0.5 * angle.sin() * angle.tan();
+                    let max_radius_pct = 0.5 * angle.cos();
                     let max_radius_display = max_radius_pct * 100.0;
 
                     let mut radius = (*radius_pct * 100.0).clamp(0.0, max_radius_display);
