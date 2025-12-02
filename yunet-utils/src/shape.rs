@@ -355,7 +355,7 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
 
         let angle_cos = (-incoming.x * outgoing.x) + (-incoming.y * outgoing.y);
         let angle_cos = angle_cos.clamp(-0.999_9, 0.999_9);
-        let half_angle = 0.5 * (1.0 - angle_cos).acos();
+        let half_angle = 0.5 * angle_cos.acos();
         let mut offset = radius / half_angle.tan();
         let incoming_len = distance(prev, current);
         let outgoing_len = distance(current, next);
