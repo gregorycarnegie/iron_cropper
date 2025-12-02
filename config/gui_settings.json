@@ -42,7 +42,13 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "ellipse"
+      "kind": "polygon",
+      "sides": 6,
+      "rotation_deg": 0.0,
+      "corner_style": {
+        "style": "rounded",
+        "radius_pct": 0.1
+      }
     }
   },
   "enhance": {

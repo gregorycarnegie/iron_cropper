@@ -717,84 +717,93 @@ fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bo
     }
 
     // PNG compression
-    ui.horizontal(|ui| {
-        ui.label("PNG compression");
-        let current = app.settings.crop.png_compression.to_ascii_lowercase();
-        let label = match current.as_str() {
-            "fast" => "Fast".to_string(),
-            "default" => "Default".to_string(),
-            "best" => "Best".to_string(),
-            other => format!("Custom ({other})"),
-        };
-        ComboBox::from_id_salt("png_compression_combo")
-            .selected_text(label)
-            .show_ui(ui, |ui| {
-                for (value, text) in [("fast", "Fast"), ("default", "Default"), ("best", "Best")] {
-                    if ui
-                        .selectable_label(
-                            app.settings
-                                .crop
-                                .png_compression
-                                .eq_ignore_ascii_case(value),
-                            text,
-                        )
-                        .clicked()
+    if app.settings.crop.output_format == "png" {
+        ui.horizontal(|ui| {
+            ui.label("PNG compression");
+            let current = app.settings.crop.png_compression.to_ascii_lowercase();
+            let label = match current.as_str() {
+                "fast" => "Fast".to_string(),
+                "default" => "Default".to_string(),
+                "best" => "Best".to_string(),
+                other => format!("Custom ({other})"),
+            };
+            ComboBox::from_id_salt("png_compression_combo")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    for (value, text) in
+                        [("fast", "Fast"), ("default", "Default"), ("best", "Best")]
                     {
-                        app.settings.crop.png_compression = value.to_string();
-                        *settings_changed = true;
+                        if ui
+                            .selectable_label(
+                                app.settings
+                                    .crop
+                                    .png_compression
+                                    .eq_ignore_ascii_case(value),
+                                text,
+                            )
+                            .clicked()
+                        {
+                            app.settings.crop.png_compression = value.to_string();
+                            *settings_changed = true;
+                        }
                     }
-                }
-            });
+                });
 
-        let mut level = app
-            .settings
-            .crop
-            .png_compression
-            .parse::<i32>()
-            .unwrap_or(6);
-        let prev = level;
-        if ui
-            .add(DragValue::new(&mut level).range(0..=9).prefix("Level "))
-            .changed()
-        {
-            level = level.clamp(0, 9);
-            if level != prev {
-                app.settings.crop.png_compression = level.to_string();
+            let mut level = app
+                .settings
+                .crop
+                .png_compression
+                .parse::<i32>()
+                .unwrap_or(6);
+            let prev = level;
+            if ui
+                .add(DragValue::new(&mut level).range(0..=9).prefix("Level "))
+                .changed()
+            {
+                level = level.clamp(0, 9);
+                if level != prev {
+                    app.settings.crop.png_compression = level.to_string();
+                    *settings_changed = true;
+                }
+            }
+        });
+    }
+
+    // JPEG quality
+    if app.settings.crop.output_format == "jpeg" {
+        let mut jpeg_quality = i32::from(app.settings.crop.jpeg_quality);
+        crate::constrained_slider_row!(
+            ui,
+            &mut jpeg_quality,
+            1..=100,
+            "JPEG quality",
+            1.0,
+            None,
+            None,
+            {
+                app.settings.crop.jpeg_quality = jpeg_quality as u8;
                 *settings_changed = true;
             }
-        }
-    });
-    // JPEG quality
-    let mut jpeg_quality = i32::from(app.settings.crop.jpeg_quality);
-    crate::constrained_slider_row!(
-        ui,
-        &mut jpeg_quality,
-        1..=100,
-        "JPEG quality",
-        1.0,
-        None,
-        None,
-        {
-            app.settings.crop.jpeg_quality = jpeg_quality as u8;
-            *settings_changed = true;
-        }
-    );
+        );
+    }
 
     // WebP quality
-    let mut webp_quality = i32::from(app.settings.crop.webp_quality);
-    crate::constrained_slider_row!(
-        ui,
-        &mut webp_quality,
-        0..=100,
-        "WebP quality",
-        1.0,
-        None,
-        None,
-        {
-            app.settings.crop.webp_quality = webp_quality as u8;
-            *settings_changed = true;
-        }
-    );
+    if app.settings.crop.output_format == "webp" {
+        let mut webp_quality = i32::from(app.settings.crop.webp_quality);
+        crate::constrained_slider_row!(
+            ui,
+            &mut webp_quality,
+            0..=100,
+            "WebP quality",
+            1.0,
+            None,
+            None,
+            {
+                app.settings.crop.webp_quality = webp_quality as u8;
+                *settings_changed = true;
+            }
+        );
+    }
 }
 
 /// Shows the metadata settings section.
