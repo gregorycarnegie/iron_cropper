@@ -1037,33 +1037,41 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             match corner_style {
                 PolygonCornerStyle::Sharp => {}
                 PolygonCornerStyle::Rounded { radius_pct } => {
-                    let mut radius = (*radius_pct * 100.0).clamp(0.0, 40.0);
+                    let angle = std::f32::consts::PI / sides_u32 as f32;
+                    let max_radius_pct = 0.5 * angle.sin() * angle.tan();
+                    let max_radius_display = max_radius_pct * 100.0;
+
+                    let mut radius = (*radius_pct * 100.0).clamp(0.0, max_radius_display);
                     crate::constrained_slider_row!(
                         ui,
                         &mut radius,
-                        0.0..=40.0,
+                        0.0..=max_radius_display,
                         "Corner radius (%)",
-                        1.0,
+                        0.1,
                         None,
                         None,
                         {
-                            *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                            *radius_pct = (radius / 100.0).clamp(0.0, max_radius_pct);
                             changed = true;
                         }
                     );
                 }
                 PolygonCornerStyle::Chamfered { size_pct } => {
-                    let mut size = (*size_pct * 100.0).clamp(0.0, 40.0);
+                    let angle = std::f32::consts::PI / sides_u32 as f32;
+                    let max_size_pct = 0.5 * angle.sin();
+                    let max_size_display = max_size_pct * 100.0;
+
+                    let mut size = (*size_pct * 100.0).clamp(0.0, max_size_display);
                     crate::constrained_slider_row!(
                         ui,
                         &mut size,
-                        0.0..=40.0,
+                        0.0..=max_size_display,
                         "Chamfer size (%)",
-                        1.0,
+                        0.1,
                         None,
                         None,
                         {
-                            *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                            *size_pct = (size / 100.0).clamp(0.0, max_size_pct);
                             changed = true;
                         }
                     );

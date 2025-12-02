@@ -43,11 +43,11 @@
     },
     "shape": {
       "kind": "polygon",
-      "sides": 3,
+      "sides": 8,
       "rotation_deg": 0.0,
       "corner_style": {
         "style": "rounded",
-        "radius_pct": 0.0984848
+        "radius_pct": 0.07925634
       }
     }
   },
