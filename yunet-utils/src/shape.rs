@@ -47,28 +47,36 @@ pub enum CropShape {
         inner_radius_pct: f32,
         rotation_deg: f32,
     },
+    KochPolygon {
+        sides: u8,
+        rotation_deg: f32,
+        iterations: u8,
+    },
+    KochRectangle {
+        iterations: u8,
+    },
 }
 
 impl CropShape {
     /// Sanitize values to keep them in a sensible range.
     pub fn sanitized(&self) -> Self {
         match self {
-            Self::Rectangle => Self::Rectangle,
-            Self::Ellipse => Self::Ellipse,
-            Self::RoundedRectangle { radius_pct } => Self::RoundedRectangle {
+            CropShape::Rectangle => CropShape::Rectangle,
+            CropShape::RoundedRectangle { radius_pct } => CropShape::RoundedRectangle {
                 radius_pct: radius_pct.clamp(0.0, 0.5),
             },
-            Self::ChamferedRectangle { size_pct } => Self::ChamferedRectangle {
+            CropShape::ChamferedRectangle { size_pct } => CropShape::ChamferedRectangle {
                 size_pct: size_pct.clamp(0.0, 0.5),
             },
-            Self::Polygon {
+            CropShape::Ellipse => Self::Ellipse,
+            CropShape::Polygon {
                 sides,
                 rotation_deg,
                 corner_style,
-            } => {
-                let sides = (*sides).clamp(3u8, 24u8);
-                let rotation_deg = normalize_angle(*rotation_deg);
-                let corner_style = match corner_style {
+            } => CropShape::Polygon {
+                sides: (*sides).max(3),
+                rotation_deg: *rotation_deg,
+                corner_style: match corner_style {
                     PolygonCornerStyle::Sharp => PolygonCornerStyle::Sharp,
                     PolygonCornerStyle::Rounded { radius_pct } => PolygonCornerStyle::Rounded {
                         radius_pct: radius_pct.clamp(0.0, 0.5),
@@ -79,27 +87,29 @@ impl CropShape {
                     PolygonCornerStyle::Bezier { tension } => PolygonCornerStyle::Bezier {
                         tension: tension.clamp(0.0, 2.0),
                     },
-                };
-                Self::Polygon {
-                    sides,
-                    rotation_deg,
-                    corner_style,
-                }
-            }
-            Self::Star {
+                },
+            },
+            CropShape::Star {
                 points,
                 inner_radius_pct,
                 rotation_deg,
-            } => {
-                let points = (*points).clamp(3u8, 24u8);
-                let inner_radius_pct = inner_radius_pct.clamp(0.1, 0.9);
-                let rotation_deg = normalize_angle(*rotation_deg);
-                Self::Star {
-                    points,
-                    inner_radius_pct,
-                    rotation_deg,
-                }
-            }
+            } => CropShape::Star {
+                points: (*points).max(3),
+                inner_radius_pct: inner_radius_pct.clamp(0.0, 1.0),
+                rotation_deg: *rotation_deg,
+            },
+            CropShape::KochPolygon {
+                sides,
+                rotation_deg,
+                iterations,
+            } => CropShape::KochPolygon {
+                sides: (*sides).max(3),
+                rotation_deg: *rotation_deg,
+                iterations: (*iterations).min(5),
+            },
+            CropShape::KochRectangle { iterations } => CropShape::KochRectangle {
+                iterations: (*iterations).min(5),
+            },
         }
     }
 }
@@ -117,23 +127,13 @@ struct Point {
     y: f32,
 }
 
-fn normalize_angle(mut angle: f32) -> f32 {
-    while angle < 0.0 {
-        angle += 360.0;
-    }
-    while angle >= 360.0 {
-        angle -= 360.0;
-    }
-    angle
-}
-
 /// Generate outline points for a shape fitted to the supplied width/height.
 fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
     let w = width.max(1) as f32;
     let h = height.max(1) as f32;
     let shape = shape.sanitized();
 
-    match shape {
+    let mut points = match &shape {
         CropShape::Rectangle => vec![
             Point { x: 0.0, y: 0.0 },
             Point { x: w, y: 0.0 },
@@ -168,13 +168,143 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
             sides,
             rotation_deg,
             corner_style,
-        } => polygon_points(w, h, sides, rotation_deg, corner_style),
+        } => polygon_points(w, h, *sides, *rotation_deg, corner_style.clone()),
         CropShape::Star {
             points,
             inner_radius_pct,
             rotation_deg,
-        } => star_points(w, h, points, inner_radius_pct, rotation_deg),
+        } => star_points(w, h, *points, *inner_radius_pct, *rotation_deg),
+        CropShape::KochPolygon {
+            sides,
+            rotation_deg,
+            iterations,
+        } => {
+            let base_poly = polygon_points(w, h, *sides, *rotation_deg, PolygonCornerStyle::Sharp);
+            koch_fractal(&base_poly, *iterations)
+        }
+        CropShape::KochRectangle { iterations } => {
+            let base_rect = vec![
+                Point { x: 0.0, y: 0.0 },
+                Point { x: w, y: 0.0 },
+                Point { x: w, y: h },
+                Point { x: 0.0, y: h },
+            ];
+            koch_fractal(&base_rect, *iterations)
+        }
+    };
+
+    // Fit complex shapes to bounds to prevent clipping
+    match shape {
+        CropShape::Polygon { .. }
+        | CropShape::Star { .. }
+        | CropShape::KochPolygon { .. }
+        | CropShape::KochRectangle { .. } => {
+            fit_points_to_bounds(&mut points, w, h);
+        }
+        _ => {}
     }
+
+    points
+}
+
+fn fit_points_to_bounds(points: &mut [Point], width: f32, height: f32) {
+    if points.is_empty() {
+        return;
+    }
+
+    let mut min_x = points[0].x;
+    let mut max_x = points[0].x;
+    let mut min_y = points[0].y;
+    let mut max_y = points[0].y;
+
+    for p in points.iter().skip(1) {
+        if p.x < min_x {
+            min_x = p.x;
+        }
+        if p.x > max_x {
+            max_x = p.x;
+        }
+        if p.y < min_y {
+            min_y = p.y;
+        }
+        if p.y > max_y {
+            max_y = p.y;
+        }
+    }
+
+    let bbox_w = max_x - min_x;
+    let bbox_h = max_y - min_y;
+
+    if bbox_w <= f32::EPSILON || bbox_h <= f32::EPSILON {
+        return;
+    }
+
+    let scale_x = width / bbox_w;
+    let scale_y = height / bbox_h;
+    let scale = scale_x.min(scale_y);
+
+    let new_width = bbox_w * scale;
+    let new_height = bbox_h * scale;
+
+    let offset_x = (width - new_width).mul_add(0.5, -min_x * scale);
+    let offset_y = (height - new_height).mul_add(0.5, -min_y * scale);
+
+    for p in points.iter_mut() {
+        p.x = p.x.mul_add(scale, offset_x);
+        p.y = p.y.mul_add(scale, offset_y);
+    }
+}
+
+fn koch_fractal(vertices: &[Point], iterations: u8) -> Vec<Point> {
+    if iterations == 0 {
+        return vertices.to_vec();
+    }
+
+    let mut current_vertices = vertices.to_vec();
+
+    for _ in 0..iterations {
+        let mut next_vertices = Vec::with_capacity(current_vertices.len() * 4);
+        let len = current_vertices.len();
+
+        for i in 0..len {
+            let p0 = current_vertices[i];
+            let p1 = current_vertices[(i + 1) % len];
+
+            let dx = p1.x - p0.x;
+            let dy = p1.y - p0.y;
+
+            let p_a = Point {
+                x: p0.x + dx / 3.0,
+                y: p0.y + dy / 3.0,
+            };
+            let p_c = Point {
+                x: (dx / 3.0).mul_add(2.0, p0.x),
+                y: (dy / 3.0).mul_add(2.0, p0.y),
+            };
+
+            // Calculate the peak of the equilateral triangle
+            // Vector from p_a to p_c is (dx/3, dy/3).
+            // Rotate -60 degrees (outward for CCW polygon)
+            let v_x = p_c.x - p_a.x;
+            let v_y = p_c.y - p_a.y;
+
+            let sin60 = (PI / 3.0).sin();
+            let cos60 = 0.5;
+
+            let p_b_x = p_a.x + v_y.mul_add(sin60, v_x * cos60);
+            let p_b_y = p_a.y + v_y.mul_add(cos60, -v_x * sin60);
+
+            let p_b = Point { x: p_b_x, y: p_b_y };
+
+            next_vertices.push(p0);
+            next_vertices.push(p_a);
+            next_vertices.push(p_b);
+            next_vertices.push(p_c);
+        }
+        current_vertices = next_vertices;
+    }
+
+    current_vertices
 }
 
 fn rounded_rect_points(width: f32, height: f32, radius: f32, segments: usize) -> Vec<Point> {
@@ -195,10 +325,10 @@ fn rounded_rect_points(width: f32, height: f32, radius: f32, segments: usize) ->
         let steps = segments.max(3);
         let delta = (end - start) / steps as f32;
         for i in 0..=steps {
-            let angle = start + delta * i as f32;
+            let angle = delta.mul_add(i as f32, start);
             points.push(Point {
-                x: cx + radius * angle.cos(),
-                y: cy + radius * angle.sin(),
+                x: angle.cos().mul_add(radius, cx),
+                y: angle.sin().mul_add(radius, cy),
             });
         }
     };
@@ -272,8 +402,8 @@ fn polygon_points(
     for i in 0..n {
         let angle = rotation + 2.0 * PI * i as f32 / n as f32;
         base_vertices.push(Point {
-            x: cx + radius * angle.cos(),
-            y: cy + radius * angle.sin(),
+            x: angle.cos().mul_add(radius, cx),
+            y: angle.sin().mul_add(radius, cy),
         });
     }
 

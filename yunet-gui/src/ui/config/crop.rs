@@ -885,6 +885,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         PolygonChamfered,
         PolygonBezier,
         Star,
+        KochPolygon,
+        KochRectangle,
     }
 
     let mut variant = match &shape {
@@ -899,6 +901,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             PolygonCornerStyle::Bezier { .. } => Variant::PolygonBezier,
         },
         CropShape::Star { .. } => Variant::Star,
+        CropShape::KochPolygon { .. } => Variant::KochPolygon,
+        CropShape::KochRectangle { .. } => Variant::KochRectangle,
     };
 
     let current_label = match variant {
@@ -911,6 +915,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         Variant::PolygonChamfered => "Polygon (chamfered)",
         Variant::PolygonBezier => "Polygon (bezier)",
         Variant::Star => "Star",
+        Variant::KochPolygon => "Koch Polygon",
+        Variant::KochRectangle => "Koch Rectangle",
     };
 
     let mut variant_changed = false;
@@ -933,6 +939,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             select_variant("Polygon (chamfered)", Variant::PolygonChamfered);
             select_variant("Polygon (bezier)", Variant::PolygonBezier);
             select_variant("Star", Variant::Star);
+            select_variant("Koch Polygon", Variant::KochPolygon);
+            select_variant("Koch Rectangle", Variant::KochRectangle);
         });
 
     if variant_changed {
@@ -966,6 +974,12 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 inner_radius_pct: 0.5,
                 rotation_deg: 0.0,
             },
+            Variant::KochPolygon => CropShape::KochPolygon {
+                sides: 3,
+                rotation_deg: 0.0,
+                iterations: 3,
+            },
+            Variant::KochRectangle => CropShape::KochRectangle { iterations: 3 },
         };
         changed = true;
     }
@@ -1140,6 +1154,65 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                     changed = true;
                 }
             );
+        }
+        CropShape::KochPolygon {
+            sides,
+            rotation_deg,
+            iterations,
+        } => {
+            let mut sides_u32 = *sides as u32;
+            if ui
+                .add(
+                    DragValue::new(&mut sides_u32)
+                        .range(3..=24)
+                        .speed(1.0)
+                        .suffix(" sides"),
+                )
+                .changed()
+            {
+                *sides = sides_u32.clamp(3, 24) as u8;
+                changed = true;
+            }
+            crate::constrained_slider_row!(
+                ui,
+                rotation_deg,
+                -180.0..=180.0,
+                "Rotation (°)",
+                1.0,
+                None,
+                None,
+                {
+                    changed = true;
+                }
+            );
+            let mut iter = *iterations as u32;
+            if ui
+                .add(
+                    DragValue::new(&mut iter)
+                        .range(0..=5)
+                        .speed(0.1)
+                        .suffix(" iterations"),
+                )
+                .changed()
+            {
+                *iterations = iter.clamp(0, 5) as u8;
+                changed = true;
+            }
+        }
+        CropShape::KochRectangle { iterations } => {
+            let mut iter = *iterations as u32;
+            if ui
+                .add(
+                    DragValue::new(&mut iter)
+                        .range(0..=5)
+                        .speed(0.1)
+                        .suffix(" iterations"),
+                )
+                .changed()
+            {
+                *iterations = iter.clamp(0, 5) as u8;
+                changed = true;
+            }
         }
         CropShape::Rectangle | CropShape::Ellipse => {}
     }

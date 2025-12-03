@@ -11,10 +11,10 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "instagram",
-    "output_width": 1080,
-    "output_height": 1080,
-    "face_height_pct": 73.68874,
+    "preset": "idcard",
+    "output_width": 332,
+    "output_height": 498,
+    "face_height_pct": 39.313744,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,
     "horizontal_offset": 0.2963668,
@@ -43,11 +43,11 @@
     },
     "shape": {
       "kind": "polygon",
-      "sides": 24,
-      "rotation_deg": 0.0,
+      "sides": 6,
+      "rotation_deg": 73.63636,
       "corner_style": {
-        "style": "rounded",
-        "radius_pct": 0.17087407
+        "style": "bezier",
+        "tension": 1.2348487
       }
     }
   },

@@ -347,6 +347,24 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             sides: points,
             rotation_bits: rotation_deg.to_bits(),
         },
+        CropShape::KochPolygon {
+            sides,
+            rotation_deg,
+            iterations,
+        } => ShapeSignature {
+            kind: 9,
+            primary_bits: iterations as u32,
+            secondary_bits: 0,
+            sides,
+            rotation_bits: rotation_deg.to_bits(),
+        },
+        CropShape::KochRectangle { iterations } => ShapeSignature {
+            kind: 10,
+            primary_bits: iterations as u32,
+            secondary_bits: 0,
+            sides: 0,
+            rotation_bits: 0,
+        },
     }
 }
 
