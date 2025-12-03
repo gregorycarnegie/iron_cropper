@@ -217,8 +217,8 @@ pub fn calculate_crop_region(
 ) -> CropRegion {
     // Safety clamps and early guards
     let face_h = face_bbox.height.max(1.0);
-    let face_cx = face_bbox.x + face_bbox.width / 2.0;
-    let face_cy = face_bbox.y + face_bbox.height / 2.0;
+    let face_cx = face_bbox.width.mul_add(0.5, face_bbox.x);
+    let face_cy = face_bbox.height.mul_add(0.5, face_bbox.y);
 
     let face_height_pct = settings.face_height_pct.clamp(1.0, 100.0);
 
@@ -244,20 +244,20 @@ pub fn calculate_crop_region(
         PositioningMode::RuleOfThirds => {
             // Place face center at 1/3 down from the top of the crop region.
             // So crop_top = face_cy - src_h * (1.0/3.0)
-            cy = face_cy + (src_h * (1.0 / 3.0) - src_h / 2.0);
+            cy = face_cy - src_h / 6.0;
         }
         PositioningMode::Custom => {
             // Offsets are fractions in [-1,1] relative to half the crop dimension.
             let ho = settings.horizontal_offset.clamp(-1.0, 1.0);
             let vo = settings.vertical_offset.clamp(-1.0, 1.0);
-            cx = face_cx + ho * (src_w * 0.5);
-            cy = face_cy + vo * (src_h * 0.5);
+            cx = src_w.mul_add(ho * 0.5, face_cx);
+            cy = src_h.mul_add(vo * 0.5, face_cy);
         }
     }
 
     // Compute top-left corner from center
-    let left = cx - src_w / 2.0;
-    let top = cy - src_h / 2.0;
+    let left = (-src_w).mul_add(0.5, cx);
+    let top = (-src_h).mul_add(0.5, cy);
 
     let x = left.round() as i32;
     let y = top.round() as i32;

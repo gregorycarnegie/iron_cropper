@@ -19,6 +19,8 @@ pub mod macros;
 pub mod mapping;
 /// Image output helpers (encoding, metadata preservation).
 pub mod output;
+/// 2D point geometry primitives.
+pub mod point;
 /// Image quality analysis (Laplacian variance blur detection).
 pub mod quality;
 /// Shape metadata and masking helpers for custom crop geometry.

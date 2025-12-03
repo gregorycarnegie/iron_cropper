@@ -2054,9 +2054,7 @@ mod tests {
             Conv2dOptions::new(2, None),
         )
         .unwrap();
-        let input: Vec<f32> = (0..(4 * 4 * 4))
-            .map(|i| ((i * 13 % 17) as f32) * 0.1)
-            .collect();
+        let input: Vec<f32> = (0..64).map(|i| ((i * 13 % 17) as f32) * 0.1).collect();
         let weights_len = (config.output_channels as usize)
             * ((config.input_channels / config.groups) as usize)
             * config.kernel_width as usize

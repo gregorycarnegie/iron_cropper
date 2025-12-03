@@ -3,10 +3,10 @@
 //! Provides the `CropShape` enum shared across the workspace together with helpers
 //! for generating polygon outlines and applying alpha masks to RGBA images.
 
+use crate::point::Point;
 use image::{DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
-use std::ops::{Add, Div, Mul, Neg, Sub};
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
 /// Polygon corner styles.
@@ -118,85 +118,6 @@ impl CropShape {
 impl Default for CropShape {
     fn default() -> Self {
         Self::Rectangle
-    }
-}
-
-/// Single 2D point.
-#[derive(Debug, Clone, Copy)]
-struct Point {
-    x: f32,
-    y: f32,
-}
-
-impl Point {
-    pub fn mul_add(self, a: f32, b: Point) -> Point {
-        Point {
-            x: self.x.mul_add(a, b.x),
-            y: self.y.mul_add(a, b.y),
-        }
-    }
-}
-
-impl Add for Point {
-    type Output = Point;
-
-    fn add(self, other: Point) -> Point {
-        Point {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-}
-
-impl Sub for Point {
-    type Output = Point;
-
-    fn sub(self, other: Point) -> Point {
-        Point {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
-    }
-}
-
-impl Mul<f32> for Point {
-    type Output = Point;
-
-    fn mul(self, other: f32) -> Point {
-        Point {
-            x: self.x * other,
-            y: self.y * other,
-        }
-    }
-}
-
-impl Mul<Point> for Point {
-    type Output = f32;
-
-    fn mul(self, other: Point) -> f32 {
-        self.x * other.x + self.y * other.y
-    }
-}
-
-impl Div<f32> for Point {
-    type Output = Point;
-
-    fn div(self, other: f32) -> Point {
-        Point {
-            x: self.x / other,
-            y: self.y / other,
-        }
-    }
-}
-
-impl Neg for Point {
-    type Output = Point;
-
-    fn neg(self) -> Point {
-        Point {
-            x: -self.x,
-            y: -self.y,
-        }
     }
 }
 

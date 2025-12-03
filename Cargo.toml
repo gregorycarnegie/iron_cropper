@@ -32,7 +32,7 @@ image = { version = "0.25.9", default-features = false, features = [
     "rayon", # Enable parallel processing support
 ] }
 imageproc = "0.25.0"
-log = "0.4.28"
+log = "0.4.29"
 ndarray = { version = "0.17.1", features = ["rayon"] }
 nokhwa = { version = "0.10.10", features = ["input-native"] }
 parquet = { version = "57.1.0", default-features = false, features = [
