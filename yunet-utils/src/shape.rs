@@ -6,6 +6,7 @@
 use image::{DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
 /// Polygon corner styles.
@@ -127,6 +128,78 @@ struct Point {
     y: f32,
 }
 
+impl Point {
+    pub fn mul_add(self, a: f32, b: Point) -> Point {
+        Point {
+            x: self.x.mul_add(a, b.x),
+            y: self.y.mul_add(a, b.y),
+        }
+    }
+}
+
+impl Add for Point {
+    type Output = Point;
+
+    fn add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+impl Sub for Point {
+    type Output = Point;
+
+    fn sub(self, other: Point) -> Point {
+        Point {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+}
+
+impl Mul<f32> for Point {
+    type Output = Point;
+
+    fn mul(self, other: f32) -> Point {
+        Point {
+            x: self.x * other,
+            y: self.y * other,
+        }
+    }
+}
+
+impl Mul<Point> for Point {
+    type Output = f32;
+
+    fn mul(self, other: Point) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+}
+
+impl Div<f32> for Point {
+    type Output = Point;
+
+    fn div(self, other: f32) -> Point {
+        Point {
+            x: self.x / other,
+            y: self.y / other,
+        }
+    }
+}
+
+impl Neg for Point {
+    type Output = Point;
+
+    fn neg(self) -> Point {
+        Point {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
+}
+
 /// Generate outline points for a shape fitted to the supplied width/height.
 fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
     let w = width.max(1) as f32;
@@ -141,27 +214,25 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
             Point { x: 0.0, y: h },
         ],
         CropShape::Ellipse => {
-            let cx = w / 2.0;
-            let cy = h / 2.0;
-            let rx = w / 2.0;
-            let ry = h / 2.0;
+            let cx = w * 0.5;
+            let cy = h * 0.5;
             let segments = 128;
             (0..segments)
                 .map(|i| {
                     let theta = (i as f32 / segments as f32) * 2.0 * PI;
                     Point {
-                        x: cx + rx * theta.cos(),
-                        y: cy + ry * theta.sin(),
+                        x: cx * (theta.cos() + 1.0),
+                        y: cy * (theta.sin() + 1.0),
                     }
                 })
                 .collect()
         }
         CropShape::RoundedRectangle { radius_pct } => {
-            let radius = (w.min(h) * radius_pct).clamp(0.0, w.min(h) / 2.0);
+            let radius = (w.min(h) * radius_pct).clamp(0.0, w.min(h) * 0.5);
             rounded_rect_points(w, h, radius, 16)
         }
         CropShape::ChamferedRectangle { size_pct } => {
-            let inset = (w.min(h) * size_pct).clamp(0.0, w.min(h) / 2.0);
+            let inset = (w.min(h) * size_pct).clamp(0.0, w.min(h) * 0.5);
             chamfered_rect_points(w, h, inset)
         }
         CropShape::Polygon {
@@ -211,43 +282,39 @@ fn fit_points_to_bounds(points: &mut [Point], width: f32, height: f32) {
     if points.is_empty() {
         return;
     }
-
-    let mut min_x = points[0].x;
-    let mut max_x = points[0].x;
-    let mut min_y = points[0].y;
-    let mut max_y = points[0].y;
+    let mut min_points = points[0];
+    let mut max_points = points[0];
 
     for p in points.iter().skip(1) {
-        if p.x < min_x {
-            min_x = p.x;
+        if p.x < min_points.x {
+            min_points.x = p.x;
         }
-        if p.x > max_x {
-            max_x = p.x;
+        if p.x > max_points.x {
+            max_points.x = p.x;
         }
-        if p.y < min_y {
-            min_y = p.y;
+        if p.y < min_points.y {
+            min_points.y = p.y;
         }
-        if p.y > max_y {
-            max_y = p.y;
+        if p.y > max_points.y {
+            max_points.y = p.y;
         }
     }
 
-    let bbox_w = max_x - min_x;
-    let bbox_h = max_y - min_y;
+    let bbox = max_points - min_points;
 
-    if bbox_w <= f32::EPSILON || bbox_h <= f32::EPSILON {
+    if bbox.x <= f32::EPSILON || bbox.y <= f32::EPSILON {
         return;
     }
 
-    let scale_x = width / bbox_w;
-    let scale_y = height / bbox_h;
+    let scale_x = width / bbox.x;
+    let scale_y = height / bbox.y;
     let scale = scale_x.min(scale_y);
 
-    let new_width = bbox_w * scale;
-    let new_height = bbox_h * scale;
+    let new_width = bbox.x * scale;
+    let new_height = bbox.y * scale;
 
-    let offset_x = (width - new_width).mul_add(0.5, -min_x * scale);
-    let offset_y = (height - new_height).mul_add(0.5, -min_y * scale);
+    let offset_x = (width - new_width).mul_add(0.5, -min_points.x * scale);
+    let offset_y = (height - new_height).mul_add(0.5, -min_points.y * scale);
 
     for p in points.iter_mut() {
         p.x = p.x.mul_add(scale, offset_x);
@@ -269,30 +336,20 @@ fn koch_fractal(vertices: &[Point], iterations: u8) -> Vec<Point> {
         for i in 0..len {
             let p0 = current_vertices[i];
             let p1 = current_vertices[(i + 1) % len];
-
-            let dx = p1.x - p0.x;
-            let dy = p1.y - p0.y;
-
-            let p_a = Point {
-                x: p0.x + dx / 3.0,
-                y: p0.y + dy / 3.0,
-            };
-            let p_c = Point {
-                x: (dx / 3.0).mul_add(2.0, p0.x),
-                y: (dy / 3.0).mul_add(2.0, p0.y),
-            };
+            let dxy = p1 - p0;
+            let p_a = p0 + dxy / 3.0;
+            let p_c = (dxy / 3.0).mul_add(2.0, p0);
 
             // Calculate the peak of the equilateral triangle
             // Vector from p_a to p_c is (dx/3, dy/3).
             // Rotate -60 degrees (outward for CCW polygon)
-            let v_x = p_c.x - p_a.x;
-            let v_y = p_c.y - p_a.y;
+            let v = p_c - p_a;
 
             let sin60 = (PI / 3.0).sin();
             let cos60 = 0.5;
 
-            let p_b_x = p_a.x + v_y.mul_add(sin60, v_x * cos60);
-            let p_b_y = p_a.y + v_y.mul_add(cos60, -v_x * sin60);
+            let p_b_x = p_a.x + v.y.mul_add(sin60, v.x * cos60);
+            let p_b_y = p_a.y + v.y.mul_add(cos60, -v.x * sin60);
 
             let p_b = Point { x: p_b_x, y: p_b_y };
 
@@ -334,11 +391,11 @@ fn rounded_rect_points(width: f32, height: f32, radius: f32, segments: usize) ->
     };
 
     // Top-right corner (angles -90 -> 0 degrees)
-    add_corner(width - radius, radius, -PI / 2.0, 0.0);
+    add_corner(width - radius, radius, -PI * 0.5, 0.0);
     // Bottom-right (0 -> 90)
-    add_corner(width - radius, height - radius, 0.0, PI / 2.0);
+    add_corner(width - radius, height - radius, 0.0, PI * 0.5);
     // Bottom-left (90 -> 180)
-    add_corner(radius, height - radius, PI / 2.0, PI);
+    add_corner(radius, height - radius, PI * 0.5, PI);
     // Top-left (180 -> 270)
     add_corner(radius, radius, PI, 1.5 * PI);
 
@@ -393,8 +450,8 @@ fn polygon_points(
     corner_style: PolygonCornerStyle,
 ) -> Vec<Point> {
     let n = sides.max(3) as usize;
-    let cx = width / 2.0;
-    let cy = height / 2.0;
+    let cx = width * 0.5;
+    let cy = height * 0.5;
     let radius = 0.5 * width.min(height);
     let rotation = rotation_deg.to_radians();
 
@@ -434,28 +491,16 @@ fn chamfer_polygon(vertices: &[Point], inset: f32) -> Vec<Point> {
         let current = vertices[i];
         let next = vertices[(i + 1) % len];
 
-        let prev_vec = normalize(Point {
-            x: current.x - prev.x,
-            y: current.y - prev.y,
-        });
-        let next_vec = normalize(Point {
-            x: next.x - current.x,
-            y: next.y - current.y,
-        });
+        let prev_vec = normalize(current - prev);
+        let next_vec = normalize(next - current);
 
         let prev_edge_len = distance(prev, current);
         let next_edge_len = distance(current, next);
-        let offset_prev = inset.min(prev_edge_len / 2.0);
-        let offset_next = inset.min(next_edge_len / 2.0);
+        let offset_prev = inset.min(prev_edge_len * 0.5);
+        let offset_next = inset.min(next_edge_len * 0.5);
 
-        points.push(Point {
-            x: current.x - prev_vec.x * offset_prev,
-            y: current.y - prev_vec.y * offset_prev,
-        });
-        points.push(Point {
-            x: current.x + next_vec.x * offset_next,
-            y: current.y + next_vec.y * offset_next,
-        });
+        points.push((-prev_vec).mul_add(offset_prev, current));
+        points.push(next_vec.mul_add(offset_next, current));
     }
 
     points
@@ -474,43 +519,29 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         let current = vertices[i];
         let next = vertices[(i + 1) % len];
 
-        let incoming = normalize(Point {
-            x: current.x - prev.x,
-            y: current.y - prev.y,
-        });
-        let outgoing = normalize(Point {
-            x: next.x - current.x,
-            y: next.y - current.y,
-        });
+        let incoming = normalize(current - prev);
 
-        let angle_cos = (-incoming.x * outgoing.x) + (-incoming.y * outgoing.y);
+        let outgoing = normalize(next - current);
+
+        let angle_cos = (-incoming) * outgoing;
         let angle_cos = angle_cos.clamp(-0.999_9, 0.999_9);
         let half_angle = 0.5 * angle_cos.acos();
         let mut offset = radius / half_angle.tan();
         let incoming_len = distance(prev, current);
         let outgoing_len = distance(current, next);
-        offset = offset.min(incoming_len / 2.0).min(outgoing_len / 2.0);
+        offset = offset.min(incoming_len * 0.5).min(outgoing_len * 0.5);
 
-        let start = Point {
-            x: current.x - incoming.x * offset,
-            y: current.y - incoming.y * offset,
-        };
-        let end = Point {
-            x: current.x + outgoing.x * offset,
-            y: current.y + outgoing.y * offset,
-        };
+        let start = (-incoming).mul_add(offset, current);
 
-        let bisector = normalize(Point {
-            x: -incoming.x + outgoing.x,
-            y: -incoming.y + outgoing.y,
-        });
+        let end = outgoing.mul_add(offset, current);
+
+        let bisector = normalize(outgoing - incoming);
         let center_distance = radius / half_angle.sin();
-        let center = Point {
-            x: current.x + bisector.x * center_distance,
-            y: current.y + bisector.y * center_distance,
-        };
+
+        let center = bisector.mul_add(center_distance, current);
 
         let start_angle = (start.y - center.y).atan2(start.x - center.x);
+
         let end_angle = (end.y - center.y).atan2(end.x - center.x);
         let mut delta = end_angle - start_angle;
         while delta <= 0.0 {
@@ -519,10 +550,10 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         let steps = segments.max(3);
         let step = delta / steps as f32;
         for j in 0..=steps {
-            let angle = start_angle + step * j as f32;
+            let angle = step.mul_add(j as f32, start_angle);
             points.push(Point {
-                x: center.x + radius * angle.cos(),
-                y: center.y + radius * angle.sin(),
+                x: angle.cos().mul_add(radius, center.x),
+                y: angle.sin().mul_add(radius, center.y),
             });
         }
     }
@@ -549,23 +580,16 @@ fn bezier_polygon(vertices: &[Point], tension: f32, segments: usize) -> Vec<Poin
         let next = vertices[(i + 1) % len];
 
         // Tangent vector at current point
-        let tangent_x = next.x - prev.x;
-        let tangent_y = next.y - prev.y;
+        let tangent = next - prev;
 
         // Scale by tension
         // tension of 0.5 is standard Catmull-Rom
         let cp_dist = tension * 0.5; // Adjust scaling factor as needed
 
         // Control point "before" current (incoming)
-        let cp1 = Point {
-            x: current.x - tangent_x * cp_dist,
-            y: current.y - tangent_y * cp_dist,
-        };
+        let cp1 = (-tangent).mul_add(cp_dist, current);
         // Control point "after" current (outgoing)
-        let cp2 = Point {
-            x: current.x + tangent_x * cp_dist,
-            y: current.y + tangent_y * cp_dist,
-        };
+        let cp2 = tangent.mul_add(cp_dist, current);
 
         control_points.push((cp1, cp2));
     }
@@ -576,7 +600,6 @@ fn bezier_polygon(vertices: &[Point], tension: f32, segments: usize) -> Vec<Poin
         let p1 = vertices[(i + 1) % len];
 
         // Control points for this segment:
-        // p0 -> cp_after_p0 -> cp_before_p1 -> p1
         let cp1 = control_points[i].1;
         let cp2 = control_points[(i + 1) % len].0;
 
@@ -596,12 +619,10 @@ fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f32) -> Point {
     let mt2 = mt * mt;
     let mt3 = mt2 * mt;
 
-    Point {
-        x: mt3 * p0.x + 3.0 * mt2 * t * p1.x + 3.0 * mt * t2 * p2.x + t3 * p3.x,
-        y: mt3 * p0.y + 3.0 * mt2 * t * p1.y + 3.0 * mt * t2 * p2.y + t3 * p3.y,
-    }
+    p0 * mt3 + p1 * 3.0 * mt2 * t + p2 * 3.0 * mt * t2 + p3 * t3
 }
 
+#[inline]
 fn distance(a: Point, b: Point) -> f32 {
     ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
 }
@@ -611,10 +632,7 @@ fn normalize(v: Point) -> Point {
     if len <= f32::EPSILON {
         Point { x: 0.0, y: 0.0 }
     } else {
-        Point {
-            x: v.x / len,
-            y: v.y / len,
-        }
+        v / len
     }
 }
 
@@ -680,8 +698,8 @@ fn star_points(
     rotation_deg: f32,
 ) -> Vec<Point> {
     let n = points.max(3) as usize;
-    let cx = width / 2.0;
-    let cy = height / 2.0;
+    let cx = width * 0.5;
+    let cy = height * 0.5;
     let outer_radius = 0.5 * width.min(height);
     let inner_radius = outer_radius * inner_radius_pct;
     let rotation = rotation_deg.to_radians();
@@ -693,15 +711,15 @@ fn star_points(
         // Outer point
         let angle_outer = rotation + 2.0 * PI * i as f32 / n as f32;
         vertices.push(Point {
-            x: cx + outer_radius * angle_outer.cos(),
-            y: cy + outer_radius * angle_outer.sin(),
+            x: angle_outer.cos().mul_add(outer_radius, cx),
+            y: angle_outer.sin().mul_add(outer_radius, cy),
         });
 
         // Inner point
         let angle_inner = angle_outer + step_angle;
         vertices.push(Point {
-            x: cx + inner_radius * angle_inner.cos(),
-            y: cy + inner_radius * angle_inner.sin(),
+            x: angle_inner.cos().mul_add(inner_radius, cx),
+            y: angle_inner.sin().mul_add(inner_radius, cy),
         });
     }
 

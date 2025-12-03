@@ -14,7 +14,7 @@
     "preset": "idcard",
     "output_width": 332,
     "output_height": 498,
-    "face_height_pct": 39.313744,
+    "face_height_pct": 53.2342,
     "positioning_mode": "center",
     "vertical_offset": 0.45083842,
     "horizontal_offset": 0.2963668,
@@ -42,13 +42,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 73.63636,
-      "corner_style": {
-        "style": "bezier",
-        "tension": 1.2348487
-      }
+      "kind": "ellipse"
     }
   },
   "enhance": {
