@@ -11,8 +11,8 @@ pub fn image_point_to_screen(point: Pos2, image_rect: Rect, image_size: (u32, u3
     let scale_x = image_rect.width() / image_size.0 as f32;
     let scale_y = image_rect.height() / image_size.1 as f32;
     pos2(
-        image_rect.left() + point.x * scale_x,
-        image_rect.top() + point.y * scale_y,
+        point.x.mul_add(scale_x, image_rect.left()),
+        point.y.mul_add(scale_y, image_rect.top()),
     )
 }
 
@@ -24,8 +24,8 @@ pub fn bbox_to_screen_rect(bbox: BoundingBox, image_rect: Rect, image_size: (u32
     let scale_x = image_rect.width() / image_size.0 as f32;
     let scale_y = image_rect.height() / image_size.1 as f32;
     let top_left = pos2(
-        image_rect.left() + bbox.x * scale_x,
-        image_rect.top() + bbox.y * scale_y,
+        bbox.x.mul_add(scale_x, image_rect.left()),
+        bbox.y.mul_add(scale_y, image_rect.top()),
     );
     let size = vec2(bbox.width * scale_x, bbox.height * scale_y);
     Rect::from_min_size(top_left, size)

@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "idcard",
-    "output_width": 332,
-    "output_height": 498,
+    "preset": "passport",
+    "output_width": 413,
+    "output_height": 531,
     "face_height_pct": 53.2342,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
@@ -42,7 +42,13 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "ellipse"
+      "kind": "polygon",
+      "sides": 6,
+      "rotation_deg": 0.0,
+      "corner_style": {
+        "style": "bezier",
+        "tension": 0.4998821
+      }
     }
   },
   "enhance": {

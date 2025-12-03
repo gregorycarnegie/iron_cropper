@@ -15,7 +15,7 @@ impl YuNetApp {
 
         let base_bbox_color = Color32::from_rgb(255, 145, 77);
         let manual_bbox_color = Color32::from_rgb(255, 214, 142);
-        let bbox_width = (2.0 * stroke_scale).clamp(0.5, 6.0);
+        let bbox_width = stroke_scale.clamp(0.25, 3.0);
         let landmark_color = Color32::from_rgb(82, 180, 255);
         let crop_stroke = Stroke::new(
             (3.0 * stroke_scale).clamp(0.5, 6.0),
@@ -36,8 +36,8 @@ impl YuNetApp {
             let is_selected = self.selected_faces.contains(&index);
 
             let top_left = pos2(
-                image_rect.left() + bbox.x * scale_x,
-                image_rect.top() + bbox.y * scale_y,
+                bbox.x.mul_add(scale_x, image_rect.left()),
+                bbox.y.mul_add(scale_y, image_rect.top()),
             );
             let size = vec2(bbox.width * scale_x, bbox.height * scale_y);
             let rect = Rect::from_min_size(top_left, size);
@@ -59,8 +59,8 @@ impl YuNetApp {
             if !det_with_quality.is_manual() {
                 for landmark in &det_with_quality.detection.landmarks {
                     let center = pos2(
-                        image_rect.left() + landmark.x * scale_x,
-                        image_rect.top() + landmark.y * scale_y,
+                        landmark.x.mul_add(scale_x, image_rect.left()),
+                        landmark.y.mul_add(scale_y, image_rect.top()),
                     );
                     painter.circle_filled(center, landmark_radius, landmark_color);
                 }
@@ -85,8 +85,8 @@ impl YuNetApp {
                 let crop_region =
                     calculate_crop_region(image_size.0, image_size.1, bbox, &crop_settings);
                 let crop_top_left = pos2(
-                    image_rect.left() + crop_region.x as f32 * scale_x,
-                    image_rect.top() + crop_region.y as f32 * scale_y,
+                    (crop_region.x as f32).mul_add(scale_x, image_rect.left()),
+                    (crop_region.y as f32).mul_add(scale_y, image_rect.top()),
                 );
                 let crop_size = vec2(
                     crop_region.width as f32 * scale_x,
@@ -144,8 +144,8 @@ impl YuNetApp {
 
         for i in 1..=2 {
             let frac = i as f32 / 3.0;
-            let x = image_rect.left() + image_rect.width() * frac;
-            let y = image_rect.top() + image_rect.height() * frac;
+            let x = image_rect.width().mul_add(frac, image_rect.left());
+            let y = image_rect.height().mul_add(frac, image_rect.top());
             painter.line_segment(
                 [pos2(x, image_rect.top()), pos2(x, image_rect.bottom())],
                 guide_stroke,

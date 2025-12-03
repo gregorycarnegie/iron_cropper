@@ -34,24 +34,24 @@ pub fn draft_to_bbox(draft: ManualBoxDraft, image_size: (u32, u32)) -> Option<Bo
 pub fn placeholder_landmarks(bbox: BoundingBox) -> [Landmark; 5] {
     [
         Landmark {
-            x: bbox.x + bbox.width * 0.3,
-            y: bbox.y + bbox.height * 0.35,
+            x: bbox.width.mul_add(0.3, bbox.x),
+            y: bbox.height.mul_add(0.35, bbox.y),
         },
         Landmark {
-            x: bbox.x + bbox.width * 0.7,
-            y: bbox.y + bbox.height * 0.35,
+            x: bbox.width.mul_add(0.7, bbox.x),
+            y: bbox.height.mul_add(0.35, bbox.y),
         },
         Landmark {
-            x: bbox.x + bbox.width * 0.5,
-            y: bbox.y + bbox.height * 0.5,
+            x: bbox.width.mul_add(0.5, bbox.x),
+            y: bbox.height.mul_add(0.5, bbox.y),
         },
         Landmark {
-            x: bbox.x + bbox.width * 0.35,
-            y: bbox.y + bbox.height * 0.65,
+            x: bbox.width.mul_add(0.35, bbox.x),
+            y: bbox.height.mul_add(0.65, bbox.y),
         },
         Landmark {
-            x: bbox.x + bbox.width * 0.65,
-            y: bbox.y + bbox.height * 0.65,
+            x: bbox.width.mul_add(0.65, bbox.x),
+            y: bbox.height.mul_add(0.65, bbox.y),
         },
     ]
 }
