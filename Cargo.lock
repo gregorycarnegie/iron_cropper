@@ -3164,9 +3164,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.28"
+version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
+checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "loop9"
@@ -7066,7 +7066,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-cli"
-version = "0.9.3"
+version = "0.9.5"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -7086,7 +7086,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-core"
-version = "0.9.3"
+version = "0.9.5"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7105,7 +7105,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-gui"
-version = "0.9.3"
+version = "0.9.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7128,7 +7128,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-utils"
-version = "0.9.3"
+version = "0.9.5"
 dependencies = [
  "anyhow",
  "async-channel",
