@@ -4,6 +4,7 @@
 //! for generating polygon outlines and applying alpha masks to RGBA images.
 
 use crate::point::Point;
+
 use image::{DynamicImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
@@ -142,8 +143,8 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
                 .map(|i| {
                     let theta = (i as f32 / segments as f32) * 2.0 * PI;
                     Point {
-                        x: cx * (theta.cos() + 1.0),
-                        y: cy * (theta.sin() + 1.0),
+                        x: theta.cos().mul_add(cx, cx),
+                        y: theta.sin().mul_add(cy, cy),
                     }
                 })
                 .collect()
@@ -304,10 +305,7 @@ fn rounded_rect_points(width: f32, height: f32, radius: f32, segments: usize) ->
         let delta = (end - start) / steps as f32;
         for i in 0..=steps {
             let angle = delta.mul_add(i as f32, start);
-            points.push(Point {
-                x: angle.cos().mul_add(radius, cx),
-                y: angle.sin().mul_add(radius, cy),
-            });
+            push_point(&mut points, angle, cx, cy, radius);
         }
     };
 
@@ -379,10 +377,7 @@ fn polygon_points(
     let mut base_vertices = Vec::with_capacity(n);
     for i in 0..n {
         let angle = rotation + 2.0 * PI * i as f32 / n as f32;
-        base_vertices.push(Point {
-            x: angle.cos().mul_add(radius, cx),
-            y: angle.sin().mul_add(radius, cy),
-        });
+        push_point(&mut base_vertices, angle, cx, cy, radius);
     }
 
     match corner_style {
@@ -441,7 +436,6 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         let next = vertices[(i + 1) % len];
 
         let incoming = normalize(current - prev);
-
         let outgoing = normalize(next - current);
 
         let angle_cos = (-incoming) * outgoing;
@@ -453,7 +447,6 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         offset = offset.min(incoming_len * 0.5).min(outgoing_len * 0.5);
 
         let start = (-incoming).mul_add(offset, current);
-
         let end = outgoing.mul_add(offset, current);
 
         let bisector = normalize(outgoing - incoming);
@@ -462,7 +455,6 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         let center = bisector.mul_add(center_distance, current);
 
         let start_angle = (start.y - center.y).atan2(start.x - center.x);
-
         let end_angle = (end.y - center.y).atan2(end.x - center.x);
         let mut delta = end_angle - start_angle;
         while delta <= 0.0 {
@@ -472,10 +464,7 @@ fn rounded_polygon(vertices: &[Point], radius: f32, segments: usize) -> Vec<Poin
         let step = delta / steps as f32;
         for j in 0..=steps {
             let angle = step.mul_add(j as f32, start_angle);
-            points.push(Point {
-                x: angle.cos().mul_add(radius, center.x),
-                y: angle.sin().mul_add(radius, center.y),
-            });
+            push_point(&mut points, angle, center.x, center.y, radius);
         }
     }
 
@@ -631,17 +620,11 @@ fn star_points(
     for i in 0..n {
         // Outer point
         let angle_outer = rotation + 2.0 * PI * i as f32 / n as f32;
-        vertices.push(Point {
-            x: angle_outer.cos().mul_add(outer_radius, cx),
-            y: angle_outer.sin().mul_add(outer_radius, cy),
-        });
+        push_point(&mut vertices, angle_outer, cx, cy, outer_radius);
 
         // Inner point
         let angle_inner = angle_outer + step_angle;
-        vertices.push(Point {
-            x: angle_inner.cos().mul_add(inner_radius, cx),
-            y: angle_inner.sin().mul_add(inner_radius, cy),
-        });
+        push_point(&mut vertices, angle_inner, cx, cy, inner_radius);
     }
 
     vertices
@@ -670,4 +653,13 @@ pub fn outline_points_for_rect(
         .into_iter()
         .map(|p| (p.x, p.y))
         .collect()
+}
+
+/// Pushes a point to the vector, scaled to the given rectangle.
+#[inline]
+fn push_point(points: &mut Vec<Point>, angle: f32, cx: f32, cy: f32, radius: f32) {
+    points.push(Point {
+        x: angle.cos().mul_add(radius, cx),
+        y: angle.sin().mul_add(radius, cy),
+    });
 }

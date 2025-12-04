@@ -43,11 +43,11 @@
     },
     "shape": {
       "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 0.0,
+      "sides": 5,
+      "rotation_deg": 147.25151,
       "corner_style": {
         "style": "bezier",
-        "tension": 0.4998821
+        "tension": 0.7498814
       }
     }
   },
