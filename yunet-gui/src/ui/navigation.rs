@@ -63,10 +63,7 @@ impl YuNetApp {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
-                                Button::image_and_text(
-                                    self.icons.network(icon_size),
-                                    "Mapping Import",
-                                ),
+                                Button::image_and_text(self.icons.network(icon_size), "Import Map"),
                             )
                             .clicked()
                         {
@@ -80,30 +77,30 @@ impl YuNetApp {
                     .spacing([8.0, 8.0])
                     .show(ui, |ui| {
                         let export_enabled = self.can_export_selected();
-                        if ui
-                            .add_enabled(
-                                export_enabled,
-                                Button::image_and_text(
-                                    self.icons.export(icon_size),
-                                    "Export selected",
+                        ui.add_enabled_ui(export_enabled, |ui| {
+                            if ui
+                                .add_sized(
+                                    [btn_width, button_height],
+                                    Button::image_and_text(self.icons.export(icon_size), "Export"),
                                 )
-                                .min_size(egui::vec2(btn_width, button_height)),
-                            )
-                            .clicked()
-                        {
-                            self.export_selected_faces();
-                        }
+                                .clicked()
+                            {
+                                self.export_selected_faces();
+                            }
+                        });
+
                         let batch_enabled = !self.batch_files.is_empty();
-                        if ui
-                            .add_enabled(
-                                batch_enabled,
-                                Button::image_and_text(self.icons.run(icon_size), "Run batch")
-                                    .min_size(egui::vec2(btn_width, button_height)),
-                            )
-                            .clicked()
-                        {
-                            self.start_batch_export();
-                        }
+                        ui.add_enabled_ui(batch_enabled, |ui| {
+                            if ui
+                                .add_sized(
+                                    [btn_width, button_height],
+                                    Button::image_and_text(self.icons.run(icon_size), "Run batch"),
+                                )
+                                .clicked()
+                            {
+                                self.start_batch_export();
+                            }
+                        });
                         ui.end_row();
                     });
 
