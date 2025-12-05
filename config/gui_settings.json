@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "custom",
-    "output_width": 519,
-    "output_height": 503,
+    "preset": "passport",
+    "output_width": 413,
+    "output_height": 531,
     "face_height_pct": 53.2342,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
