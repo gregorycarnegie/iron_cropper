@@ -12,8 +12,8 @@
   },
   "crop": {
     "preset": "custom",
-    "output_width": 1460,
-    "output_height": 531,
+    "output_width": 519,
+    "output_height": 503,
     "face_height_pct": 53.2342,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
@@ -42,13 +42,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 5,
-      "rotation_deg": 166.34224,
-      "corner_style": {
-        "style": "bezier",
-        "tension": 1.7195781
-      }
+      "kind": "rectangle"
     }
   },
   "enhance": {

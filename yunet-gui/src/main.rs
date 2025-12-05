@@ -231,6 +231,7 @@ impl YuNetApp {
             webcam_state: Default::default(),
             icons: crate::ui::icons::IconSet::new(ctx),
             fill_color_mode: ColorMode::Rgb,
+            aspect_ratio_locked: false,
         }
     }
 

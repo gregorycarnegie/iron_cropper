@@ -202,6 +202,8 @@ pub struct YuNetApp {
     pub webcam_state: WebcamState,
     /// Selected color mode for the fill color picker.
     pub fill_color_mode: ColorMode,
+    /// Whether the aspect ratio is locked in the crop settings.
+    pub aspect_ratio_locked: bool,
 }
 
 /// Webcam capture state.

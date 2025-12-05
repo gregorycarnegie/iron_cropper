@@ -12,9 +12,20 @@ use yunet_utils::quality::Quality;
 pub fn show_detection_window(app: &mut YuNetApp, ctx: &EguiContext) {
     let palette = theme::palette();
     let mut open = app.show_detection_window;
+
+    let num_detections = app.preview.detections.len().max(1);
+    let card_est_width = 250.0;
+    let padding = 40.0;
+    let desired_width = (num_detections as f32)
+        .mul_add(card_est_width, padding)
+        .clamp(300.0, 1200.0);
+    let max_width = ctx.content_rect().width();
+    let initial_width = desired_width.min(max_width);
+
     egui::Window::new("Detections")
         .open(&mut open)
-        .auto_sized()
+        .default_size([initial_width, 380.0])
+        .resizable(true)
         .show(ctx, |ui| {
             show_detection_content(app, ctx, ui, palette);
         });
