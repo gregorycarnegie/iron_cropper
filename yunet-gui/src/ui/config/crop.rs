@@ -4,7 +4,7 @@ use crate::YuNetApp;
 use crate::types::ColorMode;
 use crate::ui::widgets;
 
-use egui::{Color32, ComboBox, DragValue, TextEdit, Ui, color_picker};
+use egui::{Color32, ComboBox, TextEdit, Ui, color_picker};
 use std::collections::BTreeMap;
 use yunet_core::preset_by_name;
 use yunet_utils::{
@@ -142,13 +142,9 @@ fn show_dimensions_controls(
             ui.end_row();
 
             // Inputs row
-            let width_response = ui
-                .add_sized(
-                    [80.0, 20.0],
-                    DragValue::new(&mut width).range(64..=4096).speed(1.0),
-                )
+            let width_response = widgets::integer_input(ui, &mut width, 64..=4096, 80.0)
                 .on_hover_text(
-                    "Drag or type to set the output width. Editing switches to the Custom preset.",
+                    "Type to set the output width. Editing switches to the Custom preset.",
                 );
 
             // Lock button
@@ -167,13 +163,9 @@ fn show_dimensions_controls(
                 }
             });
 
-            let height_response = ui
-                .add_sized(
-                    [80.0, 20.0],
-                    DragValue::new(&mut height).range(64..=4096).speed(1.0),
-                )
+            let height_response = widgets::integer_input(ui, &mut height, 64..=4096, 80.0)
                 .on_hover_text(
-                    "Drag or type to set the output height. Editing switches to the Custom preset.",
+                    "Type to set the output height. Editing switches to the Custom preset.",
                 );
 
             if width_response.changed() {
@@ -341,42 +333,24 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut r)
-                                        .range(0..=255)
-                                        .speed(1.0)
-                                        .suffix(" R"),
-                                )
-                                .changed()
-                            {
-                                rgb_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut g)
-                                        .range(0..=255)
-                                        .speed(1.0)
-                                        .suffix(" G"),
-                                )
-                                .changed()
-                            {
-                                rgb_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut b)
-                                        .range(0..=255)
-                                        .speed(1.0)
-                                        .suffix(" B"),
-                                )
-                                .changed()
-                            {
-                                rgb_changed = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if widgets::integer_input(ui, &mut r, 0..=255, 50.0).changed() {
+                                    rgb_changed = true;
+                                }
+                                ui.label("R");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::integer_input(ui, &mut g, 0..=255, 50.0).changed() {
+                                    rgb_changed = true;
+                                }
+                                ui.label("G");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::integer_input(ui, &mut b, 0..=255, 50.0).changed() {
+                                    rgb_changed = true;
+                                }
+                                ui.label("B");
+                            });
                         });
                 }
                 ColorMode::Hsv => {
@@ -385,42 +359,29 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut hue)
-                                        .range(0.0..=360.0)
-                                        .speed(1.0)
-                                        .suffix("°"),
-                                )
-                                .changed()
-                            {
-                                hsv_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut sat_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% S"),
-                                )
-                                .changed()
-                            {
-                                hsv_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut val_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% V"),
-                                )
-                                .changed()
-                            {
-                                hsv_changed = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut hue, 0.0..=360.0, 50.0).changed()
+                                {
+                                    hsv_changed = true;
+                                }
+                                ui.label("°");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut sat_pct, 0.0..=100.0, 50.0)
+                                    .changed()
+                                {
+                                    hsv_changed = true;
+                                }
+                                ui.label("% S");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut val_pct, 0.0..=100.0, 50.0)
+                                    .changed()
+                                {
+                                    hsv_changed = true;
+                                }
+                                ui.label("% V");
+                            });
                         });
                 }
                 ColorMode::Hsl => {
@@ -429,42 +390,30 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut hue_l)
-                                        .range(0.0..=360.0)
-                                        .speed(1.0)
-                                        .suffix("°"),
-                                )
-                                .changed()
-                            {
-                                hsl_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut sat_l_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% S"),
-                                )
-                                .changed()
-                            {
-                                hsl_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [80.0, 20.0],
-                                    DragValue::new(&mut light_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% L"),
-                                )
-                                .changed()
-                            {
-                                hsl_changed = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut hue_l, 0.0..=360.0, 50.0)
+                                    .changed()
+                                {
+                                    hsl_changed = true;
+                                }
+                                ui.label("°");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut sat_l_pct, 0.0..=100.0, 50.0)
+                                    .changed()
+                                {
+                                    hsl_changed = true;
+                                }
+                                ui.label("% S");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut light_pct, 0.0..=100.0, 50.0)
+                                    .changed()
+                                {
+                                    hsl_changed = true;
+                                }
+                                ui.label("% L");
+                            });
                         });
                 }
                 ColorMode::Cmyk => {
@@ -473,54 +422,38 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(4)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            if ui
-                                .add_sized(
-                                    [60.0, 20.0],
-                                    DragValue::new(&mut c_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% C"),
-                                )
-                                .changed()
-                            {
-                                cmyk_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [60.0, 20.0],
-                                    DragValue::new(&mut m_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% M"),
-                                )
-                                .changed()
-                            {
-                                cmyk_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [60.0, 20.0],
-                                    DragValue::new(&mut y_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% Y"),
-                                )
-                                .changed()
-                            {
-                                cmyk_changed = true;
-                            }
-                            if ui
-                                .add_sized(
-                                    [60.0, 20.0],
-                                    DragValue::new(&mut k_pct)
-                                        .range(0.0..=100.0)
-                                        .speed(1.0)
-                                        .suffix("% K"),
-                                )
-                                .changed()
-                            {
-                                cmyk_changed = true;
-                            }
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut c_pct, 0.0..=100.0, 40.0)
+                                    .changed()
+                                {
+                                    cmyk_changed = true;
+                                }
+                                ui.label("% C");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut m_pct, 0.0..=100.0, 40.0)
+                                    .changed()
+                                {
+                                    cmyk_changed = true;
+                                }
+                                ui.label("% M");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut y_pct, 0.0..=100.0, 40.0)
+                                    .changed()
+                                {
+                                    cmyk_changed = true;
+                                }
+                                ui.label("% Y");
+                            });
+                            ui.horizontal(|ui| {
+                                if widgets::numeric_input(ui, &mut k_pct, 0.0..=100.0, 40.0)
+                                    .changed()
+                                {
+                                    cmyk_changed = true;
+                                }
+                                ui.label("% K");
+                            });
                         });
                 }
             }
@@ -798,10 +731,8 @@ fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bo
                 .parse::<i32>()
                 .unwrap_or(6);
             let prev = level;
-            if ui
-                .add(DragValue::new(&mut level).range(0..=9).prefix("Level "))
-                .changed()
-            {
+            ui.label("Level");
+            if widgets::integer_input(ui, &mut level, 0..=9, 40.0).changed() {
                 level = level.clamp(0, 9);
                 if level != prev {
                     app.settings.crop.png_compression = level.to_string();
@@ -1065,13 +996,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             corner_style,
         } => {
             let mut sides_u32 = *sides as u32;
-            if ui
-                .add(
-                    DragValue::new(&mut sides_u32)
-                        .range(3..=24)
-                        .speed(1.0)
-                        .suffix(" sides"),
-                )
+            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0)
+                .on_hover_text("Number of sides")
                 .changed()
             {
                 *sides = sides_u32.clamp(3, 24) as u8;
@@ -1156,13 +1082,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             rotation_deg,
         } => {
             let mut points_u32 = *points as u32;
-            if ui
-                .add(
-                    DragValue::new(&mut points_u32)
-                        .range(3..=24)
-                        .speed(1.0)
-                        .suffix(" points"),
-                )
+            if widgets::integer_input(ui, &mut points_u32, 3..=24, 60.0)
+                .on_hover_text("Number of points")
                 .changed()
             {
                 *points = points_u32.clamp(3, 24) as u8;
@@ -1203,13 +1124,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             iterations,
         } => {
             let mut sides_u32 = *sides as u32;
-            if ui
-                .add(
-                    DragValue::new(&mut sides_u32)
-                        .range(3..=24)
-                        .speed(1.0)
-                        .suffix(" sides"),
-                )
+            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0)
+                .on_hover_text("Number of sides")
                 .changed()
             {
                 *sides = sides_u32.clamp(3, 24) as u8;
@@ -1228,13 +1144,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 }
             );
             let mut iter = *iterations as u32;
-            if ui
-                .add(
-                    DragValue::new(&mut iter)
-                        .range(0..=5)
-                        .speed(0.1)
-                        .suffix(" iterations"),
-                )
+            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0)
+                .on_hover_text("Iterations")
                 .changed()
             {
                 *iterations = iter.clamp(0, 5) as u8;
@@ -1243,13 +1154,8 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         }
         CropShape::KochRectangle { iterations } => {
             let mut iter = *iterations as u32;
-            if ui
-                .add(
-                    DragValue::new(&mut iter)
-                        .range(0..=5)
-                        .speed(0.1)
-                        .suffix(" iterations"),
-                )
+            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0)
+                .on_hover_text("Iterations")
                 .changed()
             {
                 *iterations = iter.clamp(0, 5) as u8;

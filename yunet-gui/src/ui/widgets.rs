@@ -1,7 +1,8 @@
 use egui::{
-    Align, Align2, Color32, CornerRadius, CursorIcon, DragValue, FontId, Layout, Rect, Response,
-    Sense, Ui, emath, lerp, pos2, remap, vec2,
+    Align, Align2, Color32, CornerRadius, CursorIcon, FontId, Layout, Rect, Response, Sense,
+    TextEdit, Ui, emath, lerp, pos2, remap, vec2,
 };
+use std::ops::RangeInclusive;
 
 /// A custom slider with specific styling:
 /// - Dark rounded background container
@@ -10,7 +11,7 @@ use egui::{
 pub fn custom_slider<Num: emath::Numeric>(
     ui: &mut Ui,
     value: &mut Num,
-    range: std::ops::RangeInclusive<Num>,
+    range: RangeInclusive<Num>,
     text: Option<&str>,
     accent_color: Option<Color32>,
 ) -> Response {
@@ -60,8 +61,8 @@ pub fn custom_slider<Num: emath::Numeric>(
         let padding = 8.0;
         let track_height = 6.0;
         let track_rect = Rect::from_min_max(
-            pos2(rect.left() + padding, rect.center().y - track_height / 2.0),
-            pos2(rect.right() - padding, rect.center().y + track_height / 2.0),
+            pos2(rect.left() + padding, rect.center().y - track_height * 0.5),
+            pos2(rect.right() - padding, rect.center().y + track_height * 0.5),
         );
 
         let min = range.start().to_f64();
@@ -108,6 +109,9 @@ pub fn custom_slider<Num: emath::Numeric>(
         // The reference image doesn't show text *on* the slider.
         // But our existing usage passes `.text("Score threshold")`.
         // Let's render the text on top, centered or to the left, if provided.
+        // The reference image doesn't show text *on* the slider.
+        // But we need to show the label somewhere.
+        // For now, let's draw it centered in the container, with a shadow for contrast.
 
         if let Some(text) = text {
             let text_color = if t > 0.5 {
@@ -134,13 +138,13 @@ pub fn custom_slider<Num: emath::Numeric>(
     response.on_hover_cursor(CursorIcon::Grab)
 }
 
-/// Helper function to render a slider row with label and drag value.
-pub fn slider_row<Num: emath::Numeric>(
+/// Helper function to render a slider row with label and numeric input.
+pub fn slider_row<Num: emath::Numeric + ToString + std::str::FromStr + Copy + PartialOrd>(
     ui: &mut Ui,
     value: &mut Num,
-    range: std::ops::RangeInclusive<Num>,
+    range: RangeInclusive<Num>,
     label: &str,
-    speed: f64,
+    _speed: f64,
     hover_text: Option<&str>,
     accent_color: Option<Color32>,
 ) -> bool {
@@ -156,13 +160,15 @@ pub fn slider_row<Num: emath::Numeric>(
             vec2(slider_width, 24.0),
             Layout::left_to_right(Align::Center),
             |ui| {
-                if custom_slider(ui, value, range, None, accent_color).changed() {
+                if custom_slider(ui, value, range.clone(), None, accent_color).changed() {
                     changed = true;
                 }
             },
         );
 
-        let response = ui.add_sized([drag_width, 20.0], DragValue::new(value).speed(speed));
+        // Use float_input for the numeric part since sliders usually handle floats or integers.
+        // We can use a generic implementation.
+        let response = numeric_input(ui, value, range, drag_width);
         if response.changed() {
             changed = true;
         }
@@ -171,6 +177,68 @@ pub fn slider_row<Num: emath::Numeric>(
         }
     });
     changed
+}
+
+/// A restricted numeric input field that only accepts digits (and decimal point for floats).
+pub fn numeric_input<Num: ToString + std::str::FromStr + PartialOrd + Copy>(
+    ui: &mut Ui,
+    value: &mut Num,
+    range: RangeInclusive<Num>,
+    width: f32,
+) -> Response {
+    let mut text = value.to_string();
+    let response = ui.add_sized([width, 20.0], TextEdit::singleline(&mut text));
+
+    if response.changed() {
+        // Filter input
+        let filtered: String = text
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+            .collect();
+
+        if let Ok(parsed) = filtered.parse::<Num>() {
+            let clamped = if parsed < *range.start() {
+                *range.start()
+            } else if parsed > *range.end() {
+                *range.end()
+            } else {
+                parsed
+            };
+            *value = clamped;
+        }
+    }
+    response
+}
+
+/// A restricted integer input field that only accepts digits.
+pub fn integer_input<Num: ToString + std::str::FromStr + PartialOrd + Copy>(
+    ui: &mut Ui,
+    value: &mut Num,
+    range: RangeInclusive<Num>,
+    width: f32,
+) -> Response {
+    let mut text = value.to_string();
+    let response = ui.add_sized([width, 20.0], TextEdit::singleline(&mut text));
+
+    if response.changed() {
+        // Filter input: digits and optional negative sign
+        let filtered: String = text
+            .chars()
+            .filter(|c| c.is_ascii_digit() || *c == '-')
+            .collect();
+
+        if let Ok(parsed) = filtered.parse::<Num>() {
+            let clamped = if parsed < *range.start() {
+                *range.start()
+            } else if parsed > *range.end() {
+                *range.end()
+            } else {
+                parsed
+            };
+            *value = clamped;
+        }
+    }
+    response
 }
 
 /// Macro to render a slider row with a consistent max width constraint.
