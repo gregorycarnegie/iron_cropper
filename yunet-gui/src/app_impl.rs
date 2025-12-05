@@ -376,7 +376,7 @@ impl YuNetApp {
         Ok(path_buf)
     }
 
-    fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> bool {
+    pub(crate) fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> bool {
         if paths.is_empty() {
             return false;
         }
@@ -394,7 +394,7 @@ impl YuNetApp {
         }
     }
 
-    fn collect_images_from_directory(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    pub(crate) fn collect_images_from_directory(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
         let mut images = Vec::new();
         let mut queue = VecDeque::new();
         queue.push_back(dir.to_path_buf());

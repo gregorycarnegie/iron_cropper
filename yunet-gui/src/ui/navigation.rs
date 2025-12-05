@@ -43,14 +43,26 @@ impl YuNetApp {
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
+                                Button::image_and_text(
+                                    self.icons.folder_open(icon_size),
+                                    "Load folder",
+                                ),
+                            )
+                            .clicked()
+                        {
+                            self.open_folder_dialog();
+                        }
+                        ui.end_row();
+
+                        if ui
+                            .add_sized(
+                                [btn_width, button_height],
                                 Button::image_and_text(self.icons.gallery(icon_size), "Load batch"),
                             )
                             .clicked()
                         {
                             self.open_batch_dialog();
                         }
-                        ui.end_row();
-
                         if ui
                             .add_sized(
                                 [btn_width, button_height],
@@ -60,6 +72,8 @@ impl YuNetApp {
                         {
                             self.show_batch_window = true;
                         }
+                        ui.end_row();
+
                         if ui
                             .add_sized(
                                 [btn_width, button_height],

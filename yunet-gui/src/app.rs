@@ -374,6 +374,29 @@ impl YuNetApp {
         }
     }
 
+    /// Opens a file dialog to select a folder for batch processing.
+    pub(crate) fn open_folder_dialog(&mut self) {
+        if let Some(path) = FileDialog::new().pick_folder() {
+            match Self::collect_images_from_directory(&path) {
+                Ok(images) => {
+                    if images.is_empty() {
+                        self.show_error(
+                            "No images found",
+                            format!("No supported images found in {}", path.display()),
+                        );
+                    } else {
+                        let count = images.len();
+                        self.enqueue_batch_paths(images);
+                        self.show_success(format!("Loaded {count} images from folder"));
+                    }
+                }
+                Err(err) => {
+                    self.show_error("Failed to load folder", err.to_string());
+                }
+            }
+        }
+    }
+
     /// Enqueues additional image paths for batch processing, deduplicating existing entries.
     pub(crate) fn enqueue_batch_images(&mut self, paths: Vec<PathBuf>) -> usize {
         let mut added = 0;
