@@ -11,15 +11,15 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "passport",
-    "output_width": 413,
-    "output_height": 531,
+    "preset": "custom",
+    "output_width": 427,
+    "output_height": 530,
     "face_height_pct": 53.2342,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 110,
+      "red": 118,
       "green": 120,
       "blue": 136,
       "alpha": 255

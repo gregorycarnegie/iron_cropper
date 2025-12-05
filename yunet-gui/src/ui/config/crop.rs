@@ -142,7 +142,7 @@ fn show_dimensions_controls(
             ui.end_row();
 
             // Inputs row
-            let width_response = widgets::integer_input(ui, &mut width, 64..=4096, 80.0)
+            let width_response = widgets::integer_input(ui, &mut width, 64..=4096, 80.0, None)
                 .on_hover_text(
                     "Type to set the output width. Editing switches to the Custom preset.",
                 );
@@ -163,7 +163,7 @@ fn show_dimensions_controls(
                 }
             });
 
-            let height_response = widgets::integer_input(ui, &mut height, 64..=4096, 80.0)
+            let height_response = widgets::integer_input(ui, &mut height, 64..=4096, 80.0, None)
                 .on_hover_text(
                     "Type to set the output height. Editing switches to the Custom preset.",
                 );
@@ -198,6 +198,16 @@ fn show_dimensions_controls(
         *preview_invalidated = true;
         *settings_changed = true;
     }
+}
+
+macro_rules! color_input_cell {
+    ($ui:expr, $val:expr, $range:expr, $width:expr, $suffix:expr, $changed:ident, $func:path) => {
+        $ui.horizontal(|ui| {
+            if $func(ui, $val, $range, $width, Some($suffix)).changed() {
+                $changed = true;
+            }
+        });
+    };
 }
 
 fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
@@ -333,24 +343,33 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                if widgets::integer_input(ui, &mut r, 0..=255, 50.0).changed() {
-                                    rgb_changed = true;
-                                }
-                                ui.label("R");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::integer_input(ui, &mut g, 0..=255, 50.0).changed() {
-                                    rgb_changed = true;
-                                }
-                                ui.label("G");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::integer_input(ui, &mut b, 0..=255, 50.0).changed() {
-                                    rgb_changed = true;
-                                }
-                                ui.label("B");
-                            });
+                            color_input_cell!(
+                                ui,
+                                &mut r,
+                                0..=255,
+                                60.0,
+                                " R",
+                                rgb_changed,
+                                widgets::integer_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut g,
+                                0..=255,
+                                60.0,
+                                " G",
+                                rgb_changed,
+                                widgets::integer_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut b,
+                                0..=255,
+                                60.0,
+                                " B",
+                                rgb_changed,
+                                widgets::integer_input
+                            );
                         });
                 }
                 ColorMode::Hsv => {
@@ -359,29 +378,33 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut hue, 0.0..=360.0, 50.0).changed()
-                                {
-                                    hsv_changed = true;
-                                }
-                                ui.label("°");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut sat_pct, 0.0..=100.0, 50.0)
-                                    .changed()
-                                {
-                                    hsv_changed = true;
-                                }
-                                ui.label("% S");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut val_pct, 0.0..=100.0, 50.0)
-                                    .changed()
-                                {
-                                    hsv_changed = true;
-                                }
-                                ui.label("% V");
-                            });
+                            color_input_cell!(
+                                ui,
+                                &mut hue,
+                                0.0..=360.0,
+                                60.0,
+                                "°",
+                                hsv_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut sat_pct,
+                                0.0..=100.0,
+                                60.0,
+                                " % S",
+                                hsv_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut val_pct,
+                                0.0..=100.0,
+                                60.0,
+                                " % V",
+                                hsv_changed,
+                                widgets::numeric_input
+                            );
                         });
                 }
                 ColorMode::Hsl => {
@@ -390,30 +413,33 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(3)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut hue_l, 0.0..=360.0, 50.0)
-                                    .changed()
-                                {
-                                    hsl_changed = true;
-                                }
-                                ui.label("°");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut sat_l_pct, 0.0..=100.0, 50.0)
-                                    .changed()
-                                {
-                                    hsl_changed = true;
-                                }
-                                ui.label("% S");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut light_pct, 0.0..=100.0, 50.0)
-                                    .changed()
-                                {
-                                    hsl_changed = true;
-                                }
-                                ui.label("% L");
-                            });
+                            color_input_cell!(
+                                ui,
+                                &mut hue_l,
+                                0.0..=360.0,
+                                60.0,
+                                "°",
+                                hsl_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut sat_l_pct,
+                                0.0..=100.0,
+                                60.0,
+                                " % S",
+                                hsl_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut light_pct,
+                                0.0..=100.0,
+                                60.0,
+                                " % L",
+                                hsl_changed,
+                                widgets::numeric_input
+                            );
                         });
                 }
                 ColorMode::Cmyk => {
@@ -422,38 +448,42 @@ fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         .num_columns(4)
                         .spacing([8.0, 0.0])
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut c_pct, 0.0..=100.0, 40.0)
-                                    .changed()
-                                {
-                                    cmyk_changed = true;
-                                }
-                                ui.label("% C");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut m_pct, 0.0..=100.0, 40.0)
-                                    .changed()
-                                {
-                                    cmyk_changed = true;
-                                }
-                                ui.label("% M");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut y_pct, 0.0..=100.0, 40.0)
-                                    .changed()
-                                {
-                                    cmyk_changed = true;
-                                }
-                                ui.label("% Y");
-                            });
-                            ui.horizontal(|ui| {
-                                if widgets::numeric_input(ui, &mut k_pct, 0.0..=100.0, 40.0)
-                                    .changed()
-                                {
-                                    cmyk_changed = true;
-                                }
-                                ui.label("% K");
-                            });
+                            color_input_cell!(
+                                ui,
+                                &mut c_pct,
+                                0.0..=100.0,
+                                50.0,
+                                " % C",
+                                cmyk_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut m_pct,
+                                0.0..=100.0,
+                                50.0,
+                                " % M",
+                                cmyk_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut y_pct,
+                                0.0..=100.0,
+                                50.0,
+                                " % Y",
+                                cmyk_changed,
+                                widgets::numeric_input
+                            );
+                            color_input_cell!(
+                                ui,
+                                &mut k_pct,
+                                0.0..=100.0,
+                                50.0,
+                                " % K",
+                                cmyk_changed,
+                                widgets::numeric_input
+                            );
                         });
                 }
             }
@@ -732,7 +762,7 @@ fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mut bo
                 .unwrap_or(6);
             let prev = level;
             ui.label("Level");
-            if widgets::integer_input(ui, &mut level, 0..=9, 40.0).changed() {
+            if widgets::integer_input(ui, &mut level, 0..=9, 40.0, None).changed() {
                 level = level.clamp(0, 9);
                 if level != prev {
                     app.settings.crop.png_compression = level.to_string();
@@ -996,7 +1026,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             corner_style,
         } => {
             let mut sides_u32 = *sides as u32;
-            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0)
+            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0, None)
                 .on_hover_text("Number of sides")
                 .changed()
             {
@@ -1082,7 +1112,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             rotation_deg,
         } => {
             let mut points_u32 = *points as u32;
-            if widgets::integer_input(ui, &mut points_u32, 3..=24, 60.0)
+            if widgets::integer_input(ui, &mut points_u32, 3..=24, 60.0, None)
                 .on_hover_text("Number of points")
                 .changed()
             {
@@ -1124,7 +1154,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             iterations,
         } => {
             let mut sides_u32 = *sides as u32;
-            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0)
+            if widgets::integer_input(ui, &mut sides_u32, 3..=24, 60.0, None)
                 .on_hover_text("Number of sides")
                 .changed()
             {
@@ -1144,7 +1174,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 }
             );
             let mut iter = *iterations as u32;
-            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0)
+            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0, None)
                 .on_hover_text("Iterations")
                 .changed()
             {
@@ -1154,7 +1184,7 @@ fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         }
         CropShape::KochRectangle { iterations } => {
             let mut iter = *iterations as u32;
-            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0)
+            if widgets::integer_input(ui, &mut iter, 0..=5, 60.0, None)
                 .on_hover_text("Iterations")
                 .changed()
             {

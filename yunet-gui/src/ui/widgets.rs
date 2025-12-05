@@ -1,6 +1,6 @@
 use egui::{
-    Align, Align2, Color32, CornerRadius, CursorIcon, FontId, Layout, Rect, Response, Sense,
-    TextEdit, Ui, emath, lerp, pos2, remap, vec2,
+    Align, Align2, Color32, CornerRadius, CursorIcon, DragValue, FontId, Layout, Rect, Response,
+    Sense, Ui, emath, lerp, pos2, remap, vec2,
 };
 use std::ops::RangeInclusive;
 
@@ -168,7 +168,7 @@ pub fn slider_row<Num: emath::Numeric + ToString + std::str::FromStr + Copy + Pa
 
         // Use float_input for the numeric part since sliders usually handle floats or integers.
         // We can use a generic implementation.
-        let response = numeric_input(ui, value, range, drag_width);
+        let response = numeric_input(ui, value, range, drag_width, None);
         if response.changed() {
             changed = true;
         }
@@ -180,65 +180,40 @@ pub fn slider_row<Num: emath::Numeric + ToString + std::str::FromStr + Copy + Pa
 }
 
 /// A restricted numeric input field that only accepts digits (and decimal point for floats).
-pub fn numeric_input<Num: ToString + std::str::FromStr + PartialOrd + Copy>(
+pub fn numeric_input<Num: emath::Numeric>(
     ui: &mut Ui,
     value: &mut Num,
     range: RangeInclusive<Num>,
     width: f32,
+    suffix: Option<&str>,
 ) -> Response {
-    let mut text = value.to_string();
-    let response = ui.add_sized([width, 20.0], TextEdit::singleline(&mut text));
-
-    if response.changed() {
-        // Filter input
-        let filtered: String = text
-            .chars()
-            .filter(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
-            .collect();
-
-        if let Ok(parsed) = filtered.parse::<Num>() {
-            let clamped = if parsed < *range.start() {
-                *range.start()
-            } else if parsed > *range.end() {
-                *range.end()
-            } else {
-                parsed
-            };
-            *value = clamped;
-        }
-    }
-    response
+    ui.add_sized(
+        [width, 20.0],
+        DragValue::new(value)
+            .range(range)
+            .speed(1.0)
+            .suffix(suffix.unwrap_or("")),
+    )
 }
 
 /// A restricted integer input field that only accepts digits.
-pub fn integer_input<Num: ToString + std::str::FromStr + PartialOrd + Copy>(
+///
+/// This uses `DragValue` with `fixed_decimals(0)` and `speed(1.0)` to enforce integer-like behavior.
+pub fn integer_input<Num: emath::Numeric>(
     ui: &mut Ui,
     value: &mut Num,
     range: RangeInclusive<Num>,
     width: f32,
+    suffix: Option<&str>,
 ) -> Response {
-    let mut text = value.to_string();
-    let response = ui.add_sized([width, 20.0], TextEdit::singleline(&mut text));
-
-    if response.changed() {
-        // Filter input: digits and optional negative sign
-        let filtered: String = text
-            .chars()
-            .filter(|c| c.is_ascii_digit() || *c == '-')
-            .collect();
-
-        if let Ok(parsed) = filtered.parse::<Num>() {
-            let clamped = if parsed < *range.start() {
-                *range.start()
-            } else if parsed > *range.end() {
-                *range.end()
-            } else {
-                parsed
-            };
-            *value = clamped;
-        }
-    }
-    response
+    ui.add_sized(
+        [width, 20.0],
+        DragValue::new(value)
+            .range(range)
+            .speed(1.0)
+            .fixed_decimals(0)
+            .suffix(suffix.unwrap_or("")),
+    )
 }
 
 /// Macro to render a slider row with a consistent max width constraint.
