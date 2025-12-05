@@ -136,7 +136,7 @@ fn show_dimensions_controls(
             // Labels row
             ui.label("Width")
                 .on_hover_text("Export width in pixels for the crop.");
-            ui.label(""); // Spacer for lock button column
+            ui.label(" "); // Spacer for lock button column
             ui.label("Height")
                 .on_hover_text("Export height in pixels for the crop.");
             ui.end_row();
@@ -148,20 +148,23 @@ fn show_dimensions_controls(
                 );
 
             // Lock button
-            ui.vertical_centered(|ui| {
-                let icon = if app.aspect_ratio_locked {
-                    app.icons.lock(14.0)
-                } else {
-                    app.icons.unlock(14.0)
-                };
-                if ui
-                    .add(egui::Button::image(icon))
-                    .on_hover_text("Lock aspect ratio")
-                    .clicked()
-                {
-                    app.aspect_ratio_locked = !app.aspect_ratio_locked;
-                }
-            });
+            ui.with_layout(
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    let icon = if app.aspect_ratio_locked {
+                        app.icons.lock(14.0)
+                    } else {
+                        app.icons.unlock(14.0)
+                    };
+                    if ui
+                        .add(egui::Button::image(icon).frame(false))
+                        .on_hover_text("Lock aspect ratio")
+                        .clicked()
+                    {
+                        app.aspect_ratio_locked = !app.aspect_ratio_locked;
+                    }
+                },
+            );
 
             let height_response = widgets::integer_input(ui, &mut height, 64..=4096, 80.0, None)
                 .on_hover_text(
