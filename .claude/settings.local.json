@@ -1,29 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)",
-      "Bash(test:*)",
-      "Bash(cat:*)",
-      "Bash(cargo check:*)",
-      "Bash(python3 -c:*)",
-      "Bash(python:*)",
-      "Bash(grep:*)",
-      "Bash(git log:*)",
-      "Bash(cargo test:*)",
-      "Bash(cargo clippy:*)",
-      "Bash(cargo tree:*)",
-      "Bash(cargo --version:*)",
-      "Bash(rustc:*)",
-      "Bash(cargo run:*)",
-      "Bash(cargo doc:*)",
-      "Bash(cargo build:*)",
-      "Bash(cargo bench:*)",
-      "Bash(git checkout:*)",
-      "Bash(tee:*)",
-      "Bash(cargo metadata:*)",
-      "Bash(cargo fix:*)",
-      "Bash(for f in *.rs)",
-      "Bash(done)"
+      "Bash(cargo clippy:*)"
     ],
     "deny": [],
     "ask": []

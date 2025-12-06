@@ -71,7 +71,7 @@ fn gpu_ops() -> Option<GpuInferenceOps> {
 }
 
 fn synthetic_input() -> Vec<f32> {
-    let input_shape = 1 * 3 * 640 * 640;
+    let input_shape = 3 * 640 * 640;
     (0..input_shape)
         .map(|i| ((i % 257) as f32) / 256.0)
         .collect()
@@ -100,7 +100,7 @@ fn reference_tensor(model_path: &Path, node: &str, input: &[f32]) -> (Vec<f32>, 
         .model_for_path(model_path)
         .expect("load reference ONNX");
     model
-        .set_output_names(&[node])
+        .set_output_names([node])
         .expect("set reference output");
     let plan = model
         .into_optimized()
@@ -115,11 +115,7 @@ fn reference_tensor(model_path: &Path, node: &str, input: &[f32]) -> (Vec<f32>, 
         .into_tensor()
         .into_array::<f32>()
         .expect("convert reference output");
-    let shape = tensor
-        .shape()
-        .iter()
-        .map(|d| *d as usize)
-        .collect::<Vec<_>>();
+    let shape = tensor.shape().to_vec();
     (tensor.into_raw_vec_and_offset().0, shape)
 }
 
@@ -655,12 +651,12 @@ fn conv2d_cpu(input: &[f32], weights: &[f32], bias: &[f32], cfg: &Conv2dConfig) 
     let out_w = cfg.output_width as usize;
     let out_h = cfg.output_height as usize;
 
-    for oc in 0..out_c {
+    for (oc, &bias_val) in bias.iter().enumerate().take(out_c) {
         let group_idx = oc / group_out;
         let in_start = group_idx * group_in;
         for oy in 0..out_h {
             for ox in 0..out_w {
-                let mut acc = bias[oc];
+                let mut acc = bias_val;
                 for ic_local in 0..group_in {
                     let ic = in_start + ic_local;
                     for ky in 0..k_h {
@@ -1123,7 +1119,7 @@ fn benchmark_conv2d_performance() {
         return;
     };
 
-    let configs = vec![
+    let configs = [
         ("stage0_conv", 1, 3, 16, 640, 640, 3, 2, 1, 1),
         ("stage1_depth", 1, 32, 32, 160, 160, 3, 1, 1, 32),
         ("stage2_point", 1, 32, 64, 160, 160, 1, 1, 0, 1),

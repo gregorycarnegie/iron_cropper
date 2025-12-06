@@ -121,10 +121,7 @@ fn build_detectors(
         }
     };
 
-    let gpu = match build_gpu_detector(model_path, preprocess, postprocess) {
-        Some(detector) => detector,
-        None => return None,
-    };
+    let gpu = build_gpu_detector(model_path, preprocess, postprocess)?;
 
     Some(Detectors { cpu, gpu })
 }

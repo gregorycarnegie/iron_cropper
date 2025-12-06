@@ -280,7 +280,7 @@ mod tests {
         let _zeroed: PodTestUniforms = bytemuck::Zeroable::zeroed();
         let bytes = bytemuck::bytes_of(&PodTestUniforms {
             x: 42,
-            y: 3.14,
+            y: std::f32::consts::PI,
             __padding: [0; 2],
         });
         assert_eq!(bytes.len(), 16);

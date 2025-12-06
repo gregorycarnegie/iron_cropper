@@ -43,12 +43,11 @@ pub fn show_preset_selector(
 
                 if clicked && !selected {
                     app.settings.crop.preset = value.to_string();
-                    if value != "custom" {
-                        if let Some(preset) = preset_by_name(value) {
+                    if value != "custom"
+                        && let Some(preset) = preset_by_name(value) {
                             app.settings.crop.output_width = preset.width;
                             app.settings.crop.output_height = preset.height;
                         }
-                    }
                     app.clear_crop_preview_cache();
                     *preview_invalidated = true;
                     *settings_changed = true;
