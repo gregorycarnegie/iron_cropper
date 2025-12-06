@@ -20,7 +20,10 @@
       "Bash(cargo bench:*)",
       "Bash(git checkout:*)",
       "Bash(tee:*)",
-      "Bash(cargo metadata:*)"
+      "Bash(cargo metadata:*)",
+      "Bash(cargo fix:*)",
+      "Bash(for f in *.rs)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

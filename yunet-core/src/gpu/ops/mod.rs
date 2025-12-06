@@ -1,0 +1,261 @@
+use super::tensor::GpuTensor;
+
+use anyhow::Result;
+use std::sync::Arc;
+use yunet_utils::gpu::{GpuBufferPool, GpuContext};
+
+mod activation;
+mod add;
+mod batch_norm;
+mod conv2d;
+mod max_pool;
+mod upsample2x;
+mod utils;
+
+#[cfg(test)]
+mod tests;
+
+pub use activation::ActivationKind;
+pub use batch_norm::BatchNormConfig;
+pub use conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims};
+pub use max_pool::MaxPoolConfig;
+
+use activation::ActivationPipeline;
+use add::AddPipeline;
+use batch_norm::{BatchNormBindings, BatchNormPipeline};
+use conv2d::Conv2dPipeline;
+use max_pool::MaxPoolPipeline;
+use upsample2x::Upsample2xPipeline;
+
+/// Collection of GPU-backed YuNet primitives.
+///
+/// This type owns the compiled WGSL pipelines for convolution, batch
+/// normalization, and activations so callers can reuse them across layers.
+#[derive(Debug)]
+pub struct GpuInferenceOps {
+    context: Arc<GpuContext>,
+    buffer_pool: Arc<GpuBufferPool>,
+    conv2d: Conv2dPipeline,
+    batch_norm: BatchNormPipeline,
+    activation: ActivationPipeline,
+    max_pool: MaxPoolPipeline,
+    add: AddPipeline,
+    upsample2x: Upsample2xPipeline,
+}
+
+impl GpuInferenceOps {
+    /// Create the GPU pipelines from an existing [`GpuContext`].
+    pub fn new(context: Arc<GpuContext>) -> Result<Self> {
+        let device = context.device();
+        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
+        Ok(Self {
+            conv2d: Conv2dPipeline::new(device, 4)?,
+            batch_norm: BatchNormPipeline::new(device)?,
+            activation: ActivationPipeline::new(device)?,
+            max_pool: MaxPoolPipeline::new(device)?,
+            add: AddPipeline::new(device)?,
+            upsample2x: Upsample2xPipeline::new(device)?,
+            buffer_pool,
+            context,
+        })
+    }
+
+    /// Upload host data into a GPU tensor for reuse across layers.
+    pub fn upload_tensor<D>(&self, dims: D, data: &[f32], label: Option<&str>) -> Result<GpuTensor>
+    where
+        D: Into<Vec<usize>>,
+    {
+        GpuTensor::from_slice_with_pool(
+            self.context.clone(),
+            Some(self.buffer_pool.clone()),
+            dims,
+            data,
+            label,
+        )
+    }
+
+    /// Download a tensor back to host memory.
+    pub fn download_tensor(&self, tensor: &GpuTensor) -> Result<Vec<f32>> {
+        tensor.to_vec()
+    }
+
+    fn ensure_same_context(&self, tensor: &GpuTensor, label: &str) -> Result<()> {
+        anyhow::ensure!(
+            Arc::ptr_eq(tensor.context(), &self.context),
+            "{label} tensor was created from a different GPU context"
+        );
+        Ok(())
+    }
+
+    /// Execute a `Conv2D` layer using GPU-resident tensors.
+    pub fn conv2d_tensor(
+        &self,
+        input: &GpuTensor,
+        weights: &GpuTensor,
+        bias: &GpuTensor,
+        config: &Conv2dConfig,
+    ) -> Result<GpuTensor> {
+        config.validate(
+            input.shape().elements(),
+            weights.shape().elements(),
+            bias.shape().elements(),
+        )?;
+        self.ensure_same_context(input, "conv2d input")?;
+        self.ensure_same_context(weights, "conv2d weights")?;
+        self.ensure_same_context(bias, "conv2d bias")?;
+        self.conv2d.execute(
+            &self.context,
+            &self.buffer_pool,
+            input,
+            weights,
+            bias,
+            config,
+        )
+    }
+
+    /// Execute a `Conv2D` layer using GPU-resident tensors with vectorized shader.
+    pub fn conv2d_vec4_tensor(
+        &self,
+        input: &GpuTensor,
+        weights: &GpuTensor,
+        bias: &GpuTensor,
+        config: &Conv2dConfig,
+    ) -> Result<GpuTensor> {
+        config.validate(
+            input.shape().elements(),
+            weights.shape().elements(),
+            bias.shape().elements(),
+        )?;
+        self.ensure_same_context(input, "conv2d input")?;
+        self.ensure_same_context(weights, "conv2d weights")?;
+        self.ensure_same_context(bias, "conv2d bias")?;
+        self.conv2d.execute(
+            &self.context,
+            &self.buffer_pool,
+            input,
+            weights,
+            bias,
+            config,
+        )
+    }
+
+    /// Convenience wrapper that uploads host slices, runs Conv2D, and downloads the result.
+    pub fn conv2d(
+        &self,
+        input: &[f32],
+        weights: &[f32],
+        bias: &[f32],
+        config: &Conv2dConfig,
+    ) -> Result<Vec<f32>> {
+        let input_tensor =
+            self.upload_tensor(config.input_shape_dims(), input, Some("yunet_conv_input"))?;
+        let weight_tensor = self.upload_tensor(
+            config.weight_shape_dims(),
+            weights,
+            Some("yunet_conv_weights"),
+        )?;
+        let bias_tensor =
+            self.upload_tensor(config.bias_shape_dims(), bias, Some("yunet_conv_bias"))?;
+        let output = self.conv2d_tensor(&input_tensor, &weight_tensor, &bias_tensor, config)?;
+        output.to_vec()
+    }
+
+    /// Batch-norm that keeps data on the GPU.
+    pub fn batch_norm_tensor(
+        &self,
+        tensor: &GpuTensor,
+        gamma: &GpuTensor,
+        beta: &GpuTensor,
+        mean: &GpuTensor,
+        variance: &GpuTensor,
+        config: &BatchNormConfig,
+    ) -> Result<GpuTensor> {
+        config.validate(
+            tensor.shape().elements(),
+            gamma.shape().elements(),
+            beta.shape().elements(),
+            mean.shape().elements(),
+            variance.shape().elements(),
+        )?;
+        self.ensure_same_context(tensor, "batch_norm tensor")?;
+        self.ensure_same_context(gamma, "batch_norm gamma")?;
+        self.ensure_same_context(beta, "batch_norm beta")?;
+        self.ensure_same_context(mean, "batch_norm mean")?;
+        self.ensure_same_context(variance, "batch_norm variance")?;
+        let tensors = BatchNormBindings {
+            tensor,
+            gamma,
+            beta,
+            mean,
+            variance,
+        };
+        self.batch_norm.execute(&self.context, tensors, config)
+    }
+
+    pub fn batch_norm(
+        &self,
+        tensor: &[f32],
+        gamma: &[f32],
+        beta: &[f32],
+        mean: &[f32],
+        variance: &[f32],
+        config: &BatchNormConfig,
+    ) -> Result<Vec<f32>> {
+        let tensor_gpu =
+            self.upload_tensor(config.tensor_shape_dims(), tensor, Some("yunet_bn_tensor"))?;
+        let channels = config.channels as usize;
+        let gamma_gpu = self.upload_tensor([channels], gamma, Some("yunet_bn_gamma"))?;
+        let beta_gpu = self.upload_tensor([channels], beta, Some("yunet_bn_beta"))?;
+        let mean_gpu = self.upload_tensor([channels], mean, Some("yunet_bn_mean"))?;
+        let variance_gpu = self.upload_tensor([channels], variance, Some("yunet_bn_variance"))?;
+        let output = self.batch_norm_tensor(
+            &tensor_gpu,
+            &gamma_gpu,
+            &beta_gpu,
+            &mean_gpu,
+            &variance_gpu,
+            config,
+        )?;
+        output.to_vec()
+    }
+
+    /// Apply an activation to a GPU tensor (returns a new tensor copy).
+    pub fn activation_tensor(&self, tensor: &GpuTensor, kind: ActivationKind) -> Result<GpuTensor> {
+        self.ensure_same_context(tensor, "activation tensor")?;
+        self.activation.execute(&self.context, tensor, kind)
+    }
+
+    pub fn activation(&self, tensor: &[f32], kind: ActivationKind) -> Result<Vec<f32>> {
+        let tensor_gpu =
+            self.upload_tensor([tensor.len()], tensor, Some("yunet_activation_tensor"))?;
+        let output = self.activation_tensor(&tensor_gpu, kind)?;
+        output.to_vec()
+    }
+
+    /// Max pool on GPU tensors.
+    pub fn max_pool_tensor(&self, tensor: &GpuTensor, config: &MaxPoolConfig) -> Result<GpuTensor> {
+        self.ensure_same_context(tensor, "max_pool tensor")?;
+        self.max_pool
+            .execute(&self.context, &self.buffer_pool, tensor, config)
+    }
+
+    /// Element-wise addition of two tensors.
+    pub fn add_tensors(&self, lhs: &GpuTensor, rhs: &GpuTensor) -> Result<GpuTensor> {
+        self.ensure_same_context(lhs, "add lhs")?;
+        self.ensure_same_context(rhs, "add rhs")?;
+        anyhow::ensure!(
+            lhs.shape().dims() == rhs.shape().dims(),
+            "add tensors require identical shapes (lhs={:?}, rhs={:?})",
+            lhs.shape().dims(),
+            rhs.shape().dims()
+        );
+        self.add.execute(&self.context, &self.buffer_pool, lhs, rhs)
+    }
+
+    /// Nearest-neighbour 2x upsample (spatial dimensions doubled).
+    pub fn resize2x_tensor(&self, tensor: &GpuTensor) -> Result<GpuTensor> {
+        self.ensure_same_context(tensor, "resize tensor")?;
+        self.upsample2x
+            .execute(&self.context, &self.buffer_pool, tensor)
+    }
+}
