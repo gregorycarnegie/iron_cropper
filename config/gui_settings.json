@@ -11,9 +11,9 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "custom",
-    "output_width": 422,
-    "output_height": 461,
+    "preset": "linkedin",
+    "output_width": 400,
+    "output_height": 400,
     "face_height_pct": 48.120564,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
@@ -44,7 +44,7 @@
     "shape": {
       "kind": "polygon",
       "sides": 3,
-      "rotation_deg": 68.18178,
+      "rotation_deg": -55.90905,
       "corner_style": {
         "style": "bezier",
         "tension": 0.5681818
@@ -62,7 +62,7 @@
     "sharpness": 0.0,
     "skin_smooth": 0.0,
     "red_eye_removal": false,
-    "background_blur": false
+    "background_blur": true
   },
   "telemetry": {
     "enabled": true,

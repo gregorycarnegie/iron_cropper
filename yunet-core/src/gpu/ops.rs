@@ -1,20 +1,14 @@
+use super::activation::{ActivationKind, ActivationPipeline};
+use super::add::AddPipeline;
+use super::batch_norm::{BatchNormBindings, BatchNormConfig, BatchNormPipeline};
+use super::conv2d::{Conv2dConfig, Conv2dPipeline};
+use super::max_pool::{MaxPoolConfig, MaxPoolPipeline};
 use super::tensor::GpuTensor;
+use super::upsample2x::Upsample2xPipeline;
 
 use anyhow::Result;
 use std::sync::Arc;
 use yunet_utils::gpu::{GpuBufferPool, GpuContext};
-
-use super::activation::ActivationKind;
-use super::batch_norm::BatchNormConfig;
-use super::conv2d::Conv2dConfig;
-use super::max_pool::MaxPoolConfig;
-
-use super::activation::ActivationPipeline;
-use super::add::AddPipeline;
-use super::batch_norm::{BatchNormBindings, BatchNormPipeline};
-use super::conv2d::Conv2dPipeline;
-use super::max_pool::MaxPoolPipeline;
-use super::upsample2x::Upsample2xPipeline;
 
 /// Collection of GPU-backed YuNet primitives.
 ///
