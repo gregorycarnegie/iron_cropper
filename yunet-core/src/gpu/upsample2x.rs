@@ -19,7 +19,7 @@ impl Upsample2xPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("yunet_resize2x_shader"),
-            source: wgpu::ShaderSource::Wgsl(super::super::UPSAMPLE2X_WGSL.into()),
+            source: wgpu::ShaderSource::Wgsl(super::UPSAMPLE2X_WGSL.into()),
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_resize2x_bgl"),
@@ -110,8 +110,8 @@ impl Upsample2xPipeline {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(
-                (dims[3] as u32).div_ceil(UPSAMPLE_WORKGROUP_X),
-                (dims[2] as u32).div_ceil(UPSAMPLE_WORKGROUP_Y),
+                ((dims[3] * 2) as u32).div_ceil(UPSAMPLE_WORKGROUP_X),
+                ((dims[2] * 2) as u32).div_ceil(UPSAMPLE_WORKGROUP_Y),
                 dims[1] as u32,
             );
         }

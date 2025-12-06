@@ -7,8 +7,21 @@
 pub mod ops;
 #[macro_use]
 pub mod macros;
+pub mod activation;
+pub mod add;
+pub mod batch_norm;
+pub mod conv2d;
+pub mod max_pool;
+pub mod upsample2x;
+pub mod utils;
 
-pub use ops::{ActivationKind, BatchNormConfig, Conv2dConfig, GpuInferenceOps};
+#[cfg(test)]
+mod tests;
+
+pub use activation::ActivationKind;
+pub use batch_norm::BatchNormConfig;
+pub use conv2d::{Conv2dConfig, Conv2dOptions};
+pub use ops::GpuInferenceOps;
 pub mod tensor;
 pub use tensor::{GpuTensor, TensorShape};
 pub mod onnx;

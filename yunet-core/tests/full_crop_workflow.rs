@@ -20,24 +20,24 @@ fn make_detection(x: f32, y: f32, width: f32, height: f32, score: f32) -> Detect
         },
         landmarks: [
             Landmark {
-                x: x + width * 0.3,
-                y: y + height * 0.3,
+                x: width.mul_add(0.3, x),
+                y: height.mul_add(0.3, y),
             },
             Landmark {
-                x: x + width * 0.7,
-                y: y + height * 0.3,
+                x: width.mul_add(0.7, x),
+                y: height.mul_add(0.3, y),
             },
             Landmark {
-                x: x + width * 0.5,
-                y: y + height * 0.55,
+                x: width.mul_add(0.5, x),
+                y: height.mul_add(0.55, y),
             },
             Landmark {
-                x: x + width * 0.35,
-                y: y + height * 0.75,
+                x: width.mul_add(0.35, x),
+                y: height.mul_add(0.75, y),
             },
             Landmark {
-                x: x + width * 0.65,
-                y: y + height * 0.75,
+                x: width.mul_add(0.65, x),
+                y: height.mul_add(0.75, y),
             },
         ],
         score,

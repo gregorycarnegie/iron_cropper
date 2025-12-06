@@ -1,8 +1,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::{hint::black_box, sync::Arc};
-use yunet_core::gpu::ops::{
-    Conv2dChannels, Conv2dConfig, Conv2dOptions, GpuInferenceOps, SpatialDims,
-};
+use yunet_core::gpu::activation::ActivationKind;
+use yunet_core::gpu::conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims};
+use yunet_core::gpu::ops::GpuInferenceOps;
 use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
 fn setup_gpu() -> Option<Arc<GpuContext>> {
@@ -49,7 +49,7 @@ fn benchmark_conv2d_standard_vs_vec4(c: &mut Criterion) {
             SpatialDims::new(kernel, kernel),
             SpatialDims::new(stride, stride),
             SpatialDims::new(pad, pad),
-            Conv2dOptions::new(groups, Some(yunet_core::gpu::ops::ActivationKind::Relu)),
+            Conv2dOptions::new(groups, Some(ActivationKind::Relu)),
         )
         .unwrap();
 

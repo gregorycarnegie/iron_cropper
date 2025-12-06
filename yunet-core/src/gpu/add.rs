@@ -18,7 +18,7 @@ impl AddPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("yunet_add_shader"),
-            source: wgpu::ShaderSource::Wgsl(super::super::ADD_WGSL.into()),
+            source: wgpu::ShaderSource::Wgsl(super::ADD_WGSL.into()),
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("yunet_add_bgl"),

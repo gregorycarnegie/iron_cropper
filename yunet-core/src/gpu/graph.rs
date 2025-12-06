@@ -1,5 +1,7 @@
+use crate::gpu::activation::ActivationKind;
+use crate::gpu::conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims};
 use crate::gpu::onnx::OnnxInitializerMap;
-use crate::gpu::ops::{Conv2dChannels, GpuInferenceOps, SpatialDims};
+use crate::gpu::ops::GpuInferenceOps;
 use crate::gpu::tensor::GpuTensor;
 
 use anyhow::{Context, Result};
@@ -174,40 +176,40 @@ pub fn run_stage0_block<W: WeightProvider>(
     let dw_weight = weights.tensor("423")?;
     let dw_bias = weights.tensor("424")?;
 
-    let conv_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let conv_cfg = Conv2dConfig::new(
         1,
         Conv2dChannels::new(3, 16),
         SpatialDims::new(640, 640),
         SpatialDims::new(3, 3),
         SpatialDims::new(2, 2),
         SpatialDims::new(1, 1),
-        crate::gpu::ops::Conv2dOptions::new(1, Some(crate::gpu::ops::ActivationKind::Relu)),
+        Conv2dOptions::new(1, Some(ActivationKind::Relu)),
     )?;
     let relu0 = ops
         .conv2d_tensor(input, &conv0_weight, &conv0_bias, &conv_cfg)
         .context("stage0 conv")?;
 
-    let point_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let point_cfg = Conv2dConfig::new(
         1,
         Conv2dChannels::new(16, 16),
         SpatialDims::new(320, 320),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
         SpatialDims::new(0, 0),
-        crate::gpu::ops::Conv2dOptions::new(1, None),
+        Conv2dOptions::new(1, None),
     )?;
     let point = ops
         .conv2d_tensor(&relu0, &pw_weight, &pw_bias, &point_cfg)
         .context("stage0 pointwise")?;
 
-    let depth_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let depth_cfg = Conv2dConfig::new(
         1,
         Conv2dChannels::new(16, 16),
         SpatialDims::new(320, 320),
         SpatialDims::new(3, 3),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
-        crate::gpu::ops::Conv2dOptions::new(16, Some(crate::gpu::ops::ActivationKind::Relu)),
+        Conv2dOptions::new(16, Some(ActivationKind::Relu)),
     )?;
     ops.conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
         .context("stage0 depthwise")
@@ -246,7 +248,7 @@ pub fn run_stage_blocks<W: WeightProvider>(
 }
 
 pub fn pool_tensor(ops: &GpuInferenceOps, tensor: &GpuTensor) -> Result<GpuTensor> {
-    let cfg = crate::gpu::ops::MaxPoolConfig::from_tensor(tensor, 2, 2, 0)?;
+    let cfg = crate::gpu::max_pool::MaxPoolConfig::from_tensor(tensor, 2, 2, 0)?;
     ops.max_pool_tensor(tensor, &cfg)
 }
 
@@ -349,14 +351,14 @@ fn run_head_branch<W: WeightProvider>(
     let width = dims[3] as u32;
     let point_out = point_weight.shape().dims()[0] as u32;
 
-    let point_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let point_cfg = Conv2dConfig::new(
         batch,
         Conv2dChannels::new(in_channels, point_out),
         SpatialDims::new(width, height),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
         SpatialDims::new(0, 0),
-        crate::gpu::ops::Conv2dOptions::new(1, None),
+        Conv2dOptions::new(1, None),
     )?;
     let reduced = ops.conv2d_tensor(input, &point_weight, &point_bias, &point_cfg)?;
 
@@ -367,14 +369,14 @@ fn run_head_branch<W: WeightProvider>(
         point_out,
         depth_out
     );
-    let depth_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let depth_cfg = Conv2dConfig::new(
         batch,
         Conv2dChannels::new(point_out, depth_out),
         SpatialDims::new(width, height),
         SpatialDims::new(3, 3),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
-        crate::gpu::ops::Conv2dOptions::new(depth_out, None),
+        Conv2dOptions::new(depth_out, None),
     )?;
     ops.conv2d_tensor(&reduced, &depth_weight, &depth_bias, &depth_cfg)
 }
@@ -430,14 +432,14 @@ pub fn run_separable_block(
         point_kernel_w
     );
 
-    let point_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let point_cfg = Conv2dConfig::new(
         batch,
         Conv2dChannels::new(channels, point_out),
         SpatialDims::new(width, height),
         SpatialDims::new(1, 1),
         SpatialDims::new(1, 1),
         SpatialDims::new(0, 0),
-        crate::gpu::ops::Conv2dOptions::new(1, None),
+        Conv2dOptions::new(1, None),
     )?;
     let point = ops.conv2d_tensor(input, point_weight, point_bias, &point_cfg)?;
 
@@ -467,14 +469,14 @@ pub fn run_separable_block(
     );
     let pad = depth_kernel_w / 2;
 
-    let depth_cfg = crate::gpu::ops::Conv2dConfig::new(
+    let depth_cfg = Conv2dConfig::new(
         batch,
         Conv2dChannels::new(point_out, depth_out),
         SpatialDims::new(width, height),
         SpatialDims::new(depth_kernel_w, depth_kernel_h),
         SpatialDims::new(1, 1),
         SpatialDims::new(pad, pad),
-        crate::gpu::ops::Conv2dOptions::new(depth_out, Some(crate::gpu::ops::ActivationKind::Relu)),
+        Conv2dOptions::new(depth_out, Some(ActivationKind::Relu)),
     )?;
     ops.conv2d_tensor(&point, depth_weight, depth_bias, &depth_cfg)
 }

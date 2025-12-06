@@ -7,7 +7,7 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use yunet_utils::gpu::{GpuBufferPool, GpuContext};
 
-const CONV2D_WGSL: &str = include_str!("../conv2d.wgsl");
+const CONV2D_WGSL: &str = include_str!("conv2d.wgsl");
 const CONV_WORKGROUP_X: u32 = 8;
 const CONV_WORKGROUP_Y: u32 = 8;
 

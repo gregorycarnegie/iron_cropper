@@ -6,7 +6,7 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use yunet_utils::gpu::GpuContext;
 
-const BATCH_NORM_WGSL: &str = include_str!("../batch_norm.wgsl");
+const BATCH_NORM_WGSL: &str = include_str!("batch_norm.wgsl");
 const BN_WORKGROUP_X: u32 = 8;
 const BN_WORKGROUP_Y: u32 = 8;
 

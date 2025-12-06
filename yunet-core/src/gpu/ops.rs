@@ -4,28 +4,17 @@ use anyhow::Result;
 use std::sync::Arc;
 use yunet_utils::gpu::{GpuBufferPool, GpuContext};
 
-mod activation;
-mod add;
-mod batch_norm;
-mod conv2d;
-mod max_pool;
-mod upsample2x;
-mod utils;
+use super::activation::ActivationKind;
+use super::batch_norm::BatchNormConfig;
+use super::conv2d::Conv2dConfig;
+use super::max_pool::MaxPoolConfig;
 
-#[cfg(test)]
-mod tests;
-
-pub use activation::ActivationKind;
-pub use batch_norm::BatchNormConfig;
-pub use conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims};
-pub use max_pool::MaxPoolConfig;
-
-use activation::ActivationPipeline;
-use add::AddPipeline;
-use batch_norm::{BatchNormBindings, BatchNormPipeline};
-use conv2d::Conv2dPipeline;
-use max_pool::MaxPoolPipeline;
-use upsample2x::Upsample2xPipeline;
+use super::activation::ActivationPipeline;
+use super::add::AddPipeline;
+use super::batch_norm::{BatchNormBindings, BatchNormPipeline};
+use super::conv2d::Conv2dPipeline;
+use super::max_pool::MaxPoolPipeline;
+use super::upsample2x::Upsample2xPipeline;
 
 /// Collection of GPU-backed YuNet primitives.
 ///

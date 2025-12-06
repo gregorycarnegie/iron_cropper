@@ -2,9 +2,13 @@ use super::*;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use tract_onnx::prelude::*;
-use yunet_utils::gpu::{GpuAvailability, GpuContextOptions};
+use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
-use crate::gpu::{OnnxInitializerMap, OnnxTensor};
+use crate::gpu::{
+    OnnxInitializerMap, OnnxTensor,
+    conv2d::{Conv2dChannels, Conv2dOptions, SpatialDims},
+    max_pool::MaxPoolConfig,
+};
 
 macro_rules! test_backbone_stage {
     ($test_name:ident, $stage:expr, $ref_node:expr, $input_name:expr, $pool:expr) => {

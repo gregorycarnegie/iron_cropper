@@ -6,7 +6,7 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use yunet_utils::gpu::GpuContext;
 
-const ACTIVATION_WGSL: &str = include_str!("../activation.wgsl");
+const ACTIVATION_WGSL: &str = include_str!("activation.wgsl");
 const ACTIVATION_WORKGROUP_SIZE: u32 = 256;
 
 /// Supported activation operations.
