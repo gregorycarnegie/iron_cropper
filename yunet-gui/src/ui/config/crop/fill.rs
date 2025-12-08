@@ -124,22 +124,27 @@ pub fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                     ColorMode::Cmyk => "CMYK",
                 })
                 .show_ui(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(app.icons.rgb(14.0));
-                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Rgb, "RGB");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add(app.icons.hsv(14.0));
-                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Hsv, "HSV");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add(app.icons.hsl(14.0));
-                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Hsl, "HSL");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.add(app.icons.cmyk(14.0));
-                        ui.selectable_value(&mut app.fill_color_mode, ColorMode::Cmyk, "CMYK");
-                    });
+                    let modes = [
+                        (ColorMode::Rgb, "RGB"),
+                        (ColorMode::Hsv, "HSV"),
+                        (ColorMode::Hsl, "HSL"),
+                        (ColorMode::Cmyk, "CMYK"),
+                    ];
+                    for (mode, label) in modes {
+                        let selected = app.fill_color_mode == mode;
+                        let icon = match mode {
+                            ColorMode::Rgb => app.icons.rgb(14.0),
+                            ColorMode::Hsv => app.icons.hsv(14.0),
+                            ColorMode::Hsl => app.icons.hsl(14.0),
+                            ColorMode::Cmyk => app.icons.cmyk(14.0),
+                        };
+                        if ui
+                            .add(egui::Button::image_and_text(icon, label).selected(selected))
+                            .clicked()
+                        {
+                            app.fill_color_mode = mode;
+                        }
+                    }
                 });
             ui.end_row();
 

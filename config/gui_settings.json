@@ -44,10 +44,10 @@
     "shape": {
       "kind": "polygon",
       "sides": 3,
-      "rotation_deg": -55.90905,
+      "rotation_deg": 58.63628,
       "corner_style": {
         "style": "bezier",
-        "tension": 0.5681818
+        "tension": 0.54545456
       }
     }
   },
