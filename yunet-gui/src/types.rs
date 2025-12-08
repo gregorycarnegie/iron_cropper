@@ -55,6 +55,7 @@ pub struct BatchJobConfig {
     pub enhancement_settings: EnhancementSettings,
     pub enhance_enabled: bool,
     pub output_options: OutputOptions,
+    pub batch_logging: yunet_utils::config::BatchLoggingSettings,
     pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
     pub gpu_cropper: Option<Arc<GpuBatchCropper>>,
 }

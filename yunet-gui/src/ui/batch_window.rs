@@ -2,6 +2,7 @@
 
 use crate::BatchFileStatus;
 use crate::{YuNetApp, theme};
+use yunet_utils::config::BatchLogFormat;
 
 use egui::{
     Button, CentralPanel, Color32, Context, ProgressBar, RichText, ScrollArea, ViewportBuilder,
@@ -140,7 +141,37 @@ fn show_batch_content(app: &mut YuNetApp, ui: &mut egui::Ui, palette: theme::Pal
                 app.batch_current_index = None;
             }
         });
-    } else {
-        ui.label("No batch files loaded.");
+
+        ui.separator();
+        ui.label("Failure Logging");
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut app.settings.batch_logging.enabled,
+                "Log failures to file",
+            );
+        });
+
+        if app.settings.batch_logging.enabled {
+            ui.horizontal(|ui| {
+                ui.label("Format:");
+                egui::ComboBox::from_id_salt("log_format_combo")
+                    .selected_text(match app.settings.batch_logging.format {
+                        BatchLogFormat::Json => "JSON",
+                        BatchLogFormat::Csv => "CSV",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut app.settings.batch_logging.format,
+                            BatchLogFormat::Json,
+                            "JSON",
+                        );
+                        ui.selectable_value(
+                            &mut app.settings.batch_logging.format,
+                            BatchLogFormat::Csv,
+                            "CSV",
+                        );
+                    });
+            });
+        }
     }
 }

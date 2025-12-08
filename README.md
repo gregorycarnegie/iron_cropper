@@ -64,10 +64,41 @@ The project includes comprehensive GPU acceleration via wgpu and WGSL compute sh
 
 ## Documentation
 
-- `docs/parity_report.md` – Summary of YuNet vs OpenCV parity metrics.
-- `ARCHITECTURE.md` – End-to-end architecture and crop pipeline notes.
-- `docs/gui_crop_guide.md` – Detailed walkthrough of the GUI crop features.
-- `docs/cli_recipes.md` – Command-line recipes for common automation scenarios.
-- `docs/gpu_research.md` – GPU acceleration research and implementation notes for custom WGSL YuNet inference.
+## Recent Fixes & Enhancements
 
-Refer to `TODO.md` for the broader roadmap and phase breakdown.
+### Batch Export Log Fix & Enhancements
+
+- Log items with `BatchFileStatus::Failed` AND items with `BatchFileStatus::Completed` where `faces_exported == 0`.
+- Clone the task list (containing file paths) into the logging thread to allow looking up the source `PathBuf` by index.
+- Add a `path` field to the JSON output and a `path` column to the CSV output.
+
+#### Log Format Updates
+
+The `batch_failures.json` (or `.csv`) will now include these entries.
+
+#### JSON Example
+
+```json
+[
+  {
+    "index": 3,
+    "path": "C:\\images\\vacation\\img_003.jpg",
+    "error": "No faces detected",
+    "faces_detected": 0
+  },
+  {
+    "index": 5,
+    "path": "C:\\images\\vacation\\img_005.jpg",
+    "error": "Faces detected but skipped (quality checks)",
+    "faces_detected": 2
+  }
+]
+```
+
+#### CSV Example
+
+```csv
+index,path,error,faces_detected
+3,"C:\images\vacation\img_003.jpg","No faces detected",0
+5,"C:\images\vacation\img_005.jpg","Faces detected but skipped (quality checks)",2
+```

@@ -483,6 +483,7 @@ pub fn start_batch_export(app: &mut YuNetApp) {
         enhancement_settings: app.build_enhancement_settings(),
         enhance_enabled: app.settings.enhance.enabled,
         output_options: OutputOptions::from_crop_settings(&app.settings.crop),
+        batch_logging: app.settings.batch_logging.clone(),
         gpu_enhancer: app.gpu_enhancer.clone(),
         gpu_cropper: app.gpu_batch_cropper.clone(),
     });
@@ -504,16 +505,150 @@ pub fn start_batch_export(app: &mut YuNetApp) {
 
     let tx = app.job_tx.clone();
     std::thread::spawn(move || {
-        let results = run_batch_export(tasks, detector, config, Some(tx.clone()));
+        // Clone tasks so we can use the original list for path lookups during logging
+        let tasks_for_processing = tasks.clone();
+        let results = run_batch_export(
+            tasks_for_processing,
+            detector,
+            config.clone(),
+            Some(tx.clone()),
+        );
 
         let completed = results
             .iter()
             .filter(|(_, s)| matches!(s, BatchFileStatus::Completed { .. }))
             .count();
-        let failed = results
+        let failed_items: Vec<_> = results
             .iter()
             .filter(|(_, s)| matches!(s, BatchFileStatus::Failed { .. }))
-            .count();
+            .collect();
+        let failed = failed_items.len();
+
+        // Include "failed" items OR items where 0 faces were exported (no detection or filtered out)
+        let logged_items: Vec<_> = results
+            .iter()
+            .filter(|(_, s)| match s {
+                BatchFileStatus::Failed { .. } => true,
+                BatchFileStatus::Completed { faces_exported, .. } => *faces_exported == 0,
+                _ => false,
+            })
+            .collect();
+
+        if config.batch_logging.enabled && !logged_items.is_empty() {
+            use std::io::Write;
+            use yunet_utils::config::BatchLogFormat;
+
+            let log_filename = match config.batch_logging.format {
+                BatchLogFormat::Json => "batch_failures.json",
+                BatchLogFormat::Csv => "batch_failures.csv",
+            };
+            let path = config.output_dir.join(log_filename);
+
+            let write_result = match config.batch_logging.format {
+                BatchLogFormat::Json => serde_json::to_string_pretty(
+                    &logged_items
+                        .iter()
+                        .map(|(idx, status)| {
+                            let file_path = tasks
+                                .get(*idx)
+                                .map(|(_, p, _)| p.display().to_string())
+                                .unwrap_or_default();
+                            let error_msg = match status {
+                                BatchFileStatus::Failed { error } => error.clone(),
+                                BatchFileStatus::Completed {
+                                    faces_detected,
+                                    faces_exported: 0,
+                                } => {
+                                    if *faces_detected == 0 {
+                                        "No faces detected".to_string()
+                                    } else {
+                                        "Faces detected but skipped (quality checks)".to_string()
+                                    }
+                                }
+                                _ => "Unknown error".to_string(),
+                            };
+
+                            let mut json_obj = serde_json::json!({
+                                "index": idx,
+                                "path": file_path,
+                                "error": error_msg
+                            });
+
+                            if let BatchFileStatus::Completed { faces_detected, .. } = status {
+                                if let Some(obj) = json_obj.as_object_mut() {
+                                    obj.insert(
+                                        "faces_detected".to_string(),
+                                        serde_json::json!(faces_detected),
+                                    );
+                                }
+                            }
+
+                            json_obj
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .map(|s| s.into_bytes())
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                BatchLogFormat::Csv => {
+                    let mut wtr = Vec::new();
+                    writeln!(&mut wtr, "index,path,error,faces_detected").unwrap();
+                    for (idx, status) in logged_items {
+                        let file_path = tasks
+                            .get(*idx)
+                            .map(|(_, p, _)| p.display().to_string())
+                            .unwrap_or_default();
+                        let (error_msg, faces_count) = match status {
+                            BatchFileStatus::Failed { error } => (error.clone(), "N/A".to_string()),
+                            BatchFileStatus::Completed {
+                                faces_detected,
+                                faces_exported: 0,
+                            } => {
+                                let msg = if *faces_detected == 0 {
+                                    "No faces detected"
+                                } else {
+                                    "Faces detected but skipped (quality checks)"
+                                };
+                                (msg.to_string(), faces_detected.to_string())
+                            }
+                            _ => ("Unknown error".to_string(), "N/A".to_string()),
+                        };
+
+                        // CSV escaping helper
+                        let escape_csv = |s: &str| -> String {
+                            if s.contains(',') || s.contains('"') {
+                                format!("\"{}\"", s.replace('"', "\"\""))
+                            } else {
+                                s.to_string()
+                            }
+                        };
+
+                        let clean_path = escape_csv(&file_path);
+                        let clean_err = escape_csv(&error_msg);
+
+                        writeln!(
+                            &mut wtr,
+                            "{},{},{},{}",
+                            idx, clean_path, clean_err, faces_count
+                        )
+                        .unwrap();
+                    }
+                    Ok(wtr)
+                }
+            };
+
+            match write_result {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::write(&path, bytes) {
+                        warn!("Failed to write batch log to {}: {}", path.display(), e);
+                    } else {
+                        info!("Batch failure log written to {}", path.display());
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to format batch log: {}", e);
+                }
+            }
+        }
 
         let _ = tx.send(JobMessage::BatchComplete { completed, failed });
     });

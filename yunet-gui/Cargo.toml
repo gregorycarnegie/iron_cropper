@@ -15,14 +15,14 @@ ico.workspace = true
 log.workspace = true
 rayon.workspace = true
 serde.workspace = true
-rfd = "0.15.4"
+serde_json.workspace = true
+rfd = "0.16.0"
 yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 tempfile.workspace = true
 arboard.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile.workspace = true
 imageproc.workspace = true
 sha2 = "0.10.9"

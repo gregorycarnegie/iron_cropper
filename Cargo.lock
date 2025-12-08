@@ -1419,9 +1419,9 @@ dependencies = [
 
 [[package]]
 name = "criterion"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0dfe5e9e71bdcf4e4954f7d14da74d1cdb92a3a07686452d1509652684b1aab"
+checksum = "4d883447757bb0ee46f233e9dc22eb84d93a9508c9b868687b274fc431d886bf"
 dependencies = [
  "alloca",
  "anes",
@@ -1444,9 +1444,9 @@ dependencies = [
 
 [[package]]
 name = "criterion-plot"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5de36c2bee19fba779808f92bf5d9b0fa5a40095c277aba10c458a12b35d21d6"
+checksum = "ed943f81ea2faa8dcecbbfa50164acf95d555afec96a27871663b300e387b2e4"
 dependencies = [
  "cast",
  "itertools 0.13.0",
@@ -4823,9 +4823,9 @@ dependencies = [
 
 [[package]]
 name = "rfd"
-version = "0.15.4"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef2bee61e6cffa4635c72d7d81a84294e28f0930db0ddcb0f66d10244674ebed"
+checksum = "a15ad77d9e70a92437d8f74c35d99b4e4691128df018833e99f90bcd36152672"
 dependencies = [
  "ashpd",
  "block2 0.6.2",
@@ -4842,7 +4842,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7066,7 +7066,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-cli"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -7086,7 +7086,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-core"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7105,7 +7105,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-gui"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7128,7 +7128,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-utils"
-version = "0.9.6"
+version = "0.9.7"
 dependencies = [
  "anyhow",
  "async-channel",

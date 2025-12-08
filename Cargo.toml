@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.9.6"
+version = "0.9.7"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
@@ -17,7 +17,7 @@ bytemuck = { version = "1.24.0", features = ["derive"] }
 calamine = "0.32.0"
 clap = { version = "4.5.53", features = ["derive"] }
 crc32fast = "1.5.0"
-criterion = "0.8.0"
+criterion = "0.8.1"
 csv = "1.4.0"
 eframe = { version = "0.33.2", features = ["wgpu"] }
 egui = "0.33.2"
