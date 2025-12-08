@@ -11,12 +11,14 @@ use rayon::prelude::*;
 use rfd::FileDialog;
 use std::{
     cmp::Ordering,
+    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, mpsc::Sender},
 };
 use yunet_core::{YuNetDetector, calculate_crop_region, crop_face_from_image};
 use yunet_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename,
+    config::BatchLogFormat,
     gpu::BatchCropRequest,
     load_image,
     quality::{Quality, estimate_sharpness},
@@ -535,9 +537,6 @@ pub fn start_batch_export(app: &mut YuNetApp) {
             .collect();
 
         if config.batch_logging.enabled && !logged_items.is_empty() {
-            use std::io::Write;
-            use yunet_utils::config::BatchLogFormat;
-
             let log_filename = match config.batch_logging.format {
                 BatchLogFormat::Json => "batch_failures.json",
                 BatchLogFormat::Csv => "batch_failures.csv",
