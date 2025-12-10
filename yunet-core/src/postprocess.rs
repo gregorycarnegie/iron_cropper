@@ -213,6 +213,145 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
         return;
     }
 
+    // For small datasets, the overhead of building the grid outweighs the benefit.
+    // The break-even point is typically around 100-200 items.
+    if len < 200 {
+        apply_nms_naive(detections, threshold);
+        return;
+    }
+
+    // 1. Compute scene bounds
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+
+    for d in detections.iter() {
+        let b = d.bbox;
+        if b.x < min_x {
+            min_x = b.x;
+        }
+        if b.y < min_y {
+            min_y = b.y;
+        }
+        // Use max to ensure width/height are accounted for
+        let right = b.x + b.width;
+        let bottom = b.y + b.height;
+        if right > max_x {
+            max_x = right;
+        }
+        if bottom > max_y {
+            max_y = bottom;
+        }
+    }
+
+    let width = max_x - min_x;
+    let height = max_y - min_y;
+
+    // Degenerate scene or empty area
+    if width <= f32::EPSILON || height <= f32::EPSILON {
+        apply_nms_naive(detections, threshold);
+        return;
+    }
+
+    // 2. Setup Grid
+    // 32x32 = 1024 cells. Efficient for up to ~10k items.
+    const GRID_SIZE: usize = 32;
+    let cell_w = width / GRID_SIZE as f32;
+    let cell_h = height / GRID_SIZE as f32;
+
+    // Use a flat vector of vectors to store indices
+    // Pre-allocate assuming uniform distribution (len / cells) * safety_factor?
+    // Just a small capacity is fine.
+    let mut grid: Vec<Vec<usize>> =
+        vec![Vec::with_capacity(len / (GRID_SIZE * GRID_SIZE / 4).max(1)); GRID_SIZE * GRID_SIZE];
+
+    // 3. Populate Grid
+    for (i, d) in detections.iter().enumerate() {
+        let b = d.bbox;
+
+        let c_min = ((b.x - min_x) / cell_w)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let c_max = ((b.x + b.width - min_x) / cell_w)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let r_min = ((b.y - min_y) / cell_h)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let r_max = ((b.y + b.height - min_y) / cell_h)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+
+        for r in r_min..=r_max {
+            let row_offset = r * GRID_SIZE;
+            for c in c_min..=c_max {
+                grid[row_offset + c].push(i);
+            }
+        }
+    }
+
+    // 4. Suppression Loop
+    let mut suppressed = vec![false; len];
+    // check_token[j] == i means we already checked 'j' against 'i'
+    let mut check_token = vec![usize::MAX; len];
+
+    for i in 0..len {
+        if suppressed[i] {
+            continue;
+        }
+
+        let b = detections[i].bbox;
+        let c_min = ((b.x - min_x) / cell_w)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let c_max = ((b.x + b.width - min_x) / cell_w)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let r_min = ((b.y - min_y) / cell_h)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let r_max = ((b.y + b.height - min_y) / cell_h)
+            .floor()
+            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+
+        for r in r_min..=r_max {
+            let row_offset = r * GRID_SIZE;
+            for c in c_min..=c_max {
+                let cell = &grid[row_offset + c];
+                for &candidate in cell {
+                    // Only check candidates that appear later in the sorted list (lower score)
+                    // and haven't been suppressed yet.
+                    if candidate > i && !suppressed[candidate] {
+                        // Avoid duplicate checks for the same candidate across different cells
+                        if check_token[candidate] != i {
+                            check_token[candidate] = i;
+
+                            if b.iou(&detections[candidate].bbox) > threshold {
+                                suppressed[candidate] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. Compact the vector
+    let mut keep = 0;
+    for i in 0..len {
+        if !suppressed[i] {
+            if i != keep {
+                detections.swap(i, keep);
+            }
+            keep += 1;
+        }
+    }
+    detections.truncate(keep);
+}
+
+fn apply_nms_naive(detections: &mut Vec<Detection>, threshold: f32) {
+    let len = detections.len();
     let mut suppressed = vec![false; len];
     let mut keep = 0;
 
@@ -403,21 +542,31 @@ mod benches {
         detections.truncate(keep);
     }
 
+    struct SimpleRng(u64);
+    impl SimpleRng {
+        fn next_f32(&mut self) -> f32 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((self.0 >> 32) as u32) as f32 / 4294967296.0
+        }
+    }
+
     fn synthetic_detections(count: usize) -> Vec<Detection> {
         let mut out = Vec::with_capacity(count);
-        for i in 0..count {
-            let base = (i % 50) as f32 * 4.0;
+        let mut rng = SimpleRng(12345);
+        for _ in 0..count {
             out.push(Detection {
                 bbox: BoundingBox {
-                    x: base,
-                    y: base,
-                    width: 32.0,
-                    height: 32.0,
+                    x: rng.next_f32() * 2000.0,
+                    y: rng.next_f32() * 2000.0,
+                    width: 20.0 + rng.next_f32() * 100.0,
+                    height: 20.0 + rng.next_f32() * 100.0,
                 },
                 landmarks: [Landmark { x: 0.0, y: 0.0 }; 5],
-                score: 0.9 - (i as f32 * 0.0001),
+                score: rng.next_f32(),
             });
         }
+        // Essential: Sort by score descending to simulate real model output
+        out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         out
     }
 
@@ -425,7 +574,7 @@ mod benches {
     #[ignore]
     fn bench_nms_variants() {
         let template = synthetic_detections(5_000);
-        let iterations = 8;
+        let iterations = 20;
 
         let mut optimized_total = std::time::Duration::ZERO;
         let mut baseline_total = std::time::Duration::ZERO;
@@ -454,10 +603,13 @@ mod benches {
             }
         }
 
+        let diff = baseline_total.as_secs_f64() / optimized_total.as_secs_f64();
         println!(
-            "nms optimized avg: {:?}, baseline avg: {:?}",
+            "NMS Benchmark (5k random items, {} iters):\n  Optimized (Grid): {:?}\n  Baseline (Naive): {:?}\n  Speedup:          {:.2}x",
+            iterations,
             optimized_total / iterations as u32,
-            baseline_total / iterations as u32
+            baseline_total / iterations as u32,
+            diff
         );
     }
 }

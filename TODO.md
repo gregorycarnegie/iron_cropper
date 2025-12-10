@@ -422,6 +422,10 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
     - [x] Compare inference latency and memory usage
 
+- [x] **Post-processing optimizations** (`yunet-core/src/postprocess.rs`)
+  - [x] Implement spatial grid-based NMS (9.12x speedup for N=5000)
+  - [x] Fallback to naive implementation for small N to minimize overhead
+
 - [ ] **Memory allocation optimizations**
   - [x] Reuse preprocessing buffers across batch operations
     - [x] Pre-allocate CHW tensor buffer pool
