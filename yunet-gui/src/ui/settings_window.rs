@@ -246,6 +246,11 @@ fn show_gpu_section(
         );
     });
 
+    ui.add_space(6.0);
+    if ui.button("Simulate OOM Event (Debug)").clicked() {
+        app.handle_oom_event();
+    }
+
     let status = &app.gpu_status;
     let headline_color = match status.mode {
         GpuStatusMode::Available => palette.success,

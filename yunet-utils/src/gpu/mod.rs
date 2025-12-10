@@ -44,6 +44,11 @@ pub use buffer_pool::GpuBufferPool;
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
+#[derive(Debug, Clone)]
+pub struct GpuReport {
+    pub summary: String,
+}
+
 use crate::telemetry::telemetry_allows;
 use async_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use log::{Level, debug, info, warn};
@@ -515,6 +520,16 @@ impl GpuContext {
     /// Returns the underlying adapter when available.
     pub fn adapter(&self) -> Option<&Adapter> {
         self.adapter.as_ref()
+    }
+
+    /// Generates a report of global internal counters.
+    pub fn generate_report(&self) -> Option<GpuReport> {
+        self.instance.as_ref().map(|i| {
+            let report = i.generate_report();
+            GpuReport {
+                summary: format!("{:#?}", report),
+            }
+        })
     }
 }
 

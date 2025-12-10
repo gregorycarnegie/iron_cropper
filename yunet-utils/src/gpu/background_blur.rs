@@ -181,4 +181,14 @@ impl GpuBackgroundBlur {
             .context("failed to build blurred image")?;
         Ok(DynamicImage::ImageRgba8(image))
     }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.buffer_pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.buffer_pool.memory_usage()
+    }
 }

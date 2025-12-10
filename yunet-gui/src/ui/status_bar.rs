@@ -48,7 +48,40 @@ impl YuNetApp {
                         },
                     );
                     let (gpu_text, gpu_color) = self.gpu_status_chip(palette);
-                    self.status_chip(ui, palette, gpu_text, gpu_color);
+                    self.status_chip(ui, palette, gpu_text, gpu_color)
+                        .on_hover_ui(|ui| {
+                            ui.heading("GPU Status");
+                            if let Some(ctx) = &self.gpu_context {
+                                ui.label(format!("Backend: {:?}", ctx.adapter_info().backend));
+                                ui.label(format!("Device: {}", ctx.adapter_info().name));
+                                ui.label(format!("Driver: {}", ctx.adapter_info().driver));
+                                ui.label(format!(
+                                    "Driver Info: {}",
+                                    ctx.adapter_info().driver_info
+                                ));
+
+                                ui.separator();
+
+                                if let Some(report) = ctx.generate_report() {
+                                    ui.strong("WGPU Memory:");
+                                    for line in report.summary.lines() {
+                                        if line.contains("allocated") && !line.contains(" 0") {
+                                            ui.label(line.trim());
+                                        }
+                                    }
+                                }
+
+                                if let Some(enhancer) = &self.gpu_enhancer {
+                                    ui.separator();
+                                    ui.strong("Pooled Memory:");
+                                    let bytes = enhancer.memory_usage();
+                                    let mb = bytes as f64 / 1024.0 / 1024.0;
+                                    ui.label(format!("  Usage: {:.2} MB", mb));
+                                }
+                            } else {
+                                ui.label("GPU context unavailable");
+                            }
+                        });
 
                     // Right side: status badge + settings
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -103,8 +136,8 @@ impl YuNetApp {
         palette: theme::Palette,
         text: impl Into<String>,
         accent: Color32,
-    ) {
-        status_chip_helper(self, ui, palette, text, accent);
+    ) -> egui::Response {
+        status_chip_helper(self, ui, palette, text, accent)
     }
 
     fn gpu_status_chip(&self, palette: theme::Palette) -> (String, Color32) {
@@ -156,7 +189,7 @@ pub(crate) fn status_chip_helper(
     palette: crate::theme::Palette,
     text: impl Into<String>,
     accent: Color32,
-) {
+) -> egui::Response {
     egui::Frame::new()
         .fill(palette.panel_dark)
         .stroke(Stroke::new(1.0, accent))
@@ -167,6 +200,7 @@ pub(crate) fn status_chip_helper(
                 RichText::new(text.into())
                     .size(14.0)
                     .color(palette.subtle_text),
-            );
-        });
+            )
+        })
+        .inner
 }

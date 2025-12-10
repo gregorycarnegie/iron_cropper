@@ -41,6 +41,30 @@ type GpuPipelineInit = (
 );
 
 impl YuNetApp {
+    /// Handles Out-Of-Memory events by clearing caches and attempting recovery.
+    pub fn handle_oom_event(&mut self) {
+        log::warn!("GPU/System OOM detected! Clearing caches...");
+
+        // 1. Clear texture cache
+        self.crop_preview_cache.clear();
+
+        // 2. Clear image cache
+        self.image_cache.clear();
+
+        // 3. Clear GPU buffer pools
+        if let Some(enhancer) = &self.gpu_enhancer {
+            enhancer.clear_caches();
+        }
+
+        // 4. Update GPU status to reflect issue
+        self.gpu_status = GpuStatusIndicator::error("OOM - Caches Cleared");
+    }
+
+    /// Returns (image_cache_len, crop_preview_cache_len) for debugging/testing.
+    pub fn debug_cache_stats(&self) -> (usize, usize) {
+        (self.image_cache.len(), self.crop_preview_cache.len())
+    }
+
     /// Polls the worker thread for completed detection jobs.
     pub(crate) fn poll_worker(&mut self, ctx: &EguiContext) {
         let mut updated = false;

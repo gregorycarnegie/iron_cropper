@@ -914,6 +914,17 @@ impl WgpuEnhancer {
     ) -> Result<Option<DynamicImage>> {
         self.shape_mask.apply(image, shape)
     }
+
+    /// Clears any internal GPU buffer pools to free memory.
+    pub fn clear_caches(&self) {
+        self.gaussian_blur.clear_cache();
+        self.background_blur.clear_cache();
+    }
+
+    /// Returns the estimated total size in bytes of internal GPU buffer pools.
+    pub fn memory_usage(&self) -> u64 {
+        self.gaussian_blur.memory_usage() + self.background_blur.memory_usage()
+    }
 }
 
 #[cfg(test)]
