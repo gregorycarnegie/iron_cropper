@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo clippy:*)"
+      "Bash(cargo clippy:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(done)",
+      "Bash(cargo tree:*)",
+      "Bash(xargs grep:*)",
+      "Bash(du:*)",
+      "Bash(xargs ls:*)"
     ],
     "deny": [],
     "ask": []

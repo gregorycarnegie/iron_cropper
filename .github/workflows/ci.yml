@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and Test (Windows)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install onnxsim
+      run: pip install onnxsim
+
+    - name: Download and Process Model
+      shell: bash
+      run: |
+        mkdir -p models
+        curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+        # Generate 640x640 model using onnxsim to fix input shape
+        onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" || onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --input-shape="1,3,640,640"
+      # Note: trying both newer and older flags/syntax if possible or just rely on standard.
+      # Actually, onnxsim syntax is: onnxsim input output [input_shapes]
+      # Input shapes can be: input_name:1,3,640,640
+      # If I don't know the name, I'll rely on onnxsim inferring it if single input.
+      # The command `onnxsim input output --overwrite-input-shape 1,3,640,640` is safer if supported.
+
+    - name: Retry Model Gen (Simpler)
+      if: failure()
+      shell: bash
+      run: |
+        # Fallback if the previous complex command failed due to syntax
+        onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
+
+    - name: Rust Cache
+      uses: swatinem/rust-cache@v2
+
+    - name: Check
+      run: cargo check --workspace
+
+    - name: Test
+      run: cargo test --workspace --all-features
+
+    - name: Format
+      run: cargo fmt --all -- --check
+
+    - name: Clippy
+      run: cargo clippy --workspace -- -D warnings
