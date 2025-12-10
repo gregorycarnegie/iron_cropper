@@ -107,6 +107,22 @@ impl GpuTensor {
         Self::from_slice_impl(context, pool, dims, data, label)
     }
 
+    /// Update the contents of the tensor with new data.
+    ///
+    /// The data length must match the tensor's element count.
+    pub fn write(&self, data: &[f32]) -> Result<()> {
+        anyhow::ensure!(
+            data.len() == self.shape().elements(),
+            "write data length {} does not match tensor elements {}",
+            data.len(),
+            self.shape().elements()
+        );
+        self.context()
+            .queue()
+            .write_buffer(&self.inner.buffer, 0, cast_slice(data));
+        Ok(())
+    }
+
     /// Allocate an uninitialized GPU tensor (contents undefined) for the provided shape.
     pub fn uninitialized<D>(context: Arc<GpuContext>, dims: D, label: Option<&str>) -> Result<Self>
     where
@@ -132,24 +148,45 @@ impl GpuTensor {
     pub fn to_vec(&self) -> Result<Vec<f32>> {
         let device = self.context().device();
         let size_bytes = self.inner.size_bytes;
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("yunet_tensor_readback"),
-            size: size_bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
+
+        let readback = if let Some(pool) = &self.inner.pool {
+            pool.acquire(size_bytes, usage, Some("yunet_tensor_readback"))
+        } else {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("yunet_tensor_readback"),
+                size: size_bytes,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("yunet_tensor_readback_encoder"),
         });
         encoder.copy_buffer_to_buffer(self.buffer(), 0, &readback, 0, size_bytes);
         self.context().queue().submit(Some(encoder.finish()));
 
-        read_buffer(
+        let result = read_buffer(
             device,
             &readback,
             self.shape().elements(),
             "gpu tensor readback",
-        )
+        );
+
+        // Recycle the readback buffer if we have a pool
+        if let Some(pool) = &self.inner.pool {
+            // Need to drop/unmap first? read_buffer unmaps it.
+            // We clone the buffer handle to pass to recycle (wgpu buffers are Arc internals)
+            // But wgpu::Buffer is a struct wrapper around an ID (in wgpu-core/hal) or Arc.
+            // wgpu::Buffer implements Clone? Yes.
+            pool.recycle(readback, size_bytes, usage);
+        } else {
+            // It will be dropped naturally
+            drop(readback);
+        }
+
+        result
     }
 
     /// Returns the associated tensor shape.
@@ -290,7 +327,8 @@ fn read_buffer(
     elements: usize,
     label: &str,
 ) -> Result<Vec<f32>> {
-    let slice = buffer.slice(..);
+    let size_bytes = (elements * std::mem::size_of::<f32>()) as u64;
+    let slice = buffer.slice(0..size_bytes);
     let (sender, receiver) = mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = sender.send(result);
@@ -368,5 +406,21 @@ mod tests {
             assert_eq!(pool.available(), 0);
         }
         assert_eq!(pool.available(), 1);
+    }
+
+    #[test]
+    fn test_tensor_write_update() {
+        let Some(ctx) = test_context() else {
+            return;
+        };
+        let initial_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let tensor = GpuTensor::from_slice(ctx, [4usize], &initial_data, Some("write_test"))
+            .expect("tensor upload");
+
+        let new_data: Vec<f32> = vec![10.0, 20.0, 30.0, 40.0];
+        tensor.write(&new_data).expect("tensor write");
+
+        let roundtrip = tensor.to_vec().expect("download tensor");
+        assert_eq!(roundtrip, new_data);
     }
 }

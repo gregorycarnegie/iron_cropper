@@ -24,7 +24,7 @@
       "blue": 49,
       "alpha": 255
     },
-    "output_format": "png",
+    "output_format": "jpeg",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
@@ -67,6 +67,10 @@
   "telemetry": {
     "enabled": true,
     "level": "trace"
+  },
+  "batch_logging": {
+    "enabled": true,
+    "format": "json"
   },
   "gpu": {
     "enabled": true,

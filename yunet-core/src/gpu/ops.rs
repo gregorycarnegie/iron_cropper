@@ -57,6 +57,12 @@ impl GpuInferenceOps {
         )
     }
 
+    /// Upload host data into an existing GPU tensor.
+    pub fn upload_to_tensor(&self, tensor: &GpuTensor, data: &[f32]) -> Result<()> {
+        self.ensure_same_context(tensor, "upload target")?;
+        tensor.write(data)
+    }
+
     /// Download a tensor back to host memory.
     pub fn download_tensor(&self, tensor: &GpuTensor) -> Result<Vec<f32>> {
         tensor.to_vec()
