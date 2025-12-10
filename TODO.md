@@ -363,8 +363,9 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - [x] Memory-efficient processing for large batches
 
 - [ ] **CI/CD**
-  - [ ] Set up GitHub Actions workflow
-  - [ ] Automated testing on Windows/macOS/Linux
+  - [x] Set up GitHub Actions workflow
+  - [x] Automated testing on Windows
+  - [ ] Automated testing on macOS/Linux
   - [x] Clippy and format checks
   - [ ] Release binary builds for all platforms
 
