@@ -5,8 +5,10 @@ use crate::ui::icons::IconSet;
 use anyhow::anyhow;
 use egui::{Context as EguiContext, Rect, TextureHandle};
 use image::DynamicImage;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
@@ -143,11 +145,11 @@ pub struct YuNetApp {
     /// State of the image preview panel.
     pub preview: PreviewState,
     /// Cache for detection results to avoid re-running on the same image and settings.
-    pub cache: HashMap<CacheKey, DetectionCacheEntry>,
+    pub cache: LruCache<CacheKey, DetectionCacheEntry>,
     /// Cached cropped previews keyed by face + crop/enhancement configuration.
-    pub crop_preview_cache: HashMap<CropPreviewKey, CropPreviewCacheEntry>,
+    pub crop_preview_cache: LruCache<CropPreviewKey, CropPreviewCacheEntry>,
     /// Cached loaded images to avoid redundant file I/O (especially during crop adjustments).
-    pub image_cache: HashMap<PathBuf, Arc<DynamicImage>>,
+    pub image_cache: LruCache<PathBuf, Arc<DynamicImage>>,
     /// The current value of the model path text input.
     pub model_path_input: String,
     /// Flag indicating if the model path input has been modified.
@@ -225,9 +227,9 @@ impl YuNetApp {
             job_tx,
             job_rx,
             preview: PreviewState::default(),
-            cache: HashMap::new(),
-            crop_preview_cache: HashMap::new(),
-            image_cache: HashMap::new(),
+            cache: LruCache::new(NonZeroUsize::new(50).unwrap()),
+            crop_preview_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
+            image_cache: LruCache::new(NonZeroUsize::new(20).unwrap()),
             model_path_input: String::new(),
             model_path_dirty: false,
             is_busy: false,

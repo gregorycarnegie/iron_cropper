@@ -28,6 +28,7 @@ yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 tempfile.workspace = true
 arboard.workspace = true
+lru = "0.16.2"
 
 [dev-dependencies]
 tempfile.workspace = true

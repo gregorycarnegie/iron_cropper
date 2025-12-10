@@ -9,9 +9,7 @@ use crate::{DetectionCacheEntry, DetectionJobSuccess, GpuStatusMode, JobMessage,
 
 use crate::core::detection::build_detector;
 use crate::core::settings::load_settings;
-use crate::types::{
-    BatchFile, BatchFileStatus, ColorMode, MappingUiState, WebcamState, WebcamStatus,
-};
+use crate::types::{ColorMode, MappingUiState, WebcamState, WebcamStatus};
 use anyhow::{Context, anyhow};
 #[cfg(not(target_arch = "wasm32"))]
 use arboard::{Clipboard, Error as ClipboardError};
@@ -20,10 +18,12 @@ use egui::{Context as EguiContext, DroppedFile, Event, TextureHandle, TextureOpt
 use egui_extras::{Size, StripBuilder};
 use image::{DynamicImage, RgbaImage};
 use log::info;
+use lru::LruCache;
 use std::sync::{Arc, mpsc};
 use std::{
     collections::VecDeque,
     fs,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
 };
 use tempfile::Builder;
@@ -654,7 +654,7 @@ impl YuNetApp {
                 ));
                 self.apply_quality_rules_to_preview();
 
-                self.cache.insert(
+                self.cache.put(
                     cache_key,
                     DetectionCacheEntry {
                         texture: cache_texture,
@@ -804,9 +804,9 @@ impl YuNetApp {
             job_tx,
             job_rx,
             preview: Default::default(),
-            cache: std::collections::HashMap::new(),
-            crop_preview_cache: std::collections::HashMap::new(),
-            image_cache: std::collections::HashMap::new(),
+            cache: LruCache::new(NonZeroUsize::new(50).unwrap()),
+            crop_preview_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
+            image_cache: LruCache::new(NonZeroUsize::new(20).unwrap()),
             model_path_input,
             model_path_dirty: false,
             is_busy: false,

@@ -9,6 +9,7 @@ use yunet_utils::gpu::GpuStatusIndicator;
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
 use image::DynamicImage;
 use log::warn;
+use lru::LruCache;
 use std::{path::PathBuf, sync::Arc};
 use yunet_core::{
     CropSettings as CoreCropSettings, FillColor, PositioningMode, calculate_crop_region,
@@ -23,7 +24,7 @@ use yunet_utils::{
 
 /// Helper to get or load an image using the app-level cache.
 pub fn get_or_load_cached_image(
-    image_cache: &mut std::collections::HashMap<PathBuf, Arc<DynamicImage>>,
+    image_cache: &mut LruCache<PathBuf, Arc<DynamicImage>>,
     path: &PathBuf,
 ) -> Result<Arc<DynamicImage>, anyhow::Error> {
     if let Some(cached) = image_cache.get(path) {
@@ -32,7 +33,7 @@ pub fn get_or_load_cached_image(
 
     let loaded = load_image(path)?;
     let arc = Arc::new(loaded);
-    image_cache.insert(path.clone(), arc.clone());
+    image_cache.put(path.clone(), arc.clone());
     Ok(arc)
 }
 
@@ -42,7 +43,7 @@ pub struct CropPreviewRequest<'a> {
     pub face_idx: usize,
     pub detection: &'a DetectionWithQuality,
     pub source_image: &'a mut Option<Arc<DynamicImage>>,
-    pub image_cache: &'a mut std::collections::HashMap<PathBuf, Arc<DynamicImage>>,
+    pub image_cache: &'a mut LruCache<PathBuf, Arc<DynamicImage>>,
     pub crop_settings: &'a CoreCropSettings,
     pub crop_config: &'a ConfigCropSettings,
     pub enhancement_settings: &'a EnhancementSettings,
@@ -69,7 +70,7 @@ pub fn enhance_with_gpu(
 
 /// Ensures a crop preview entry exists in the cache, creating it if necessary.
 pub fn ensure_crop_preview_entry(
-    cache: &mut std::collections::HashMap<CropPreviewKey, CropPreviewCacheEntry>,
+    cache: &mut LruCache<CropPreviewKey, CropPreviewCacheEntry>,
     request: CropPreviewRequest<'_>,
 ) -> Option<(CropPreviewKey, Arc<DynamicImage>)> {
     let CropPreviewRequest {
@@ -185,7 +186,7 @@ pub fn ensure_crop_preview_entry(
     let rgba = masked.to_rgba8();
     let final_image = DynamicImage::ImageRgba8(rgba);
     let arc_image = Arc::new(final_image);
-    cache.insert(
+    cache.put(
         key.clone(),
         CropPreviewCacheEntry {
             image: arc_image.clone(),
@@ -212,7 +213,7 @@ pub fn load_texture_from_image(
 /// Gets or creates a texture for a crop preview.
 pub fn crop_preview_texture_for(
     ctx: &EguiContext,
-    cache: &mut std::collections::HashMap<CropPreviewKey, CropPreviewCacheEntry>,
+    cache: &mut LruCache<CropPreviewKey, CropPreviewCacheEntry>,
     request: CropPreviewRequest<'_>,
     texture_seq: &mut u64,
 ) -> Option<TextureHandle> {
