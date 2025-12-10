@@ -33,7 +33,7 @@ impl YuNetApp {
     }
 
     /// Applies an enhancement preset to the current settings.
-    pub(crate) fn apply_enhancement_preset(&mut self) {
+    pub fn apply_enhancement_preset(&mut self) {
         match self.settings.enhance.preset.as_str() {
             "natural" => {
                 self.settings.enhance.auto_color = false;
@@ -74,7 +74,7 @@ impl YuNetApp {
         }
     }
 
-    pub(crate) fn resolved_output_dimensions(&self) -> (u32, u32) {
+    pub fn resolved_output_dimensions(&self) -> (u32, u32) {
         if self.settings.crop.preset == "custom" {
             (
                 self.settings.crop.output_width,
@@ -88,7 +88,7 @@ impl YuNetApp {
     }
 
     /// Builds yunet-core CropSettings from the GUI settings.
-    pub(crate) fn build_crop_settings(&self) -> CoreCropSettings {
+    pub fn build_crop_settings(&self) -> CoreCropSettings {
         let (output_width, output_height) = self.resolved_output_dimensions();
 
         let positioning_mode = match self.settings.crop.positioning_mode.as_str() {
@@ -207,7 +207,7 @@ impl YuNetApp {
         self.crop_history_index = self.crop_history.len() - 1;
     }
 
-    pub(crate) fn undo_crop_settings(&mut self) {
+    pub fn undo_crop_settings(&mut self) {
         if self.crop_history_index == 0 {
             return;
         }
@@ -220,7 +220,7 @@ impl YuNetApp {
         self.refresh_metadata_tags_input();
     }
 
-    pub(crate) fn redo_crop_settings(&mut self) {
+    pub fn redo_crop_settings(&mut self) {
         if self.crop_history_index + 1 >= self.crop_history.len() {
             return;
         }
@@ -233,7 +233,7 @@ impl YuNetApp {
         self.refresh_metadata_tags_input();
     }
 
-    pub(crate) fn adjust_horizontal_offset(&mut self, delta: f32) {
+    pub fn adjust_horizontal_offset(&mut self, delta: f32) {
         if delta.abs() < f32::EPSILON {
             return;
         }
@@ -247,7 +247,7 @@ impl YuNetApp {
         self.persist_settings_with_feedback();
     }
 
-    pub(crate) fn adjust_vertical_offset(&mut self, delta: f32) {
+    pub fn adjust_vertical_offset(&mut self, delta: f32) {
         if delta.abs() < f32::EPSILON {
             return;
         }
@@ -261,7 +261,7 @@ impl YuNetApp {
         self.persist_settings_with_feedback();
     }
 
-    pub(crate) fn adjust_face_height(&mut self, delta: f32) {
+    pub fn adjust_face_height(&mut self, delta: f32) {
         if delta.abs() < f32::EPSILON {
             return;
         }
@@ -275,7 +275,7 @@ impl YuNetApp {
         self.persist_settings_with_feedback();
     }
 
-    pub(crate) fn set_crop_preset(&mut self, preset: &str) {
+    pub fn set_crop_preset(&mut self, preset: &str) {
         if self.settings.crop.preset == preset {
             return;
         }
@@ -292,7 +292,7 @@ impl YuNetApp {
     }
 
     /// Applies the model path from the text input field.
-    pub(crate) fn apply_model_path_input(&mut self) {
+    pub fn apply_model_path_input(&mut self) {
         let trimmed = self.model_path_input.trim().to_owned();
         self.model_path_input = trimmed.clone();
         self.update_model_path(if trimmed.is_empty() {

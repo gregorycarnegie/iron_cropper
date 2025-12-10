@@ -1,9 +1,7 @@
 //! Face detection workflow and detector management.
 
-use crate::{
-    CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, GpuStatusIndicator,
-    JobMessage,
-};
+use crate::{CacheKey, DetectionJobSuccess, DetectionOrigin, DetectionWithQuality, JobMessage};
+use yunet_utils::gpu::GpuStatusIndicator;
 
 use anyhow::{Context as AnyhowContext, Result};
 use egui::{Context as EguiContext, TextureOptions};

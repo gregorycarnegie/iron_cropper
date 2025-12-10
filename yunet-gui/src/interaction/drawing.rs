@@ -2,9 +2,10 @@
 
 use super::coords::clamp_bbox_to_image;
 
-use crate::{
-    DetectionOrigin, DetectionWithQuality, ManualBoxDraft, PointerSnapshot, PreviewSpace, Quality,
+use crate::types::{
+    DetectionOrigin, DetectionWithQuality, ManualBoxDraft, PointerSnapshot, PreviewSpace,
 };
+use yunet_utils::quality::Quality;
 
 use egui::{Pos2, Rect};
 use yunet_core::{BoundingBox, Detection, Landmark};

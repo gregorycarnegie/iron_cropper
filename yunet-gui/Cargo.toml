@@ -5,6 +5,13 @@ license.workspace = true
 version.workspace = true
 description = "egui desktop app for YuNet face detection."
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "yunet-gui"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
 eframe.workspace = true

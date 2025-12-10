@@ -20,6 +20,11 @@ macro_rules! declare_icon_set {
             /// Installs SVG loaders and prepares the icon set.
             pub fn new(ctx: &egui::Context) -> Self {
                 egui_extras::install_image_loaders(ctx);
+                Self::new_headless()
+            }
+
+            /// Creates the icon set without installing image loaders (for testing).
+            pub fn new_headless() -> Self {
                 Self {
                     $(
                         $name: SvgIcon::new(

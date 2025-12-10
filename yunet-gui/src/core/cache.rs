@@ -2,8 +2,9 @@
 
 use crate::{
     CropPreviewCacheEntry, CropPreviewKey, DetectionWithQuality, EnhancementSignature,
-    GpuStatusIndicator, ShapeSignature, YuNetApp,
+    ShapeSignature, YuNetApp,
 };
+use yunet_utils::gpu::GpuStatusIndicator;
 
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
 use image::DynamicImage;

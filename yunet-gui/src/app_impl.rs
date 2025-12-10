@@ -7,18 +7,38 @@ use crate::core::{
 use crate::interaction::{bbox_drag, drawing, shortcuts};
 use crate::{DetectionCacheEntry, DetectionJobSuccess, GpuStatusMode, JobMessage, YuNetApp};
 
+use crate::core::detection::build_detector;
+use crate::core::settings::load_settings;
+use crate::types::{
+    BatchFile, BatchFileStatus, ColorMode, MappingUiState, WebcamState, WebcamStatus,
+};
 use anyhow::{Context, anyhow};
 #[cfg(not(target_arch = "wasm32"))]
 use arboard::{Clipboard, Error as ClipboardError};
+use eframe::{App, CreationContext, Frame};
 use egui::{Context as EguiContext, DroppedFile, Event, TextureHandle, TextureOptions};
+use egui_extras::{Size, StripBuilder};
 use image::{DynamicImage, RgbaImage};
 use log::info;
+use std::sync::{Arc, mpsc};
 use std::{
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
 };
 use tempfile::Builder;
+use yunet_utils::{
+    WgpuEnhancer,
+    config::default_settings_path,
+    configure_telemetry,
+    gpu::{GpuBatchCropper, GpuContext, GpuStatusIndicator},
+};
+
+type GpuPipelineInit = (
+    Option<Arc<GpuContext>>,
+    Option<Arc<WgpuEnhancer>>,
+    Option<Arc<GpuBatchCropper>>,
+);
 
 impl YuNetApp {
     /// Polls the worker thread for completed detection jobs.
@@ -522,7 +542,7 @@ impl YuNetApp {
     }
 
     /// Handles keyboard shortcuts.
-    pub(crate) fn handle_shortcuts(&mut self, ctx: &EguiContext) {
+    pub fn handle_shortcuts(&mut self, ctx: &EguiContext) {
         let wants_text = ctx.wants_keyboard_input();
         let actions = shortcuts::capture_shortcut_actions(ctx, wants_text);
 
@@ -666,4 +686,392 @@ impl YuNetApp {
     }
 }
 
+impl YuNetApp {
+    /// Creates a new `YuNetApp` instance.
+    pub fn new(cc: &CreationContext<'_>) -> Self {
+        let settings_path = default_settings_path();
+
+        // Try to extract the WGPU render state from eframe
+        let shared_gpu_context = cc.wgpu_render_state.as_ref().map(|render_state| {
+            info!("Extracting GPU context from eframe WGPU renderer");
+            let device = render_state.device.clone();
+            let queue = render_state.queue.clone();
+            let info = render_state.adapter.get_info();
+
+            Arc::new(GpuContext::from_existing(
+                None, // eframe doesn't expose the instance
+                None, // eframe doesn't expose the adapter directly
+                device, queue, info,
+            ))
+        });
+
+        if shared_gpu_context.is_some() {
+            info!("Successfully created shared GPU context from eframe renderer");
+        } else {
+            info!(
+                "No WGPU render state available from eframe, will create separate GPU context if needed"
+            );
+        }
+
+        Self::create(&cc.egui_ctx, settings_path, shared_gpu_context)
+    }
+
+    /// Creates a new `YuNetApp` instance with a specific settings path.
+    pub(crate) fn create(
+        ctx: &EguiContext,
+        settings_path: PathBuf,
+        shared_gpu_context: Option<Arc<GpuContext>>,
+    ) -> Self {
+        crate::theme::apply(ctx);
+
+        info!("Loading GUI settings from {}", settings_path.display());
+        let settings = load_settings(&settings_path);
+        configure_telemetry(
+            settings.telemetry.enabled,
+            settings.telemetry.level_filter(),
+        );
+        if settings.telemetry.enabled {
+            info!(
+                "Telemetry logging enabled (level={:?})",
+                settings.telemetry.level_filter()
+            );
+        }
+        let (job_tx, job_rx) = mpsc::channel();
+
+        let (initial_gpu_status, initial_gpu_context, detector_result) =
+            build_detector(&settings, shared_gpu_context);
+        let (gpu_context, gpu_enhancer, gpu_batch_cropper) =
+            YuNetApp::init_gpu_pipelines(initial_gpu_context);
+        let detector = match detector_result {
+            Ok(detector) => {
+                info!("Loaded YuNet model from configuration");
+                Some(Arc::new(detector))
+            }
+            Err(err) => {
+                log::warn!("Unable to initialize YuNet model: {err}");
+                None
+            }
+        };
+
+        let status_line = if detector.is_some() {
+            "Model ready. Select an image to run detection.".to_owned()
+        } else {
+            "Model not loaded. Configure the model path before running detection.".to_owned()
+        };
+
+        let model_path_input = settings.model_path.clone().unwrap_or_default();
+
+        let crop_history = vec![settings.crop.clone()];
+        let crop_history_index = crop_history.len() - 1;
+        let metadata_tags_input =
+            YuNetApp::format_metadata_tags(&settings.crop.metadata.custom_tags);
+        let crop_fill_hex_input = YuNetApp::format_fill_color_hex(settings.crop.fill_color);
+
+        Self {
+            settings,
+            settings_path,
+            status_line,
+            last_error: None,
+            gpu_status: initial_gpu_status,
+            gpu_context,
+            gpu_enhancer,
+            gpu_batch_cropper,
+            detector,
+            job_tx,
+            job_rx,
+            preview: Default::default(),
+            cache: std::collections::HashMap::new(),
+            crop_preview_cache: std::collections::HashMap::new(),
+            image_cache: std::collections::HashMap::new(),
+            model_path_input,
+            model_path_dirty: false,
+            is_busy: false,
+            texture_seq: 0,
+            job_counter: 0,
+            current_job: None,
+            show_crop_overlay: true,
+            selected_faces: std::collections::HashSet::new(),
+            crop_history,
+            crop_history_index,
+            crop_fill_hex_input,
+            metadata_tags_input,
+            batch_files: Vec::new(),
+            batch_current_index: None,
+            mapping: MappingUiState::new(),
+            preview_hud_anchor: egui::vec2(0.02, 0.02),
+            preview_hud_minimized: true,
+            preview_hud_drag_origin: None,
+            manual_box_tool_enabled: false,
+            manual_box_draft: None,
+            active_bbox_drag: None,
+            clipboard_temp_images: Vec::new(),
+            show_settings_window: false,
+            show_batch_window: false,
+            show_mapping_window: false,
+            show_detection_window: false,
+            webcam_state: WebcamState::default(),
+            icons: crate::ui::icons::IconSet::new(ctx),
+            fill_color_mode: ColorMode::Rgb,
+            aspect_ratio_locked: false,
+        }
+    }
+
+    fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineInit {
+        if let Some(ctx) = context {
+            let enhancer = match WgpuEnhancer::new(ctx.clone()) {
+                Ok(enhancer) => {
+                    info!(
+                        "GPU enhancer ready on '{}' ({:?})",
+                        ctx.adapter_info().name,
+                        ctx.adapter_info().backend
+                    );
+                    Some(Arc::new(enhancer))
+                }
+                Err(err) => {
+                    log::warn!("Failed to initialize GPU enhancer: {err}");
+                    None
+                }
+            };
+            let cropper = match GpuBatchCropper::new(ctx.clone()) {
+                Ok(cropper) => Some(Arc::new(cropper)),
+                Err(err) => {
+                    log::warn!("Failed to initialize GPU batch cropper: {err}");
+                    None
+                }
+            };
+            (Some(ctx), enhancer, cropper)
+        } else {
+            (None, None, None)
+        }
+    }
+
+    pub(crate) fn refresh_gpu_pipelines(&mut self, context: Option<Arc<GpuContext>>) {
+        let (ctx, enhancer, cropper) = Self::init_gpu_pipelines(context);
+        self.gpu_context = ctx;
+        self.gpu_enhancer = enhancer;
+        self.gpu_batch_cropper = cropper;
+    }
+}
+
+impl App for YuNetApp {
+    fn update(&mut self, ctx: &EguiContext, _frame: &mut Frame) {
+        self.process_import_payloads(ctx);
+        self.poll_worker(ctx);
+        self.show_status_bar(ctx);
+
+        // Request continuous repaints when webcam is active
+        if matches!(
+            self.webcam_state.status,
+            WebcamStatus::Active | WebcamStatus::Starting
+        ) {
+            ctx.request_repaint();
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            StripBuilder::new(ui)
+                .size(Size::exact(283.0)) // Navigation
+                .size(Size::remainder()) // Preview
+                .size(Size::exact(420.0)) // Configuration
+                .horizontal(|mut strip| {
+                    strip.cell(|ui| {
+                        // Navigation Panel Frame
+                        let palette = crate::theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.panel)
+                            .inner_margin(egui::Margin::symmetric(16, 18))
+                            .stroke(egui::Stroke::new(1.0, palette.outline))
+                            .show(ui, |ui| {
+                                self.show_navigation_panel(ui);
+                            });
+                    });
+                    strip.cell(|ui| {
+                        // Preview Panel Frame
+                        let palette = crate::theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.canvas)
+                            .inner_margin(egui::Margin::symmetric(16, 16))
+                            .show(ui, |ui| {
+                                self.show_preview(ui, ctx);
+                            });
+                    });
+                    strip.cell(|ui| {
+                        // Configuration Panel Frame
+                        let palette = crate::theme::palette();
+                        egui::Frame::new()
+                            .fill(palette.panel)
+                            .stroke(egui::Stroke::new(1.0, palette.outline))
+                            .inner_margin(egui::Margin::symmetric(16, 18))
+                            .show(ui, |ui| {
+                                crate::ui::config::panel::show_configuration_panel(self, ui, ctx);
+                            });
+                    });
+                });
+        });
+
+        if self.show_settings_window {
+            crate::ui::settings_window::show_settings_window(self, ctx);
+        }
+        if self.show_batch_window {
+            crate::ui::batch_window::show_batch_window(self, ctx);
+        }
+        if self.show_mapping_window {
+            self.show_mapping_window(ctx);
+        }
+        if self.show_detection_window {
+            crate::ui::config::detections::show_detection_window(self, ctx);
+        }
+
+        self.handle_shortcuts(ctx);
+
+        if self.is_busy {
+            ctx.request_repaint();
+        }
+    }
+}
+
 const MAX_CLIPBOARD_IMAGES: usize = 8;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    fn app_with_temp_settings() -> (YuNetApp, tempfile::TempDir, egui::Context) {
+        let ctx = egui::Context::default();
+        let temp = tempdir().expect("tempdir");
+        let settings_path = temp.path().join("gui_settings_test.json");
+        let app = YuNetApp::create(&ctx, settings_path, None);
+        (app, temp, ctx)
+    }
+
+    #[test]
+    fn smoke_initializes_and_persists_settings() {
+        use crate::core::settings::persist_settings;
+
+        let ctx = egui::Context::default();
+        let temp = tempdir().expect("tempdir");
+        let settings_path = temp.path().join("config").join("gui_settings_smoke.json");
+
+        let mut app = YuNetApp::create(&ctx, settings_path.clone(), None);
+        assert!(app.detector.is_none());
+        assert!(
+            app.status_line.contains("Model not loaded")
+                || app.status_line.contains("Select an image"),
+            "status line should mention initial state, got {}",
+            app.status_line
+        );
+        assert_eq!(app.settings_path, settings_path);
+
+        app.settings.detection.score_threshold = 0.42;
+        persist_settings(&app.settings, &app.settings_path).expect("persist settings");
+
+        let saved = std::fs::read_to_string(&app.settings_path).expect("read settings");
+        let json: serde_json::Value = serde_json::from_str(&saved).expect("parse settings");
+        assert_eq!(json["detection"]["score_threshold"], json!(0.42));
+    }
+
+    #[test]
+    fn crop_adjustments_are_clamped_and_record_history() {
+        let (mut app, temp_dir, _ctx) = app_with_temp_settings();
+
+        let base_history = app.crop_history.len();
+
+        app.adjust_horizontal_offset(0.8);
+        assert!((app.settings.crop.horizontal_offset - 0.8).abs() < 1e-6);
+        assert_eq!(app.crop_history.len(), base_history + 1);
+
+        app.adjust_vertical_offset(-2.0);
+        assert_eq!(app.settings.crop.vertical_offset, -1.0);
+        assert_eq!(app.crop_history.len(), base_history + 2);
+
+        app.adjust_face_height(50.0);
+        assert!((app.settings.crop.face_height_pct - 100.0).abs() < 1e-6);
+        assert_eq!(app.crop_history.len(), base_history + 3);
+
+        app.set_crop_preset("passport");
+        assert_eq!(app.settings.crop.preset, "passport");
+        assert_eq!(app.settings.crop.output_width, 413);
+        assert_eq!(app.settings.crop.output_height, 531);
+        assert_eq!(app.crop_history.len(), base_history + 4);
+
+        let settings_file = temp_dir.path().join("gui_settings_test.json");
+        assert!(
+            settings_file.exists(),
+            "persisted settings file should be created"
+        );
+    }
+
+    #[test]
+    fn resolved_dimensions_follow_preset_and_custom_settings() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        app.set_crop_preset("idcard");
+        let (preset_w, preset_h) = app.resolved_output_dimensions();
+        assert_eq!((preset_w, preset_h), (332, 498));
+
+        app.settings.crop.preset = "custom".to_string();
+        app.settings.crop.output_width = 720;
+        app.settings.crop.output_height = 960;
+
+        let (custom_w, custom_h) = app.resolved_output_dimensions();
+        assert_eq!((custom_w, custom_h), (720, 960));
+
+        let core_settings = app.build_crop_settings();
+        assert_eq!(core_settings.output_width, 720);
+        assert_eq!(core_settings.output_height, 960);
+    }
+
+    #[test]
+    fn undo_and_redo_restore_crop_state_sequence() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        let initial_height = app.settings.crop.face_height_pct;
+
+        app.adjust_face_height(5.0);
+        let raised_height = app.settings.crop.face_height_pct;
+        assert!(raised_height > initial_height);
+
+        app.adjust_horizontal_offset(0.4);
+        assert_eq!(app.settings.crop.horizontal_offset, 0.4);
+
+        app.undo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+        assert!((app.settings.crop.face_height_pct - raised_height).abs() < 1e-6);
+
+        app.undo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+        assert!((app.settings.crop.face_height_pct - initial_height).abs() < 1e-6);
+
+        app.redo_crop_settings();
+        assert!((app.settings.crop.face_height_pct - raised_height).abs() < 1e-6);
+        assert_eq!(app.settings.crop.horizontal_offset, 0.0);
+
+        app.redo_crop_settings();
+        assert_eq!(app.settings.crop.horizontal_offset, 0.4);
+    }
+
+    #[test]
+    fn enhancement_presets_apply_expected_parameters() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        app.settings.enhance.preset = "vivid".to_string();
+        app.settings.enhance.auto_color = false;
+        app.settings.enhance.exposure_stops = 0.0;
+        app.settings.enhance.brightness = 0;
+        app.settings.enhance.contrast = 1.0;
+        app.settings.enhance.saturation = 1.0;
+        app.settings.enhance.sharpness = 0.0;
+        app.settings.enhance.skin_smooth = 0.0;
+
+        app.apply_enhancement_preset();
+
+        assert!(app.settings.enhance.auto_color);
+        assert!((app.settings.enhance.exposure_stops - 0.2).abs() < 1e-6);
+        assert_eq!(app.settings.enhance.brightness, 10);
+        assert!((app.settings.enhance.contrast - 1.2).abs() < 1e-6);
+        assert!((app.settings.enhance.saturation - 1.3).abs() < 1e-6);
+        assert!((app.settings.enhance.sharpness - 0.8).abs() < 1e-6);
+    }
+}

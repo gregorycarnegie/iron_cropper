@@ -207,6 +207,60 @@ pub struct YuNetApp {
     pub aspect_ratio_locked: bool,
 }
 
+impl YuNetApp {
+    /// Creates a headless instance of the app for testing purposes.
+    pub fn test_instance() -> Self {
+        let (job_tx, job_rx) = mpsc::channel();
+        Self {
+            settings: AppSettings::default(),
+            settings_path: PathBuf::from("test_settings.json"),
+            icons: IconSet::new_headless(),
+            status_line: String::new(),
+            last_error: None,
+            gpu_status: GpuStatusIndicator::default(),
+            gpu_context: None,
+            gpu_enhancer: None,
+            gpu_batch_cropper: None,
+            detector: None,
+            job_tx,
+            job_rx,
+            preview: PreviewState::default(),
+            cache: HashMap::new(),
+            crop_preview_cache: HashMap::new(),
+            image_cache: HashMap::new(),
+            model_path_input: String::new(),
+            model_path_dirty: false,
+            is_busy: false,
+            texture_seq: 0,
+            job_counter: 0,
+            current_job: None,
+            show_crop_overlay: true,
+            selected_faces: HashSet::new(),
+            crop_history: vec![ConfigCropSettings::default()],
+            crop_history_index: 0,
+            crop_fill_hex_input: "#00000000".to_string(),
+            metadata_tags_input: String::new(),
+            batch_files: Vec::new(),
+            batch_current_index: None,
+            mapping: MappingUiState::default(),
+            preview_hud_anchor: egui::vec2(0.0, 0.0),
+            preview_hud_minimized: false,
+            preview_hud_drag_origin: None,
+            manual_box_tool_enabled: false,
+            manual_box_draft: None,
+            active_bbox_drag: None,
+            clipboard_temp_images: Vec::new(),
+            show_settings_window: false,
+            show_batch_window: false,
+            show_mapping_window: false,
+            show_detection_window: false,
+            webcam_state: WebcamState::default(),
+            fill_color_mode: ColorMode::Rgb,
+            aspect_ratio_locked: false,
+        }
+    }
+}
+
 /// Webcam capture state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebcamStatus {
