@@ -68,6 +68,11 @@ impl GpuInferenceOps {
         tensor.to_vec()
     }
 
+    /// Returns the estimated total memory usage (in bytes) of buffers managed by the pool.
+    pub fn memory_usage(&self) -> u64 {
+        self.buffer_pool.memory_usage()
+    }
+
     fn ensure_same_context(&self, tensor: &GpuTensor, label: &str) -> Result<()> {
         anyhow::ensure!(
             Arc::ptr_eq(tensor.context(), &self.context),

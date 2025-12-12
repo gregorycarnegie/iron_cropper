@@ -49,7 +49,9 @@ cargo build --release -p yunet-cli
 - **Context Management**: `GpuContext` wraps wgpu adapter/device/queue.
 - **Buffer Pooling**: `GpuBufferPool` (in `yunet-utils`) reuses buffers to minimize allocation overhead.
 - **Compute Shaders**: WGSL shaders for preprocessing, enhancement, and custom YuNet inference ops (Conv2D, BatchNorm, etc.).
-- **Inference**: Custom WGPU implementation of YuNet available as an alternative to tract-onnx (Phase 13.3 Option C).
+- **Inference**: Custom WGPU implementation of YuNet (Phase 12 Option C) runs convolution/batch-norm/activation layers via compute shaders.
+- **Monitoring**: Memory usage tracking and OOM handling (clear caches on error).
+- **Parity**: GPU inference results are vetted against CPU baseline (tolerance ~1e-4).
 
 ### Configuration System
 

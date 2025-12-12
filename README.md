@@ -35,6 +35,12 @@ The project includes comprehensive GPU acceleration via wgpu and WGSL compute sh
 - **GPU context pooling** – CLI uses async GPU context pool for efficient batch operations; GUI shares wgpu context with eframe's rendering backend.
 - **Auto-detection** – Both CLI and GUI automatically detect GPU availability and fall back to CPU when necessary. Use `--gpu` or `--no-gpu` flags in CLI for explicit control.
 
+### Requirements
+
+- **Hardware**: Vulkan 1.2+, DirectX 12, or Metal-capable GPU.
+- **Drivers**: Up-to-date graphics drivers (NVIDIA 530+, AMD 23.x+, Intel 31.x+).
+- **Fallback**: System automatically falls back to CPU if no compatible adapter is found.
+
 ## Mapping-driven Workflows
 
 - **Source->Output mappings** - Import CSV/TSV, Excel (XLS/XLSX), Parquet, or SQLite datasets via the CLI with --mapping-file, column selectors, and header/sheet/delimiter/query options.

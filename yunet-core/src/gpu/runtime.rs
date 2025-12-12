@@ -115,6 +115,10 @@ impl GpuYuNet {
         let outputs = build_decode_tensors(&levels)?;
         decode_yunet_outputs(&outputs, self.input_size)
     }
+
+    pub fn memory_usage(&self) -> u64 {
+        self.ops.memory_usage()
+    }
 }
 
 fn upload_gpu_weights(

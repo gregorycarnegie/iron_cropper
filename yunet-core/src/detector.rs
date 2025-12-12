@@ -145,6 +145,14 @@ impl YuNetDetector {
         self.run_preprocessed(prep)
     }
 
+    /// Returns the estimated GPU memory usage in bytes, or None if running on CPU.
+    pub fn gpu_memory_usage(&self) -> Option<u64> {
+        match &self.backend {
+            DetectorBackend::Cpu(_) => None,
+            DetectorBackend::Gpu(gpu) => Some(gpu.memory_usage()),
+        }
+    }
+
     /// Access the underlying postprocess configuration.
     pub fn postprocess_config(&self) -> &PostprocessConfig {
         &self.postprocess
