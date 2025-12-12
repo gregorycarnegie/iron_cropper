@@ -41,6 +41,39 @@ The GUI maintains a circular history buffer (max 100 entries) of `CropSettings` 
 
 `yunet-core/benches/crop_enhance.rs` provides a Criterion micro-benchmark for the combined crop + enhancement pipeline. It generates a synthetic high-frequency region, runs `crop_face_from_image`, and immediately applies the enhancement stack. Use `cargo bench -p yunet-core crop_enhance` to track latency when tuning algorithms.
 
+### GPU Pipeline Architecture
+
+```mermaid
+graph TD
+    HostImage[Host Image (RAM)] -->|Upload Texture| GPU[GPU Memory]
+    
+    subgraph "Preprocessing (WGSL)"
+        GPU -->|Texture| PreprocShader[Preprocess Shader]
+        PreprocShader -->|Resize + RGB->BGR| PreprocOutput[Tensor (CHW)]
+    end
+    
+    subgraph "Inference (Custom WGSL)"
+        PreprocOutput -->|Input| Conv2D[Conv2D Layer]
+        Conv2D -->|Feature Map| BatchNorm[BatchNorm]
+        BatchNorm -->|Activation| ReLU[ReLU/Sigmoid]
+        ReLU -->|Next Layer| Conv2D
+        ReLU -->|Final| OutputTensors[Output Tensors]
+    end
+    
+    subgraph "Postprocessing"
+        OutputTensors -->|Download| CPU_Post[CPU Postprocess]
+        CPU_Post -->|NMS & Decode| Detections[Detections list]
+    end
+    
+    subgraph "Enhancement (WGSL)"
+        Detections -->|Crop Region| EnhanceShader[Enhancement Shaders]
+        EnhanceShader -->|Apply Filters| EnhancedTex[Enhanced Texture]
+    end
+    
+    EnhancedTex -->|Display| GUI[GUI Preview]
+    EnhancedTex -->|Download| Disk[Export to Disk]
+```
+
 ### GPU vs CPU Performance
 
 | Operation | CPU (Ryzen 5950X) | GPU (GTX 1080 Ti) | Speedup |

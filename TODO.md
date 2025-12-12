@@ -520,7 +520,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] Add WGSL shader documentation with algorithm explanations
   - [x] Create benchmark comparison table (CPU vs GPU for each operation)
   - [x] Document fallback behavior and troubleshooting
-  - [ ] Add architecture diagram showing GPU pipeline flow
+  - [x] Add architecture diagram showing GPU pipeline flow
   - [x] Update CLAUDE.md with GPU implementation notes
 
 ### Phase 13: Finalization & Release
