@@ -1,6 +1,5 @@
 use image::DynamicImage;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use yunet_gui::YuNetApp;
 
 #[test]
@@ -37,7 +36,7 @@ fn image_cache_respects_capacity() {
 
 #[test]
 fn crop_preview_cache_respects_capacity() {
-    let mut app = YuNetApp::test_instance();
+    let app = YuNetApp::test_instance();
 
     // Capacity 500
     assert_eq!(app.crop_preview_cache.cap().get(), 500);

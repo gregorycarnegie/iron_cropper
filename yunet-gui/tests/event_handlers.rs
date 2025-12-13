@@ -46,7 +46,7 @@ fn test_undo_redo_shortcuts() {
         repeat: false,
         modifiers: Modifiers::CTRL,
     });
-    ctx.begin_frame(input_redo);
+    ctx.begin_pass(input_redo);
 
     app.handle_shortcuts(&ctx);
 
@@ -91,7 +91,7 @@ fn test_preset_shortcuts() {
         repeat: false,
         modifiers: Modifiers::CTRL,
     });
-    ctx.begin_frame(input_passport);
+    ctx.begin_pass(input_passport);
 
     app.handle_shortcuts(&ctx);
 

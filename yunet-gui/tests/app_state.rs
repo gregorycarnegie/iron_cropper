@@ -1,5 +1,4 @@
 use yunet_gui::types::YuNetApp;
-use yunet_utils::config::CropSettings;
 
 #[test]
 fn test_undo_redo_crop_settings() {

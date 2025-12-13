@@ -1,4 +1,3 @@
-use egui::Context;
 use yunet_gui::{GpuStatusMode, YuNetApp};
 
 #[test]
