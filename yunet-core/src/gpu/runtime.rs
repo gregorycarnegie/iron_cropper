@@ -279,5 +279,30 @@ fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize
     // Add 256MB fixed overhead for driver/fragmentation/mips/etc
     let fixed_overhead = 256 * 1024 * 1024;
 
-    total_weight_bytes + activation_heuristic + fixed_overhead
+    let required = total_weight_bytes + activation_heuristic + fixed_overhead;
+
+    // If we can query the actual VRAM budget, we use it to intelligently set the limit.
+    if let Some(hardware_available) = yunet_utils::gpu::get_available_vram() {
+        let hardware_limit = hardware_available.saturating_mul(80) / 100; // 80% usage safe zone
+
+        if hardware_limit < required {
+            log::warn!(
+                "Estimated requirement ({} MB) exceeds safe hardware limit ({} MB). Capping at hardware limit.",
+                required / 1024 / 1024,
+                hardware_limit / 1024 / 1024
+            );
+        } else {
+            // Hardware has plenty of space. Use the hardware limit as the cap to strictly avoid
+            // "MemoryLimitExceeded" errors on capable hardware, even if our heuristic is slightly off.
+            log::info!(
+                "Hardware VRAM ({} MB) allows increasing limit from estimated {} MB to {} MB.",
+                hardware_available / 1024 / 1024,
+                required / 1024 / 1024,
+                hardware_limit / 1024 / 1024
+            );
+        }
+        return hardware_limit;
+    }
+
+    required
 }

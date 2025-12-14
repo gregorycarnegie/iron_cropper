@@ -41,6 +41,8 @@ pub mod crop_batch;
 pub use crop_batch::{BatchCropRequest, GpuBatchCropper};
 pub mod buffer_pool;
 pub use buffer_pool::GpuBufferPool;
+pub mod memory;
+pub use memory::get_available_vram;
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 

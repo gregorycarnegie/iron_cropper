@@ -40,3 +40,9 @@ criterion.workspace = true
 [[bench]]
 name = "bitwise_optimizations"
 harness = false
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal.workspace = true

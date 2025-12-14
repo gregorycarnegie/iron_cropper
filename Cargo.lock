@@ -7160,6 +7160,7 @@ dependencies = [
  "fast_image_resize",
  "image",
  "log",
+ "metal 0.32.0",
  "ndarray 0.17.1",
  "nokhwa",
  "parquet",
@@ -7173,6 +7174,7 @@ dependencies = [
  "tiny-skia",
  "wgpu",
  "wide 1.1.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
