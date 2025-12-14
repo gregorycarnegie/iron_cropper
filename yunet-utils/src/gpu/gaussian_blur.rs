@@ -44,7 +44,7 @@ impl GpuGaussianBlur {
             ]
         );
 
-        let pool = Arc::new(GpuBufferPool::new(context.clone()));
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
 
         Ok(Self {
             context,
@@ -78,27 +78,27 @@ impl GpuGaussianBlur {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
             Some("yunet_gaussian_blur_input"),
-        );
+        )?;
         queue.write_buffer(&input_buffer, 0, cast_slice(&data_u32));
 
         let weights_buffer = self.pool.acquire(
             (weights.len() * std::mem::size_of::<f32>()) as u64,
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             Some("yunet_gaussian_blur_weights"),
-        );
+        )?;
         queue.write_buffer(&weights_buffer, 0, cast_slice(&weights));
 
         let temp_buffer = self.pool.acquire(
             buffer_size,
             wgpu::BufferUsages::STORAGE,
             Some("yunet_gaussian_blur_temp"),
-        );
+        )?;
 
         let readback = self.pool.acquire(
             buffer_size,
             wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             Some("yunet_gaussian_blur_readback"),
-        );
+        )?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("yunet_gaussian_blur_encoder"),

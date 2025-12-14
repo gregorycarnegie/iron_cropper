@@ -28,9 +28,9 @@ pub struct GpuInferenceOps {
 
 impl GpuInferenceOps {
     /// Create the GPU pipelines from an existing [`GpuContext`].
-    pub fn new(context: Arc<GpuContext>) -> Result<Self> {
+    pub fn new(context: Arc<GpuContext>, memory_limit: Option<u64>) -> Result<Self> {
         let device = context.device();
-        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
+        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone(), memory_limit));
         Ok(Self {
             conv2d: Conv2dPipeline::new(device, 4)?,
             batch_norm: BatchNormPipeline::new(device)?,

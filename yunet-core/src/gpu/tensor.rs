@@ -151,7 +151,7 @@ impl GpuTensor {
         let usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
 
         let readback = if let Some(pool) = &self.inner.pool {
-            pool.acquire(size_bytes, usage, Some("yunet_tensor_readback"))
+            pool.acquire(size_bytes, usage, Some("yunet_tensor_readback"))?
         } else {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("yunet_tensor_readback"),
@@ -260,7 +260,7 @@ impl GpuTensor {
         let size_bytes = (shape.elements() * std::mem::size_of::<f32>()) as u64;
         let usage = tensor_usage();
         let buffer = if let Some(pool_ref) = pool.as_ref() {
-            let buffer = pool_ref.acquire(size_bytes, usage, label);
+            let buffer = pool_ref.acquire(size_bytes, usage, label)?;
             context.queue().write_buffer(&buffer, 0, cast_slice(data));
             buffer
         } else {
@@ -288,7 +288,7 @@ impl GpuTensor {
         let size_bytes = (shape.elements() * std::mem::size_of::<f32>()) as u64;
         let usage = tensor_usage();
         let buffer = if let Some(pool_ref) = pool.as_ref() {
-            pool_ref.acquire(size_bytes, usage, label)
+            pool_ref.acquire(size_bytes, usage, label)?
         } else {
             context.device().create_buffer(&wgpu::BufferDescriptor {
                 label,
@@ -392,7 +392,7 @@ mod tests {
         let Some(ctx) = test_context() else {
             return;
         };
-        let pool = Arc::new(GpuBufferPool::new(ctx.clone()));
+        let pool = Arc::new(GpuBufferPool::new(ctx.clone(), None));
         assert_eq!(pool.available(), 0);
         {
             let tensor = GpuTensor::uninitialized_with_pool(

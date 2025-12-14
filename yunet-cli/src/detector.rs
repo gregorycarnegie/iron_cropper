@@ -82,7 +82,7 @@ pub fn build_cli_detector(
                     Some(info.name.clone()),
                     Some(format!("{:?}", info.backend)),
                 );
-                
+
                 // Log the fallback status
                 warn!("{:?}", status);
                 YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone())

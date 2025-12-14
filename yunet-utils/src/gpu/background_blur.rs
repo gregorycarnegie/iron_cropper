@@ -42,7 +42,7 @@ impl GpuBackgroundBlur {
             ]
         );
 
-        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone()));
+        let buffer_pool = Arc::new(GpuBufferPool::new(context.clone(), None));
 
         Ok(Self {
             context,
@@ -79,22 +79,22 @@ impl GpuBackgroundBlur {
             buffer_size,
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             Some("yunet_background_blur_sharp"),
-        );
+        )?;
         let blur_buffer = self.buffer_pool.acquire(
             buffer_size,
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             Some("yunet_background_blur_blur"),
-        );
+        )?;
         let output_buffer = self.buffer_pool.acquire(
             buffer_size,
             wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             Some("yunet_background_blur_output"),
-        );
+        )?;
         let readback = self.buffer_pool.acquire(
             buffer_size,
             wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             Some("yunet_background_blur_readback"),
-        );
+        )?;
 
         // Upload input data
         queue.write_buffer(&sharp_buffer, 0, cast_slice(&sharp_u32));

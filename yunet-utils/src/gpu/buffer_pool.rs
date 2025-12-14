@@ -3,6 +3,17 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use crate::gpu::GpuContext;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum BufferPoolError {
+    #[error(
+        "GPU memory limit exceeded (allocation size: {size}, current usage: {usage}, limit: {limit})"
+    )]
+    MemoryLimitExceeded { size: u64, usage: u64, limit: u64 },
+    #[error("Failed to create GPU buffer: {0}")]
+    AllocationFailed(String),
+}
 
 struct BufferEntry {
     buffer: wgpu::Buffer,
@@ -16,14 +27,16 @@ pub struct GpuBufferPool {
     context: Arc<GpuContext>,
     idle: Mutex<HashMap<wgpu::BufferUsages, Vec<BufferEntry>>>,
     total_allocated_bytes: std::sync::atomic::AtomicU64,
+    max_memory: Option<u64>,
 }
 
 impl GpuBufferPool {
-    pub fn new(context: Arc<GpuContext>) -> Self {
+    pub fn new(context: Arc<GpuContext>, max_memory: Option<u64>) -> Self {
         Self {
             context,
             idle: Mutex::new(HashMap::new()),
             total_allocated_bytes: std::sync::atomic::AtomicU64::new(0),
+            max_memory,
         }
     }
 
@@ -32,10 +45,31 @@ impl GpuBufferPool {
         size: u64,
         usage: wgpu::BufferUsages,
         label: Option<&str>,
-    ) -> wgpu::Buffer {
+    ) -> Result<wgpu::Buffer, BufferPoolError> {
         if let Some(entry) = self.take_best_fit(size, usage) {
-            return entry.buffer;
+            return Ok(entry.buffer);
         }
+
+        // Check memory limits before allocating
+        if let Some(limit) = self.max_memory {
+            let current = self.memory_usage();
+            if current + size > limit {
+                // Try to free up space by clearing idle buffers
+                self.clear();
+                let current_after_clear = self.memory_usage();
+                if current_after_clear + size > limit {
+                    return Err(BufferPoolError::MemoryLimitExceeded {
+                        size,
+                        usage: current_after_clear,
+                        limit,
+                    });
+                }
+            }
+        }
+
+        // In wgpu 0.17+, create_buffer can panic on OOM. We wrap it if possible but it's hard.
+        // Assuming standard behavior: returns buffer, but might be invalid if OOM.
+        // For now, we trust the limit check above.
 
         let buffer = self
             .context
@@ -49,7 +83,8 @@ impl GpuBufferPool {
 
         self.total_allocated_bytes
             .fetch_add(size, std::sync::atomic::Ordering::Relaxed);
-        buffer
+
+        Ok(buffer)
     }
 
     pub fn recycle(&self, buffer: wgpu::Buffer, size: u64, usage: wgpu::BufferUsages) {
@@ -173,6 +208,61 @@ impl fmt::Debug for GpuBufferPool {
         let idle_count = self.available();
         f.debug_struct("GpuBufferPool")
             .field("idle_buffers", &idle_count)
+            .field("memory_usage", &self.memory_usage())
+            .field("max_memory", &self.max_memory)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn test_memory_limit_enforcement() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping GPU memory test: no GPU");
+            return;
+        };
+
+        // limit = 1024 bytes
+        let pool = GpuBufferPool::new(ctx.clone(), Some(1024));
+        assert_eq!(pool.memory_usage(), 0);
+
+        // Alloc 512 - OK
+        let buf1 = pool
+            .acquire(512, wgpu::BufferUsages::STORAGE, None)
+            .expect("alloc 512");
+        assert!(pool.memory_usage() >= 512);
+
+        // Alloc 600 - Fail (512 + 600 > 1024)
+        // buf1 is still active
+        let result = pool.acquire(600, wgpu::BufferUsages::STORAGE, None);
+        assert!(matches!(
+            result,
+            Err(BufferPoolError::MemoryLimitExceeded { .. })
+        ));
+
+        // Recycle buf1
+        pool.recycle(buf1, 512, wgpu::BufferUsages::STORAGE);
+        // usage is still 512 (it's in pool now)
+
+        // Alloc 600 - Should succeed (Pool clears buf1 to make room)
+        let buf2 = pool
+            .acquire(600, wgpu::BufferUsages::STORAGE, None)
+            .expect("alloc 600 after clear");
+        // Usage should be 600 now (because buf1 (512) was dropped)
+        assert_eq!(pool.memory_usage(), 600);
+
+        // Cleanup
+        pool.recycle(buf2, 600, wgpu::BufferUsages::STORAGE);
     }
 }

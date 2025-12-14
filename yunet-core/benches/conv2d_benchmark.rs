@@ -18,7 +18,7 @@ fn benchmark_conv2d_standard_vs_vec4(c: &mut Criterion) {
         return;
     };
 
-    let ops = GpuInferenceOps::new(ctx).expect("create ops");
+    let ops = GpuInferenceOps::new(ctx, None).expect("create ops");
 
     // Typical YuNet layer parameters
     let configs = vec![

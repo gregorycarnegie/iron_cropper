@@ -59,6 +59,10 @@ impl OnnxInitializerMap {
         self.tensors.is_empty()
     }
 
+    pub fn values(&self) -> impl Iterator<Item = &OnnxTensor> {
+        self.tensors.values()
+    }
+
     pub fn into_map(self) -> HashMap<String, OnnxTensor> {
         self.tensors
     }

@@ -4,13 +4,12 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Result};
 use log::{info, warn};
-use yunet_core::{CropSettings, PositioningMode};
 use yunet_core::preset_by_name;
+use yunet_core::{CropSettings, PositioningMode};
 use yunet_utils::{
     Quality,
     config::{
-        AppSettings, CropSettings as ConfigCropSettings, MetadataMode,
-        default_settings_path,
+        AppSettings, CropSettings as ConfigCropSettings, MetadataMode, default_settings_path,
     },
     normalize_path,
 };

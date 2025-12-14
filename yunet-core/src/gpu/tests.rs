@@ -65,7 +65,9 @@ macro_rules! test_backbone_stage {
 
 fn gpu_ops() -> Option<GpuInferenceOps> {
     match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
-        GpuAvailability::Available(ctx) => Some(GpuInferenceOps::new(ctx).expect("build ops")),
+        GpuAvailability::Available(ctx) => {
+            Some(GpuInferenceOps::new(ctx, None).expect("build ops"))
+        }
         _ => None,
     }
 }

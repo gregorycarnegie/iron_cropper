@@ -37,13 +37,15 @@ impl GpuYuNet {
                 anyhow::bail!("GPU backend unavailable: {error}")
             }
         };
-        let ops = Arc::new(GpuInferenceOps::new(context)?);
         let loader = graph::load_backbone_weights(
             model_path,
             BACKBONE_STAGES.len(),
             true,
             DETECTION_HEADS.len(),
         )?;
+
+        let memory_limit = estimate_inference_memory(&loader, input_size);
+        let ops = Arc::new(GpuInferenceOps::new(context, Some(memory_limit))?);
         let weight_map = upload_gpu_weights(&ops, loader)?;
         Ok(Self {
             ops,
@@ -221,4 +223,56 @@ fn reorder_hw_major(
 
 fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
+}
+
+/// Estimate GPU memory requirements (in bytes) based on weights + input size.
+///
+/// This provides a safe upper bound for the `GpuBufferPool` limit.
+fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize) -> u64 {
+    // 1. Calculate static weight size
+    let mut total_weight_bytes = 0;
+    for tensor in weights.values() {
+        total_weight_bytes += (tensor.data().len() * std::mem::size_of::<f32>()) as u64;
+    }
+
+    // 2. Estimate activation memory
+    // YuNet (ResNet-ish) downsamples spatially.
+    // Largest activations are at the start.
+    // Map: Input (H,W,3) -> Stage 0 (H/2, W/2, 32) -> ...
+    //
+    // Worst case memory usage is roughly:
+    // - Input tensor
+    // - Largest intermediate tensor
+    // - Workspace for convolution (im2col or similar if optimized, but we use direct dispatch)
+    //
+    // Heuristic:
+    // - Input: W * H * 3 * 4 bytes
+    // - Largest activation (Stage0): (W/2) * (H/2) * 32 channels * 4 bytes
+    // - Typical buffers needed concurrently: ~2-3x largest activation
+    //
+    // For 640x640:
+    // - Input: 640*640*3*4 = 4.9 MB
+    // - Stage0: 320*320*32*4 = 13.1 MB
+    // - Weights: ~1-2 MB (YuNet is tiny)
+    //
+    // Total used in practice is small (~50-100MB).
+    //
+    // However, we want to allow for larger inputs (e.g. 2048x2048) or larger batches/models.
+    // Let's us a generous factor:
+    // Limit = Weights + (InputPixels * MaxChannels * sizeof(f32) * SafetyFactor)
+
+    let InputSize {
+        width: w,
+        height: h,
+    } = input_size;
+    let input_pixels = (w as u64) * (h as u64);
+
+    // Assume worst case channel depth early on is 64 (standard ResNet is 64, YuNet is fewer but let's be safe)
+    // And we need ping-pong buffers, so say 4x capacity.
+    let activation_heuristic = input_pixels * 64 * 4 * 4; // pixels * channels * copies * f32
+
+    // Add 128MB fixed overhead for driver/fragmentation/mips/etc
+    let fixed_overhead = 128 * 1024 * 1024;
+
+    total_weight_bytes + activation_heuristic + fixed_overhead
 }
