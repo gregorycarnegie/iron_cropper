@@ -19,12 +19,12 @@ use egui_extras::{Size, StripBuilder};
 use image::{DynamicImage, RgbaImage};
 use log::info;
 use lru::LruCache;
-use std::sync::{Arc, mpsc};
 use std::{
     collections::VecDeque,
     fs,
     num::NonZeroUsize,
     path::{Path, PathBuf},
+    sync::{Arc, mpsc},
 };
 use tempfile::Builder;
 use yunet_utils::{
@@ -1097,5 +1097,30 @@ mod tests {
         assert!((app.settings.enhance.contrast - 1.2).abs() < 1e-6);
         assert!((app.settings.enhance.saturation - 1.3).abs() < 1e-6);
         assert!((app.settings.enhance.sharpness - 0.8).abs() < 1e-6);
+    }
+    #[test]
+    fn verify_model_reload_on_toggle() {
+        let (mut app, _temp_dir, _ctx) = app_with_temp_settings();
+
+        // Simulate a loaded image
+        app.preview.image_path = Some(PathBuf::from("test_image.jpg"));
+        let initial_job_count = app.job_counter;
+
+        // Apply settings that require a detector reset
+        app.apply_settings_changes(true, false);
+
+        // Verify that EITHER a new job was started OR we got an error (due to missing model in test env).
+        // Both outcomes prove that start_detection was called.
+        let detection_attempted = app.job_counter > initial_job_count || app.last_error.is_some();
+        assert!(
+            detection_attempted,
+            "Detector reset should trigger start_detection (either incrementing job_counter or setting last_error)"
+        );
+
+        // Verify that the detector was invalidated (it's None until the job completes/reloads)
+        assert!(
+            app.detector.is_none(),
+            "Detector should be invalidated immediately"
+        );
     }
 }

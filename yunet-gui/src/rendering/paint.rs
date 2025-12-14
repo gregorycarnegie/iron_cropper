@@ -165,8 +165,40 @@ impl YuNetApp {
     ) {
         if requires_detector_reset {
             self.invalidate_detector();
+            if let Some(path) = self.preview.image_path.clone() {
+                self.start_detection(path);
+            } else {
+                // If no image is loaded, we still MUST rebuild the detector/GPU context
+                // so the app is ready for batch operations.
+                let (gpu_status_update, gpu_context_update, detector_result) =
+                    crate::core::detection::ensure_detector(
+                        &mut self.detector,
+                        &self.settings,
+                        self.gpu_context.clone(),
+                    );
+                if let Some(status) = gpu_status_update {
+                    self.gpu_status = status;
+                }
+                if let Some(context) = gpu_context_update {
+                    self.refresh_gpu_pipelines(Some(context));
+                } else if !matches!(
+                    self.gpu_status.mode,
+                    crate::GpuStatusMode::Available | crate::GpuStatusMode::Pending
+                ) {
+                    self.refresh_gpu_pipelines(None);
+                }
+
+                // Update status line based on result
+                self.status_line = match detector_result {
+                    Ok(_) => "Model ready. Select an image to run detection.".to_owned(),
+                    Err(e) => format!("Model initialization failed: {e}"),
+                };
+            }
         } else if requires_cache_refresh {
             self.clear_cache("Detection parameters updated. Re-run detection.");
+            if let Some(path) = self.preview.image_path.clone() {
+                self.start_detection(path);
+            }
         }
         self.persist_settings_with_feedback();
     }

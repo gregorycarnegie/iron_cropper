@@ -233,17 +233,13 @@ fn show_gpu_section(
     ui.add_enabled_ui(enabled, |ui| {
         let mut gpu_inference = app.settings.gpu.inference;
         if ui
-            .checkbox(&mut gpu_inference, "Enable GPU inference (experimental)")
+            .checkbox(&mut gpu_inference, "Enable GPU inference")
             .changed()
         {
             app.settings.gpu.inference = gpu_inference;
             *settings_changed = true;
             *requires_detector_reset = true;
         }
-        ui.label(
-            RichText::new("Runs the YuNet ONNX graph on the GPU; automatically falls back to CPU if initialization fails.")
-                .color(palette.subtle_text),
-        );
     });
 
     ui.add_space(6.0);
