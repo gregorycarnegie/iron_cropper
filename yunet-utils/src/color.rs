@@ -174,7 +174,7 @@ pub fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     let saturation = if delta.abs() < f32::EPSILON {
         0.0
     } else {
-        delta / (1.0 - (2.0 * lightness - 1.0).abs())
+        delta / (1.0 - (lightness.mul_add(2.0, -1.0)).abs())
     };
 
     (hue, saturation, lightness)
@@ -182,7 +182,7 @@ pub fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
 
 /// Convert HSL (hue in degrees, saturation 0-1, lightness 0-1) to RGB channels (0-255).
 pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let c = (1.0 - (l.mul_add(2.0, -1.0)).abs()) * s;
     let hue = if h.is_nan() { 0.0 } else { h.rem_euclid(360.0) };
     let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
     let m = l - c / 2.0;
@@ -196,7 +196,7 @@ pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
         _ => (c, 0.0, x),
     };
 
-    let to_byte = |value: f32| -> u8 { ((value + m) * 255.0).round().clamp(0.0, 255.0) as u8 };
+    let to_byte = |value: f32| -> u8 { ((value + m) * 255.0) as u8 };
 
     (to_byte(r1), to_byte(g1), to_byte(b1))
 }
@@ -212,23 +212,23 @@ pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> (f32, f32, f32, f32) {
         return (0.0, 0.0, 0.0, 1.0);
     }
 
-    let c = (1.0 - rf - k) / (1.0 - k);
-    let m = (1.0 - gf - k) / (1.0 - k);
-    let y = (1.0 - bf - k) / (1.0 - k);
+    let rgb_channel_to_cymk = |value: f32| -> f32 { (1.0 - value - k) / (1.0 - k) };
 
-    (c, m, y, k)
+    (
+        rgb_channel_to_cymk(rf), // cyan
+        rgb_channel_to_cymk(gf), // magenta
+        rgb_channel_to_cymk(bf), // yellow
+        k,                       // black
+    )
 }
 
 /// Convert CMYK (0-1 for all channels) to RGB channels (0-255).
 pub fn cmyk_to_rgb(c: f32, m: f32, y: f32, k: f32) -> (u8, u8, u8) {
-    let r = 255.0 * (1.0 - c) * (1.0 - k);
-    let g = 255.0 * (1.0 - m) * (1.0 - k);
-    let b = 255.0 * (1.0 - y) * (1.0 - k);
-
+    let to_rgb_channel = |value: f32| -> u8 { (255.0 * (1.0 - value) * (1.0 - k)) as u8 };
     (
-        r.round().clamp(0.0, 255.0) as u8,
-        g.round().clamp(0.0, 255.0) as u8,
-        b.round().clamp(0.0, 255.0) as u8,
+        to_rgb_channel(c), // red
+        to_rgb_channel(m), // green
+        to_rgb_channel(y), // blue
     )
 }
 

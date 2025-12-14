@@ -8,7 +8,11 @@ use crate::model::decode_yunet_outputs;
 use crate::preprocess::InputSize;
 
 use anyhow::{Context, Result, anyhow};
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use tract_onnx::prelude::Tensor;
 use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
@@ -22,7 +26,7 @@ pub struct GpuYuNet {
     ops: Arc<GpuInferenceOps>,
     weights: Arc<HashMap<String, GpuTensor>>,
     input_size: InputSize,
-    workspace: std::sync::Mutex<GpuYuNetWorkspace>,
+    workspace: Mutex<GpuYuNetWorkspace>,
 }
 
 impl GpuYuNet {
@@ -51,7 +55,7 @@ impl GpuYuNet {
             ops,
             weights: Arc::new(weight_map),
             input_size,
-            workspace: std::sync::Mutex::new(GpuYuNetWorkspace::default()),
+            workspace: Mutex::new(GpuYuNetWorkspace::default()),
         })
     }
 
@@ -221,6 +225,7 @@ fn reorder_hw_major(
     out
 }
 
+#[inline]
 fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())
 }
@@ -268,11 +273,11 @@ fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize
     let input_pixels = (w as u64) * (h as u64);
 
     // Assume worst case channel depth early on is 64 (standard ResNet is 64, YuNet is fewer but let's be safe)
-    // And we need ping-pong buffers, so say 4x capacity.
-    let activation_heuristic = input_pixels * 64 * 4 * 4; // pixels * channels * copies * f32
+    // And we need ping-pong buffers, so say 8x capacity to be very safe against fragmentation or held buffers.
+    let activation_heuristic = input_pixels * 64 * 4 * 8; // pixels * channels * copies * f32
 
-    // Add 128MB fixed overhead for driver/fragmentation/mips/etc
-    let fixed_overhead = 128 * 1024 * 1024;
+    // Add 256MB fixed overhead for driver/fragmentation/mips/etc
+    let fixed_overhead = 256 * 1024 * 1024;
 
     total_weight_bytes + activation_heuristic + fixed_overhead
 }
