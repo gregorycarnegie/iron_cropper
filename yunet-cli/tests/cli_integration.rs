@@ -71,7 +71,7 @@ fn cli_like_crop_and_enhance_saves_file() {
         background_blur_radius: 15.0,
         background_blur_mask_size: 0.6,
     };
-    let final_crop = apply_enhancements(&cropped, &enh);
+    let final_crop = apply_enhancements(&cropped, &enh, None);
 
     // Save final crop to disk and assert file exists and is non-empty
     let out = base.join("out.png");

@@ -9,12 +9,24 @@ use super::{GpuContext, RED_EYE_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
+use bytemuck::{Pod, Zeroable};
 
-gpu_uniforms!(RedEyeUniforms, 1, {
+gpu_uniforms!(RedEyeUniforms, 3, {
     pixel_count: u32,
+    width: u32, // Added width for coordinate calculation
     threshold: f32,
     min_red: f32,
+    eye_count: u32,
 });
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct RedEye {
+    pub x: f32,
+    pub y: f32,
+    pub radius: f32,
+    pub _pad: f32,
+}
 
 #[derive(Clone)]
 pub struct GpuRedEyeRemoval {
@@ -34,6 +46,7 @@ impl GpuRedEyeRemoval {
             [
                 storage_buffer_entry!(0, read_write),
                 uniform_buffer_entry!(1),
+                storage_buffer_entry!(2, read_only), // Eyes buffer
             ]
         );
 
@@ -44,7 +57,12 @@ impl GpuRedEyeRemoval {
         })
     }
 
-    pub fn apply(&self, image: &DynamicImage, threshold: f32) -> Result<DynamicImage> {
+    pub fn apply(
+        &self,
+        image: &DynamicImage,
+        threshold: f32,
+        eyes: Option<&[RedEye]>,
+    ) -> Result<DynamicImage> {
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
         let pixel_count = (width as usize) * (height as usize);
@@ -71,11 +89,35 @@ impl GpuRedEyeRemoval {
             mapped_at_creation: false,
         });
 
+        let eyes_slice = eyes.unwrap_or(&[]);
+        let (eyes_data, eye_count) = if eyes_slice.is_empty() {
+            // Provide a dummy buffer if no eyes, but eye_count 0 prevents access
+            (
+                vec![RedEye {
+                    x: 0.0,
+                    y: 0.0,
+                    radius: 0.0,
+                    _pad: 0.0,
+                }],
+                0,
+            )
+        } else {
+            (eyes_slice.to_vec(), eyes_slice.len() as u32)
+        };
+
+        let eyes_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("yunet_red_eye_locs"),
+            contents: cast_slice(&eyes_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
         let uniforms = RedEyeUniforms {
             pixel_count: pixel_count as u32,
+            width: width as u32,
             threshold,
             min_red: 80.0,
-            __padding: [0; 1],
+            eye_count,
+            __padding: [0; 3], // Adjusted padding for alignment (total size must by 16-byte aligned)
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_red_eye_uniforms"),
@@ -94,6 +136,10 @@ impl GpuRedEyeRemoval {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: eyes_buffer.as_entire_binding(),
                 },
             ],
         });

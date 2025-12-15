@@ -7,7 +7,7 @@
 use crate::{
     gpu::{
         GpuBackgroundBlur, GpuBilateralFilter, GpuContext, GpuGaussianBlur, GpuHistogramEqualizer,
-        GpuPixelAdjust, GpuRedEyeRemoval, GpuShapeMask,
+        GpuPixelAdjust, GpuRedEyeRemoval, GpuShapeMask, red_eye::RedEye,
     },
     shape::CropShape,
 };
@@ -460,13 +460,34 @@ fn apply_skin_smoothing(
 ///
 /// Detects and desaturates pixels where the red channel is significantly
 /// higher than the green and blue channels, which is characteristic of red-eye.
-fn apply_red_eye_removal(img: &DynamicImage, threshold: f32) -> DynamicImage {
+fn apply_red_eye_removal(
+    img: &DynamicImage,
+    threshold: f32,
+    eyes: Option<&[RedEye]>,
+) -> DynamicImage {
     let src = img.to_rgba8();
     let (w, h) = src.dimensions();
     let mut out = src.clone();
 
     for y in 0..h {
         for x in 0..w {
+            if let Some(eyes_list) = eyes {
+                if !eyes_list.is_empty() {
+                    let mut in_eye = false;
+                    for eye in eyes_list {
+                        let dx = x as f32 - eye.x;
+                        let dy = y as f32 - eye.y;
+                        if dx * dx + dy * dy <= eye.radius * eye.radius {
+                            in_eye = true;
+                            break;
+                        }
+                    }
+                    if !in_eye {
+                        continue;
+                    }
+                }
+            }
+
             let px = src.get_pixel(x, y).0;
             let r = px[0] as f32;
             let g = px[1] as f32;
@@ -641,7 +662,11 @@ fn apply_unsharp_with_preblur(
 }
 
 /// Apply the configured enhancements to the input image and return the result.
-pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) -> DynamicImage {
+pub fn apply_enhancements(
+    img: &DynamicImage,
+    settings: &EnhancementSettings,
+    eyes: Option<&[RedEye]>,
+) -> DynamicImage {
     let mut out = img.clone();
 
     if settings.auto_color {
@@ -649,7 +674,7 @@ pub fn apply_enhancements(img: &DynamicImage, settings: &EnhancementSettings) ->
     }
 
     if settings.red_eye_removal {
-        out = apply_red_eye_removal(&out, settings.red_eye_threshold);
+        out = apply_red_eye_removal(&out, settings.red_eye_threshold, eyes);
     }
 
     if settings.exposure_stops.abs() >= EPSILON {
@@ -740,6 +765,7 @@ impl WgpuEnhancer {
         &self,
         img: &DynamicImage,
         settings: &EnhancementSettings,
+        eyes: Option<&[RedEye]>,
     ) -> Result<DynamicImage> {
         let mut out = img.clone();
 
@@ -754,10 +780,10 @@ impl WgpuEnhancer {
         }
 
         if settings.red_eye_removal {
-            if let Some(corrected) = self.try_gpu_red_eye(&out, settings.red_eye_threshold)? {
+            if let Some(corrected) = self.try_gpu_red_eye(&out, settings.red_eye_threshold, eyes)? {
                 out = corrected;
             } else {
-                out = apply_red_eye_removal(&out, settings.red_eye_threshold);
+                out = apply_red_eye_removal(&out, settings.red_eye_threshold, eyes);
             }
         }
 
@@ -894,11 +920,12 @@ impl WgpuEnhancer {
         &self,
         image: &DynamicImage,
         threshold: f32,
+        eyes: Option<&[RedEye]>,
     ) -> Result<Option<DynamicImage>> {
         if threshold <= 0.0 {
             return Ok(None);
         }
-        match self.red_eye.apply(image, threshold) {
+        match self.red_eye.apply(image, threshold, eyes) {
             Ok(result) => Ok(Some(result)),
             Err(err) => {
                 log::warn!("GPU red-eye removal failed: {err}");
@@ -1086,7 +1113,7 @@ mod tests {
         img.put_pixel(2, 1, image::Rgba([220, 60, 55, 255]));
 
         let dyn_img = DynamicImage::ImageRgba8(img);
-        let corrected = apply_red_eye_removal(&dyn_img, 1.5).to_rgba8();
+        let corrected = apply_red_eye_removal(&dyn_img, 1.5, None).to_rgba8();
 
         // Check that the red-eye pixels have been corrected
         let px1 = corrected.get_pixel(1, 1);
@@ -1105,7 +1132,7 @@ mod tests {
     #[test]
     fn red_eye_removal_preserves_alpha() {
         let img = solid([200, 50, 50, 128]);
-        let out = apply_red_eye_removal(&img, 1.5).to_rgba8();
+        let out = apply_red_eye_removal(&img, 1.5, None).to_rgba8();
         assert_eq!(out.get_pixel(0, 0)[3], 128);
     }
 
@@ -1165,6 +1192,7 @@ mod tests {
                 background_blur_radius: 15.0,
                 background_blur_mask_size: 0.6,
             },
+            None,
         );
         assert_eq!(out.width(), img.width());
         assert_eq!(out.height(), img.height());
@@ -1189,7 +1217,7 @@ mod tests {
             ..EnhancementSettings::default()
         };
 
-        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let pipeline = apply_enhancements(&source, &settings, None).to_rgba8();
         let expected = apply_histogram_equalization(&source).to_rgba8();
 
         assert_eq!(pipeline, expected, "auto_color should reuse equalization");
@@ -1216,7 +1244,7 @@ mod tests {
             ..EnhancementSettings::default()
         };
 
-        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let pipeline = apply_enhancements(&source, &settings, None).to_rgba8();
         let expected = apply_unsharp_mask(&source, 0.6, 1.0).to_rgba8();
 
         assert_eq!(
@@ -1251,8 +1279,8 @@ mod tests {
             ..EnhancementSettings::default()
         };
 
-        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
-        let expected = apply_red_eye_removal(&source, 1.2).to_rgba8();
+        let pipeline = apply_enhancements(&source, &settings, None).to_rgba8();
+        let expected = apply_red_eye_removal(&source, 1.2, None).to_rgba8();
 
         assert_eq!(pipeline, expected);
         assert!(pipeline.get_pixel(1, 0)[0] < 200);
@@ -1280,7 +1308,7 @@ mod tests {
             ..EnhancementSettings::default()
         };
 
-        let pipeline = apply_enhancements(&source, &settings).to_rgba8();
+        let pipeline = apply_enhancements(&source, &settings, None).to_rgba8();
         let expected = apply_background_blur(&source, 6.0, 0.5).to_rgba8();
 
         assert_eq!(pipeline, expected);

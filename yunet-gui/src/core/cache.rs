@@ -4,7 +4,7 @@ use crate::{
     CropPreviewCacheEntry, CropPreviewKey, DetectionWithQuality, EnhancementSignature,
     ShapeSignature, YuNetApp,
 };
-use yunet_utils::gpu::GpuStatusIndicator;
+use yunet_utils::gpu::{GpuStatusIndicator, red_eye::RedEye};
 
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
 use image::DynamicImage;
@@ -56,16 +56,61 @@ pub fn enhance_with_gpu(
     image: &DynamicImage,
     settings: &EnhancementSettings,
     enhancer: Option<&Arc<WgpuEnhancer>>,
+    eyes: Option<&[RedEye]>,
 ) -> DynamicImage {
     if let Some(enhancer) = enhancer {
-        match enhancer.apply(image, settings) {
+        match enhancer.apply(image, settings, eyes) {
             Ok(result) => return result,
             Err(err) => {
                 warn!("GPU enhancement failed: {err}; falling back to CPU pipeline.");
             }
         }
     }
-    apply_enhancements(image, settings)
+    apply_enhancements(image, settings, eyes)
+}
+
+pub fn calculate_eyes_relative_to_crop(
+    landmarks: &[yunet_core::Landmark; 5],
+    crop_region: &yunet_core::CropRegion,
+    img_width: u32,
+    img_height: u32,
+    target_width: u32,
+    target_height: u32,
+) -> Vec<RedEye> {
+    let (cx, cy, cw, ch) = crop_region
+        .in_bounds_rect(img_width, img_height)
+        .unwrap_or((0, 0, img_width, img_height));
+    let (ow, oh) = if target_width > 0 && target_height > 0 {
+        (target_width, target_height)
+    } else {
+        (cw, ch)
+    };
+
+    let scale_x = ow as f32 / cw as f32;
+    let scale_y = oh as f32 / ch as f32;
+
+    // Landmarks 0 and 1 are eyes
+    let mut eye_list = Vec::with_capacity(2);
+    for i in 0..2 {
+        let lx = landmarks[i].x;
+        let ly = landmarks[i].y;
+        let new_x = (lx - cx as f32) * scale_x;
+        let new_y = (ly - cy as f32) * scale_y;
+
+        // Approximate radius based on inter-pupillary distance
+        let dx = landmarks[1].x - landmarks[0].x;
+        let dy = landmarks[1].y - landmarks[0].y;
+        let dist = (dx * dx + dy * dy).sqrt() * scale_x;
+        let radius = dist * 0.15;
+
+        eye_list.push(RedEye {
+            x: new_x,
+            y: new_y,
+            radius,
+            _pad: 0.0,
+        });
+    }
+    eye_list
 }
 
 /// Ensures a crop preview entry exists in the cache, creating it if necessary.
@@ -178,7 +223,26 @@ pub fn ensure_crop_preview_entry(
         cpu_crop()
     };
     let processed = if enhance_enabled {
-        enhance_with_gpu(&resized, enhancement_settings, gpu_enhancer.as_ref())
+        let eyes = if enhancement_settings.red_eye_removal {
+            let landmarks = &detection.detection.landmarks;
+            Some(calculate_eyes_relative_to_crop(
+                landmarks,
+                &crop_region,
+                img.width(),
+                img.height(),
+                crop_settings.output_width,
+                crop_settings.output_height,
+            ))
+        } else {
+            None
+        };
+
+        enhance_with_gpu(
+            &resized,
+            enhancement_settings,
+            gpu_enhancer.as_ref(),
+            eyes.as_deref(),
+        )
     } else {
         resized
     };

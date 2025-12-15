@@ -2,7 +2,7 @@
 
 use crate::{
     BatchFileStatus, BatchJobConfig, JobMessage, YuNetApp,
-    core::cache::{apply_mask_with_gpu, enhance_with_gpu},
+    core::cache::{apply_mask_with_gpu, calculate_eyes_relative_to_crop, enhance_with_gpu},
 };
 
 use image::DynamicImage;
@@ -128,10 +128,25 @@ pub fn run_batch_job(
         };
 
         let processed = if config.enhance_enabled {
+            let eyes = if config.enhancement_settings.red_eye_removal {
+                let landmarks = &detection.landmarks;
+                let region = &crop_regions[face_idx];
+                Some(calculate_eyes_relative_to_crop(
+                    landmarks,
+                    region,
+                    source_image.width(),
+                    source_image.height(),
+                    config.crop_settings.output_width,
+                    config.crop_settings.output_height,
+                ))
+            } else {
+                None
+            };
             enhance_with_gpu(
                 &resized,
                 &config.enhancement_settings,
                 config.gpu_enhancer.as_ref(),
+                eyes.as_deref(),
             )
         } else {
             resized
@@ -392,7 +407,37 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
         let resized = crop_face_from_image(source_image, &detection_for_crop, &crop_settings);
 
         let final_image = if app.settings.enhance.enabled {
-            enhance_with_gpu(&resized, &enhancement_settings, app.gpu_enhancer.as_ref())
+            let eyes = if enhancement_settings.red_eye_removal {
+                let landmarks = &det.detection.landmarks;
+                let bbox = det.active_bbox();
+                // We need the crop region. But here we only have settings.
+                // We need to re-calculate crop region.
+                // crop_face_from_image calls calculate_crop_region internally if we just pass settings?
+                // No, crop_face_from_image calls calculate_crop_region.
+                // We need it here for eyes.
+                let region = calculate_crop_region(
+                    source_image.width(),
+                    source_image.height(),
+                    bbox,
+                    &crop_settings,
+                );
+                Some(calculate_eyes_relative_to_crop(
+                    landmarks,
+                    &region,
+                    source_image.width(),
+                    source_image.height(),
+                    crop_settings.output_width,
+                    crop_settings.output_height,
+                ))
+            } else {
+                None
+            };
+            enhance_with_gpu(
+                &resized,
+                &enhancement_settings,
+                app.gpu_enhancer.as_ref(),
+                eyes.as_deref(),
+            )
         } else {
             resized
         };

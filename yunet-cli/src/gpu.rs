@@ -43,14 +43,14 @@ impl CliGpuRuntime {
 
     pub fn enhance(&self, image: &DynamicImage, settings: &EnhancementSettings) -> DynamicImage {
         if let Some(enhancer) = &self.enhancer {
-            match enhancer.apply(image, settings) {
+            match enhancer.apply(image, settings, None) {
                 Ok(output) => return output,
                 Err(err) => {
                     warn!("GPU enhancement failed: {err}; falling back to CPU pipeline.");
                 }
             }
         }
-        apply_enhancements(image, settings)
+        apply_enhancements(image, settings, None)
     }
 
     pub fn apply_shape_mask(&self, image: &DynamicImage, shape: &CropShape) -> DynamicImage {
