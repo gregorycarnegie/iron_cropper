@@ -128,7 +128,7 @@ fn full_crop_workflow_selects_best_quality_face() {
         assert_eq!(crop.width(), core_settings.output_width);
         assert_eq!(crop.height(), core_settings.output_height);
 
-        let enhanced = apply_enhancements(&crop, &enhancement_settings);
+        let enhanced = apply_enhancements(&crop, &enhancement_settings, None);
         let (variance, quality) = estimate_sharpness(&enhanced);
 
         candidates.push(Candidate {

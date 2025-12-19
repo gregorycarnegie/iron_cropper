@@ -85,7 +85,7 @@ fn crop_enhance_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let crop =
                 crop_face_from_image(black_box(&image), black_box(&detection), &crop_settings);
-            let enhanced = apply_enhancements(black_box(&crop), &enhance_settings);
+            let enhanced = apply_enhancements(black_box(&crop), &enhance_settings, None);
             black_box(enhanced);
         });
     });
