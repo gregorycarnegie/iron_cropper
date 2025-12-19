@@ -415,7 +415,13 @@ fn process_crops(
                 crop_img = runtime.enhance(&crop_img, enh);
             }
             let (quality_score, quality) = estimate_sharpness(&crop_img);
-            crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+            crop_img = runtime.apply_shape_mask(
+                &crop_img,
+                &settings.crop.shape,
+                settings.crop.vignette_softness,
+                settings.crop.vignette_intensity,
+                settings.crop.vignette_color,
+            );
             processed.push(ProcessedCrop {
                 index: idx,
                 image: crop_img,
@@ -433,7 +439,13 @@ fn process_crops(
                 crop_img = runtime.enhance(&crop_img, enh);
             }
             let (quality_score, quality) = estimate_sharpness(&crop_img);
-            crop_img = runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+            crop_img = runtime.apply_shape_mask(
+                &crop_img,
+                &settings.crop.shape,
+                settings.crop.vignette_softness,
+                settings.crop.vignette_intensity,
+                settings.crop.vignette_color,
+            );
             processed.push(ProcessedCrop {
                 index: idx,
                 image: crop_img,

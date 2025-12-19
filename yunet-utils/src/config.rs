@@ -144,12 +144,20 @@ pub struct CropSettings {
     pub quality_rules: QualityAutomationSettings,
     /// Geometric shape applied to the exported crop.
     pub shape: CropShape,
+    /// Softness of the vignette effect (0.0 to 1.0).
+    pub vignette_softness: f32,
+    /// Maximum intensity of the vignette effect (0.0 to 1.0).
+    pub vignette_intensity: f32,
+    /// Color of the vignette effect.
+    pub vignette_color: RgbaColor,
 }
 
 impl CropSettings {
     /// Clamp values to sensible ranges.
     pub fn sanitize(&mut self) {
         self.shape = self.shape.sanitized();
+        self.vignette_softness = self.vignette_softness.clamp(0.0, 1.0);
+        self.vignette_intensity = self.vignette_intensity.clamp(0.0, 1.0);
     }
 }
 
@@ -200,6 +208,9 @@ impl Default for CropSettings {
             metadata: MetadataSettings::default(),
             quality_rules: QualityAutomationSettings::default(),
             shape: CropShape::Rectangle,
+            vignette_softness: 0.0,
+            vignette_intensity: 1.0,
+            vignette_color: RgbaColor::opaque(0, 0, 0),
         }
     }
 }

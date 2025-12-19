@@ -304,6 +304,13 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - [x] History stack for crop settings changes
   - [x] Undo/redo shortcuts (Ctrl+Z / Ctrl+Y)
 
+- [x] **Vignette effect**
+  - [x] Add `vignette_softness` to crop settings
+  - [x] Implement CPU alpha mask feathering (Gaussian blur)
+  - [x] Implement GPU distance-based feathering (SD Polygon)
+  - [x] Add controls for vignette **intensity** and **color**
+  - [x] Update GUI cache keys and UI sliders
+
 - [x] **Keyboard shortcuts** (GUI)
   - [x] Arrow keys for offset adjustments
   - [x] +/- for face height percentage

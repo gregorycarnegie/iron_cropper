@@ -51,4 +51,18 @@ mod tests {
         // 5 points * 2 (inner + outer) = 10 vertices
         assert_eq!(points.len(), 10);
     }
+
+    #[test]
+    fn test_vignette_mask_application() {
+        use crate::shape::{CropShape, apply_shape_mask};
+        use image::RgbaImage;
+        let mut img = RgbaImage::new(100, 100);
+        apply_shape_mask(
+            &mut img,
+            &CropShape::Ellipse,
+            0.1,
+            1.0,
+            crate::color::RgbaColor::opaque(0, 0, 0),
+        );
+    }
 }

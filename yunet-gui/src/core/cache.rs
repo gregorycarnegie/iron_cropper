@@ -246,7 +246,14 @@ pub fn ensure_crop_preview_entry(
     } else {
         resized
     };
-    let masked = apply_mask_with_gpu(processed, &crop_config.shape, gpu_enhancer.as_ref());
+    let masked = apply_mask_with_gpu(
+        processed,
+        &crop_config.shape,
+        crop_config.vignette_softness,
+        crop_config.vignette_intensity,
+        crop_config.vignette_color,
+        gpu_enhancer.as_ref(),
+    );
     let rgba = masked.to_rgba8();
     let final_image = DynamicImage::ImageRgba8(rgba);
     let arc_image = Arc::new(final_image);
@@ -319,17 +326,32 @@ fn enhancement_signature(settings: &EnhancementSettings) -> EnhancementSignature
 pub fn apply_mask_with_gpu(
     image: DynamicImage,
     shape: &yunet_utils::CropShape,
+    vignette_softness: f32,
+    vignette_intensity: f32,
+    vignette_color: yunet_utils::color::RgbaColor,
     enhancer: Option<&Arc<WgpuEnhancer>>,
 ) -> DynamicImage {
     if let Some(enhancer) = enhancer {
-        match enhancer.apply_shape_mask_gpu(&image, shape) {
+        match enhancer.apply_shape_mask_gpu(
+            &image,
+            shape,
+            vignette_softness,
+            vignette_intensity,
+            vignette_color,
+        ) {
             Ok(Some(masked)) => return masked,
             Ok(None) => {}
             Err(err) => warn!("GPU shape mask failed: {err}; falling back to CPU path."),
         }
     }
     let mut rgba = image.to_rgba8();
-    apply_shape_mask(&mut rgba, shape);
+    apply_shape_mask(
+        &mut rgba,
+        shape,
+        vignette_softness,
+        vignette_intensity,
+        vignette_color,
+    );
     DynamicImage::ImageRgba8(rgba)
 }
 
@@ -349,6 +371,13 @@ fn pack_fill_color(color: FillColor) -> u32 {
         | (color.blue as u32)
 }
 
+fn pack_rgba_color(color: yunet_utils::color::RgbaColor) -> u32 {
+    ((color.alpha as u32) << 24)
+        | ((color.red as u32) << 16)
+        | ((color.green as u32) << 8)
+        | (color.blue as u32)
+}
+
 /// Creates a shape signature from crop settings for cache keying.
 fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
     use yunet_utils::{CropShape, PolygonCornerStyle};
@@ -361,6 +390,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: 0,
             rotation_bits: 0,
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::Ellipse => ShapeSignature {
             kind: 1,
@@ -368,6 +400,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: 0,
             rotation_bits: 0,
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::RoundedRectangle { radius_pct } => ShapeSignature {
             kind: 2,
@@ -375,6 +410,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: 0,
             rotation_bits: 0,
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::ChamferedRectangle { size_pct } => ShapeSignature {
             kind: 3,
@@ -382,6 +420,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: 0,
             rotation_bits: 0,
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::Polygon {
             sides,
@@ -400,6 +441,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
                 secondary_bits: secondary,
                 sides,
                 rotation_bits: rotation_deg.to_bits(),
+                vignette_softness_bits: settings.vignette_softness.to_bits(),
+                vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+                vignette_color_bits: pack_rgba_color(settings.vignette_color),
             }
         }
         CropShape::Star {
@@ -412,6 +456,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: points,
             rotation_bits: rotation_deg.to_bits(),
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::KochPolygon {
             sides,
@@ -423,6 +470,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides,
             rotation_bits: rotation_deg.to_bits(),
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
         CropShape::KochRectangle { iterations } => ShapeSignature {
             kind: 10,
@@ -430,6 +480,9 @@ fn shape_signature(settings: &ConfigCropSettings) -> ShapeSignature {
             secondary_bits: 0,
             sides: 0,
             rotation_bits: 0,
+            vignette_softness_bits: settings.vignette_softness.to_bits(),
+            vignette_intensity_bits: settings.vignette_intensity.to_bits(),
+            vignette_color_bits: pack_rgba_color(settings.vignette_color),
         },
     }
 }

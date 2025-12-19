@@ -154,6 +154,9 @@ pub fn run_batch_job(
         let masked = apply_mask_with_gpu(
             processed,
             &config.crop_config.shape,
+            config.crop_config.vignette_softness,
+            config.crop_config.vignette_intensity,
+            config.crop_config.vignette_color,
             config.gpu_enhancer.as_ref(),
         );
         let final_image = Arc::new(masked);
@@ -444,6 +447,9 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
         let final_image = apply_mask_with_gpu(
             final_image,
             &app.settings.crop.shape,
+            app.settings.crop.vignette_softness,
+            app.settings.crop.vignette_intensity,
+            app.settings.crop.vignette_color,
             app.gpu_enhancer.as_ref(),
         );
 

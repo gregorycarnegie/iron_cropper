@@ -326,6 +326,61 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
         CropShape::Rectangle | CropShape::Ellipse => {}
     }
 
+    ui.add_space(4.0);
+    let mut softness = app.settings.crop.vignette_softness * 100.0;
+    crate::constrained_slider_row!(
+        ui,
+        &mut softness,
+        0.0..=100.0,
+        "Vignette softness (%)",
+        1.0,
+        Some("Feathers the edges of the crop shape."),
+        None,
+        {
+            app.settings.crop.vignette_softness = (softness / 100.0).clamp(0.0, 1.0);
+            changed = true;
+        }
+    );
+
+    let mut intensity = app.settings.crop.vignette_intensity * 100.0;
+    crate::constrained_slider_row!(
+        ui,
+        &mut intensity,
+        0.0..=100.0,
+        "Vignette intensity (%)",
+        1.0,
+        Some("Controls the maximum opacity of the vignette."),
+        None,
+        {
+            app.settings.crop.vignette_intensity = (intensity / 100.0).clamp(0.0, 1.0);
+            changed = true;
+        }
+    );
+
+    ui.horizontal(|ui| {
+        ui.label("Vignette color");
+        let mut color = [
+            app.settings.crop.vignette_color.red,
+            app.settings.crop.vignette_color.green,
+            app.settings.crop.vignette_color.blue,
+            app.settings.crop.vignette_color.alpha,
+        ];
+        if ui
+            .color_edit_button_srgba_unmultiplied(&mut color)
+            .changed()
+        {
+            app.settings.crop.vignette_color = yunet_utils::RgbaColor {
+                red: color[0],
+                green: color[1],
+                blue: color[2],
+                alpha: color[3],
+            };
+            changed = true;
+        }
+    })
+    .response
+    .on_hover_text("Choose the color of the vignette effect.");
+
     let sanitized = shape.sanitized();
     if sanitized != app.settings.crop.shape {
         app.settings.crop.shape = sanitized;

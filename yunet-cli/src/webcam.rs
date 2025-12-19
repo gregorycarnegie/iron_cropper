@@ -176,7 +176,13 @@ pub fn run_webcam_mode(
                     continue;
                 }
 
-                crop_img = gpu_runtime.apply_shape_mask(&crop_img, &settings.crop.shape);
+                crop_img = gpu_runtime.apply_shape_mask(
+                    &crop_img,
+                    &settings.crop.shape,
+                    settings.crop.vignette_softness,
+                    settings.crop.vignette_intensity,
+                    settings.crop.vignette_color,
+                );
 
                 let mut ext = settings.crop.output_format.clone();
                 if ext.is_empty() {

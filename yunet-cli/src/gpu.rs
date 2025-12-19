@@ -53,16 +53,35 @@ impl CliGpuRuntime {
         apply_enhancements(image, settings, None)
     }
 
-    pub fn apply_shape_mask(&self, image: &DynamicImage, shape: &CropShape) -> DynamicImage {
+    pub fn apply_shape_mask(
+        &self,
+        image: &DynamicImage,
+        shape: &CropShape,
+        vignette_softness: f32,
+        vignette_intensity: f32,
+        vignette_color: yunet_utils::color::RgbaColor,
+    ) -> DynamicImage {
         if let Some(enhancer) = &self.enhancer {
-            match enhancer.apply_shape_mask_gpu(image, shape) {
+            match enhancer.apply_shape_mask_gpu(
+                image,
+                shape,
+                vignette_softness,
+                vignette_intensity,
+                vignette_color,
+            ) {
                 Ok(Some(masked)) => return masked,
                 Ok(None) => {}
                 Err(err) => warn!("GPU shape mask failed: {err}; falling back to CPU path."),
             }
         }
         let mut cpu = image.clone();
-        apply_shape_mask_dynamic(&mut cpu, shape);
+        apply_shape_mask_dynamic(
+            &mut cpu,
+            shape,
+            vignette_softness,
+            vignette_intensity,
+            vignette_color,
+        );
         cpu
     }
 

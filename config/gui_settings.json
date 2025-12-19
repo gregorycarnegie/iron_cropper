@@ -43,12 +43,20 @@
     },
     "shape": {
       "kind": "polygon",
-      "sides": 3,
-      "rotation_deg": 20.454546,
+      "sides": 5,
+      "rotation_deg": -19.090868,
       "corner_style": {
         "style": "bezier",
-        "tension": 0.54545456
+        "tension": 1.0378785
       }
+    },
+    "vignette_softness": 0.1969698,
+    "vignette_intensity": 1.0,
+    "vignette_color": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
     }
   },
   "enhance": {
@@ -62,7 +70,7 @@
     "sharpness": 0.0,
     "skin_smooth": 0.0,
     "red_eye_removal": false,
-    "background_blur": true
+    "background_blur": false
   },
   "telemetry": {
     "enabled": true,

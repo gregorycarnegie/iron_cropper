@@ -938,8 +938,17 @@ impl WgpuEnhancer {
         &self,
         image: &DynamicImage,
         shape: &CropShape,
+        vignette_softness: f32,
+        vignette_intensity: f32,
+        vignette_color: crate::color::RgbaColor,
     ) -> Result<Option<DynamicImage>> {
-        self.shape_mask.apply(image, shape)
+        self.shape_mask.apply(
+            image,
+            shape,
+            vignette_softness,
+            vignette_intensity,
+            vignette_color,
+        )
     }
 
     /// Clears any internal GPU buffer pools to free memory.

@@ -91,6 +91,9 @@ pub struct ShapeSignature {
     pub secondary_bits: u32,
     pub sides: u8,
     pub rotation_bits: u32,
+    pub vignette_softness_bits: u32,
+    pub vignette_intensity_bits: u32,
+    pub vignette_color_bits: u32,
 }
 
 /// Cache key for crop preview images.

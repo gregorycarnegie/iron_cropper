@@ -7083,7 +7083,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-cli"
-version = "0.9.10"
+version = "0.9.11"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -7103,7 +7103,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-core"
-version = "0.9.10"
+version = "0.9.11"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7122,7 +7122,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-gui"
-version = "0.9.10"
+version = "0.9.11"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7146,7 +7146,7 @@ dependencies = [
 
 [[package]]
 name = "yunet-utils"
-version = "0.9.10"
+version = "0.9.11"
 dependencies = [
  "anyhow",
  "async-channel",

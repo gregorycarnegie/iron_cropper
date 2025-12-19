@@ -7,20 +7,24 @@ use wgpu::util::DeviceExt;
 
 use crate::shape::CropShape;
 use crate::shape::outline_points_for_rect;
-use crate::{
-    create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
-};
+use crate::{create_gpu_pipeline, gpu_readback, storage_buffer_entry, uniform_buffer_entry};
 
 use super::{GpuContext, SHAPE_MASK_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const MAX_POINTS: usize = 512;
 
-gpu_uniforms!(ShapeMaskUniforms, 0, {
-    width: u32,
-    height: u32,
-    point_count: u32,
-    samples: u32,
-});
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Default)]
+struct ShapeMaskUniforms {
+    pub width: u32,
+    pub height: u32,
+    pub point_count: u32,
+    pub samples: u32,
+    pub vignette_softness: f32,
+    pub vignette_intensity: f32,
+    pub vignette_color: u32,
+    pub __padding: u32,
+}
 
 #[derive(Clone)]
 pub struct GpuShapeMask {
@@ -51,7 +55,14 @@ impl GpuShapeMask {
         })
     }
 
-    pub fn apply(&self, image: &DynamicImage, shape: &CropShape) -> Result<Option<DynamicImage>> {
+    pub fn apply(
+        &self,
+        image: &DynamicImage,
+        shape: &CropShape,
+        vignette_softness: f32,
+        vignette_intensity: f32,
+        vignette_color: crate::color::RgbaColor,
+    ) -> Result<Option<DynamicImage>> {
         if matches!(shape, CropShape::Rectangle) {
             return Ok(None);
         }
@@ -103,7 +114,13 @@ impl GpuShapeMask {
             height,
             point_count: clamped.len() as u32,
             samples: 4,
-            __padding: [0; 0],
+            vignette_softness,
+            vignette_intensity,
+            vignette_color: ((vignette_color.alpha as u32) << 24)
+                | ((vignette_color.blue as u32) << 16)
+                | ((vignette_color.green as u32) << 8)
+                | (vignette_color.red as u32),
+            ..Default::default()
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("yunet_shape_mask_uniforms"),

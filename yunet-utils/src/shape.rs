@@ -562,8 +562,14 @@ fn build_path(width: u32, height: u32, shape: &CropShape) -> Option<tiny_skia::P
 }
 
 /// Apply the shape mask to the supplied RGBA image in-place.
-pub fn apply_shape_mask(image: &mut RgbaImage, shape: &CropShape) {
-    if matches!(shape, CropShape::Rectangle) {
+pub fn apply_shape_mask(
+    image: &mut RgbaImage,
+    shape: &CropShape,
+    vignette_softness: f32,
+    vignette_intensity: f32,
+    vignette_color: crate::color::RgbaColor,
+) {
+    if matches!(shape, CropShape::Rectangle) && vignette_softness <= 0.0 {
         return;
     }
 
@@ -587,15 +593,53 @@ pub fn apply_shape_mask(image: &mut RgbaImage, shape: &CropShape) {
             None,
         );
 
-        let mask = pixmap.data();
-        for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
-            let alpha = mask_px[3];
-            if alpha == 0 {
-                pixel[0] = 0;
-                pixel[1] = 0;
-                pixel[2] = 0;
+        if vignette_softness > 0.0 {
+            let radius = (width.min(height) as f32 * 0.5 * vignette_softness).max(1.0);
+            let blurred = image::imageops::blur(
+                &RgbaImage::from_raw(width, height, pixmap.data().to_vec()).unwrap(),
+                radius,
+            );
+            let mask = blurred.as_raw();
+            for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
+                let mask_alpha = mask_px[3] as f32 / 255.0;
+                let alpha = mask_alpha * vignette_intensity + (1.0 - vignette_intensity);
+
+                // Mix original pixel with vignette color based on mask alpha
+                // Output = Image * mask_alpha + VignetteColor * intensity * (1.0 - mask_alpha)
+                let inv_mask = 1.0 - mask_alpha;
+                let vig_weight = inv_mask * vignette_intensity;
+
+                for c in 0..3 {
+                    let img_val = pixel[c] as f32;
+                    let vig_val = match c {
+                        0 => vignette_color.red as f32,
+                        1 => vignette_color.green as f32,
+                        2 => vignette_color.blue as f32,
+                        _ => 0.0,
+                    };
+                    pixel[c] =
+                        (img_val * mask_alpha + vig_val * vig_weight).clamp(0.0, 255.0) as u8;
+                }
+                pixel[3] = (pixel[3] as f32 * alpha).clamp(0.0, 255.0) as u8;
             }
-            pixel[3] = alpha;
+        } else {
+            let mask = pixmap.data();
+            for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
+                let mask_alpha = mask_px[3] as f32 / 255.0;
+                if mask_alpha < 0.5 {
+                    pixel[0] = (vignette_color.red as f32 * vignette_intensity
+                        + pixel[0] as f32 * (1.0 - vignette_intensity))
+                        .clamp(0.0, 255.0) as u8;
+                    pixel[1] = (vignette_color.green as f32 * vignette_intensity
+                        + pixel[1] as f32 * (1.0 - vignette_intensity))
+                        .clamp(0.0, 255.0) as u8;
+                    pixel[2] = (vignette_color.blue as f32 * vignette_intensity
+                        + pixel[2] as f32 * (1.0 - vignette_intensity))
+                        .clamp(0.0, 255.0) as u8;
+                    pixel[3] =
+                        (pixel[3] as f32 * (1.0 - vignette_intensity)).clamp(0.0, 255.0) as u8;
+                }
+            }
         }
     }
 }
@@ -631,13 +675,25 @@ fn star_points(
 }
 
 /// Apply the shape mask to a dynamic image, upgrading to RGBA as needed.
-pub fn apply_shape_mask_dynamic(image: &mut DynamicImage, shape: &CropShape) {
-    if matches!(shape, CropShape::Rectangle) {
+pub fn apply_shape_mask_dynamic(
+    image: &mut DynamicImage,
+    shape: &CropShape,
+    vignette_softness: f32,
+    vignette_intensity: f32,
+    vignette_color: crate::color::RgbaColor,
+) {
+    if matches!(shape, CropShape::Rectangle) && vignette_softness <= 0.0 {
         return;
     }
 
     let mut rgba = image.to_rgba8();
-    apply_shape_mask(&mut rgba, shape);
+    apply_shape_mask(
+        &mut rgba,
+        shape,
+        vignette_softness,
+        vignette_intensity,
+        vignette_color,
+    );
     *image = DynamicImage::ImageRgba8(rgba);
 }
 
