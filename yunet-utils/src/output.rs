@@ -14,7 +14,7 @@ use crc32fast::Hasher as Crc32;
 use image::{
     DynamicImage, ExtendedColorType, ImageEncoder,
     codecs::{
-        avif::AvifEncoder,
+        // avif::AvifEncoder, // Removed in favor of ravif
         bmp::BmpEncoder,
         jpeg::JpegEncoder,
         png::{CompressionType, FilterType, PngEncoder},
@@ -23,6 +23,7 @@ use image::{
     },
 };
 use log::{debug, warn};
+use rgb::FromSlice;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use std::{
     fs,
@@ -284,9 +285,24 @@ fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
 }
 
 fn encode_avif(image: &DynamicImage) -> Result<Vec<u8>> {
-    encode_impl!(image, "failed to encode AVIF", |cursor| {
-        AvifEncoder::new(cursor)
-    })
+    let rgba = image.to_rgba8();
+    let width = rgba.width() as usize;
+    let height = rgba.height() as usize;
+    let raw = rgba.as_raw();
+
+    let pixels = raw.as_rgba();
+    let img = imgref::Img::new(pixels, width, height);
+
+    // Use UnassociatedDirty to preserve RGB values in transparent pixels,
+    // preventing the "green tint" issue often caused by premultiplied alpha or YUV subsampling on zeroed pixels.
+    let res = ravif::Encoder::new()
+        .with_quality(80.0)
+        .with_speed(4)
+        .with_alpha_color_mode(ravif::AlphaColorMode::UnassociatedDirty)
+        .encode_rgba(img)
+        .map_err(|e| anyhow::anyhow!("AVIF encoding failed: {}", e))?;
+
+    Ok(res.avif_file)
 }
 
 fn encode_bmp(image: &DynamicImage) -> Result<Vec<u8>> {
