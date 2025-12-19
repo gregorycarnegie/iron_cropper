@@ -47,6 +47,10 @@ The project includes comprehensive GPU acceleration via wgpu and WGSL compute sh
 - **Live preview in the GUI** - Use the Mapping Import panel to choose a file, pick the source/output columns, and inspect a truncated preview before queueing rows.
 - **Batch-aware overrides** - Batch exports respect mapping-provided output names (including nested folders) while still falling back to the existing naming template when no mapping is configured.
 
+## Prerequisites
+
+- **NASM**: You must have [NASM](https://www.nasm.us/) installed and added to your system `PATH` to build the project.
+
 ## Development Tasks
 
 - `cargo check --workspace` – Fast type checking across all crates.
