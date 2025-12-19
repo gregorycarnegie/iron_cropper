@@ -237,7 +237,7 @@ fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize
     // 1. Calculate static weight size
     let mut total_weight_bytes = 0;
     for tensor in weights.values() {
-        total_weight_bytes += (tensor.data().len() * std::mem::size_of::<f32>()) as u64;
+        total_weight_bytes += std::mem::size_of_val(tensor.data()) as u64;
     }
 
     // 2. Estimate activation memory

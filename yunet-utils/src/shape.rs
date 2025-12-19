@@ -11,25 +11,27 @@ use std::f32::consts::PI;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
 /// Polygon corner styles.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(tag = "style", rename_all = "snake_case")]
 pub enum PolygonCornerStyle {
+    #[default]
     Sharp,
-    Rounded { radius_pct: f32 },
-    Chamfered { size_pct: f32 },
-    Bezier { tension: f32 },
-}
-
-impl Default for PolygonCornerStyle {
-    fn default() -> Self {
-        Self::Sharp
-    }
+    Rounded {
+        radius_pct: f32,
+    },
+    Chamfered {
+        size_pct: f32,
+    },
+    Bezier {
+        tension: f32,
+    },
 }
 
 /// Shapes supported by the crop exporter.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CropShape {
+    #[default]
     Rectangle,
     RoundedRectangle {
         radius_pct: f32,
@@ -113,12 +115,6 @@ impl CropShape {
                 iterations: (*iterations).min(5),
             },
         }
-    }
-}
-
-impl Default for CropShape {
-    fn default() -> Self {
-        Self::Rectangle
     }
 }
 

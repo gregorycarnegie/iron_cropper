@@ -625,12 +625,7 @@ pub fn start_batch_export(app: &mut YuNetApp) {
                             });
 
                             if let BatchFileStatus::Completed { faces_detected, .. } = status {
-                                if let Some(obj) = json_obj.as_object_mut() {
-                                    obj.insert(
-                                        "faces_detected".to_string(),
-                                        serde_json::json!(faces_detected),
-                                    );
-                                }
+                                json_obj["faces_detected"] = serde_json::json!(faces_detected);
                             }
 
                             json_obj
@@ -638,7 +633,7 @@ pub fn start_batch_export(app: &mut YuNetApp) {
                         .collect::<Vec<_>>(),
                 )
                 .map(|s| s.into_bytes())
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                .map_err(std::io::Error::other),
                 BatchLogFormat::Csv => {
                     let mut wtr = Vec::new();
                     writeln!(&mut wtr, "index,path,error,faces_detected").unwrap();

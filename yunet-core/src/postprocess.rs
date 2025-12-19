@@ -263,8 +263,9 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
     // Use a flat vector of vectors to store indices
     // Pre-allocate assuming uniform distribution (len / cells) * safety_factor?
     // Just a small capacity is fine.
-    let mut grid: Vec<Vec<usize>> =
-        vec![Vec::with_capacity(len / (GRID_SIZE * GRID_SIZE / 4).max(1)); GRID_SIZE * GRID_SIZE];
+    let mut grid: Vec<Vec<usize>> = (0..GRID_SIZE * GRID_SIZE)
+        .map(|_| Vec::with_capacity(len / (GRID_SIZE * GRID_SIZE / 4).max(1)))
+        .collect();
 
     // 3. Populate Grid
     for (i, d) in detections.iter().enumerate() {
@@ -339,8 +340,8 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
 
     // 5. Compact the vector
     let mut keep = 0;
-    for i in 0..len {
-        if !suppressed[i] {
+    for (i, &is_suppressed) in suppressed.iter().enumerate() {
+        if !is_suppressed {
             if i != keep {
                 detections.swap(i, keep);
             }

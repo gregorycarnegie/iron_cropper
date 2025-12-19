@@ -113,7 +113,7 @@ impl GpuRedEyeRemoval {
 
         let uniforms = RedEyeUniforms {
             pixel_count: pixel_count as u32,
-            width: width as u32,
+            width,
             threshold,
             min_red: 80.0,
             eye_count,

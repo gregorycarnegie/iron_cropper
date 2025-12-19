@@ -79,13 +79,13 @@ impl YuNetApp {
                                     ui.label(format!("  Usage: {:.2} MB", mb));
                                 }
 
-                                if let Some(detector) = &self.detector {
-                                    if let Some(bytes) = detector.gpu_memory_usage() {
-                                        ui.separator();
-                                        ui.strong("Inference Memory:");
-                                        let mb = bytes as f64 / 1024.0 / 1024.0;
-                                        ui.label(format!("  Usage: {:.2} MB", mb));
-                                    }
+                                if let Some(bytes) =
+                                    self.detector.as_ref().and_then(|d| d.gpu_memory_usage())
+                                {
+                                    ui.separator();
+                                    ui.strong("Inference Memory:");
+                                    let mb = bytes as f64 / 1024.0 / 1024.0;
+                                    ui.label(format!("  Usage: {:.2} MB", mb));
                                 }
                             } else {
                                 ui.label("GPU context unavailable");

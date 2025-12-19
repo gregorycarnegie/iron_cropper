@@ -468,23 +468,22 @@ fn apply_red_eye_removal(
     let src = img.to_rgba8();
     let (w, h) = src.dimensions();
     let mut out = src.clone();
+    let active_eyes = eyes.filter(|list| !list.is_empty());
 
     for y in 0..h {
         for x in 0..w {
-            if let Some(eyes_list) = eyes {
-                if !eyes_list.is_empty() {
-                    let mut in_eye = false;
-                    for eye in eyes_list {
-                        let dx = x as f32 - eye.x;
-                        let dy = y as f32 - eye.y;
-                        if dx * dx + dy * dy <= eye.radius * eye.radius {
-                            in_eye = true;
-                            break;
-                        }
+            if let Some(eyes_list) = active_eyes {
+                let mut in_eye = false;
+                for eye in eyes_list {
+                    let dx = x as f32 - eye.x;
+                    let dy = y as f32 - eye.y;
+                    if dx * dx + dy * dy <= eye.radius * eye.radius {
+                        in_eye = true;
+                        break;
                     }
-                    if !in_eye {
-                        continue;
-                    }
+                }
+                if !in_eye {
+                    continue;
                 }
             }
 

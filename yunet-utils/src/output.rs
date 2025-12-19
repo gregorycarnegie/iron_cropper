@@ -33,8 +33,9 @@ use std::{
 };
 
 /// Canonical image formats supported by the exporter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ImageFormatHint {
+    #[default]
     Png,
     Jpeg,
     Webp,
@@ -47,12 +48,6 @@ impl ImageFormatHint {
     /// Determine format from a filesystem extension.
     pub fn from_extension(ext: &str) -> Option<Self> {
         ext.parse().ok()
-    }
-}
-
-impl Default for ImageFormatHint {
-    fn default() -> Self {
-        Self::Png
     }
 }
 
