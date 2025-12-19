@@ -560,7 +560,10 @@ impl YuNetApp {
             .and_then(|ext| ext.to_str())
             .map(|ext| {
                 let lower = ext.to_ascii_lowercase();
-                matches!(lower.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "webp")
+                matches!(
+                    lower.as_str(),
+                    "png" | "jpg" | "jpeg" | "bmp" | "webp" | "tif" | "tiff" | "avif"
+                )
             })
             .unwrap_or(false)
     }

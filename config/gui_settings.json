@@ -42,15 +42,10 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 5,
-      "rotation_deg": -19.090868,
-      "corner_style": {
-        "style": "bezier",
-        "tension": 1.0378785
-      }
+      "kind": "rounded_rectangle",
+      "radius_pct": 0.12
     },
-    "vignette_softness": 0.1969698,
+    "vignette_softness": 0.25,
     "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,
@@ -69,7 +64,7 @@
     "saturation": 1.0,
     "sharpness": 0.0,
     "skin_smooth": 0.0,
-    "red_eye_removal": false,
+    "red_eye_removal": true,
     "background_blur": false
   },
   "telemetry": {

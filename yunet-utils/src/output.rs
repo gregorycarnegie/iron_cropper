@@ -14,8 +14,11 @@ use crc32fast::Hasher as Crc32;
 use image::{
     DynamicImage, ExtendedColorType, ImageEncoder,
     codecs::{
+        avif::AvifEncoder,
+        bmp::BmpEncoder,
         jpeg::JpegEncoder,
         png::{CompressionType, FilterType, PngEncoder},
+        tiff::TiffEncoder,
         webp::WebPEncoder,
     },
 };
@@ -24,7 +27,7 @@ use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use std::{
     fs,
     fs::File,
-    io::{BufWriter, Write},
+    io::{BufWriter, Cursor, Write},
     path::Path,
 };
 
@@ -34,6 +37,9 @@ pub enum ImageFormatHint {
     Png,
     Jpeg,
     Webp,
+    Tiff,
+    Bmp,
+    Avif,
 }
 
 impl ImageFormatHint {
@@ -57,6 +63,9 @@ impl std::str::FromStr for ImageFormatHint {
             "png" => Ok(Self::Png),
             "jpg" | "jpeg" => Ok(Self::Jpeg),
             "webp" => Ok(Self::Webp),
+            "tif" | "tiff" => Ok(Self::Tiff),
+            "bmp" => Ok(Self::Bmp),
+            "avif" => Ok(Self::Avif),
             other => Err(format!("unknown image format '{other}'")),
         }
     }
@@ -163,6 +172,9 @@ pub fn save_dynamic_image(
         ImageFormatHint::Png => encode_png(image, options.png_compression)?,
         ImageFormatHint::Jpeg => encode_jpeg(image, options.jpeg_quality)?,
         ImageFormatHint::Webp => encode_webp(image)?,
+        ImageFormatHint::Tiff => encode_tiff(image)?,
+        ImageFormatHint::Bmp => encode_bmp(image)?,
+        ImageFormatHint::Avif => encode_avif(image)?,
     };
 
     // Prepare metadata payload if applicable.
@@ -206,10 +218,36 @@ pub fn save_dynamic_image(
                 encoded = inject_webp_exif(encoded, None, custom_payload.as_deref());
             }
         }
+        ImageFormatHint::Tiff | ImageFormatHint::Bmp | ImageFormatHint::Avif => {
+            // Metadata injection not yet implemented for these formats
+        }
     }
 
     write_bytes(destination, &encoded)?;
     Ok(())
+}
+
+fn encode_rgba8<F>(image: &DynamicImage, encode_op: F, context: &str) -> Result<Vec<u8>>
+where
+    F: FnOnce(&mut Cursor<Vec<u8>>, &[u8], u32, u32) -> image::ImageResult<()>,
+{
+    let rgba = image.to_rgba8();
+    let mut cursor = Cursor::new(Vec::new());
+    encode_op(&mut cursor, rgba.as_raw(), rgba.width(), rgba.height())
+        .context(context.to_string())?;
+    Ok(cursor.into_inner())
+}
+
+macro_rules! encode_impl {
+    ($image:expr, $context:literal, |$cursor:ident| $encoder:expr) => {
+        encode_rgba8(
+            $image,
+            |$cursor, data, width, height| {
+                $encoder.write_image(data, width, height, ExtendedColorType::Rgba8)
+            },
+            $context,
+        )
+    };
 }
 
 fn determine_format(path: &Path, options: &OutputOptions) -> ImageFormatHint {
@@ -226,27 +264,6 @@ fn determine_format(path: &Path, options: &OutputOptions) -> ImageFormatHint {
     } else {
         options.format.unwrap_or_default()
     }
-}
-
-fn encode_png(image: &DynamicImage, compression: PngCompression) -> Result<Vec<u8>> {
-    let rgba = image.to_rgba8();
-    let mut buffer = Vec::new();
-    {
-        let encoder = PngEncoder::new_with_quality(
-            &mut buffer,
-            compression.into_image(),
-            FilterType::Adaptive,
-        );
-        encoder
-            .write_image(
-                rgba.as_raw(),
-                rgba.width(),
-                rgba.height(),
-                ExtendedColorType::Rgba8,
-            )
-            .context("failed to encode PNG")?;
-    }
-    Ok(buffer)
 }
 
 fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
@@ -266,21 +283,34 @@ fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+fn encode_avif(image: &DynamicImage) -> Result<Vec<u8>> {
+    encode_impl!(image, "failed to encode AVIF", |cursor| {
+        AvifEncoder::new(cursor)
+    })
+}
+
+fn encode_bmp(image: &DynamicImage) -> Result<Vec<u8>> {
+    encode_impl!(image, "failed to encode BMP", |cursor| {
+        BmpEncoder::new(cursor)
+    })
+}
+
+fn encode_png(image: &DynamicImage, compression: PngCompression) -> Result<Vec<u8>> {
+    encode_impl!(image, "failed to encode PNG", |cursor| {
+        PngEncoder::new_with_quality(cursor, compression.into_image(), FilterType::Adaptive)
+    })
+}
+
+fn encode_tiff(image: &DynamicImage) -> Result<Vec<u8>> {
+    encode_impl!(image, "failed to encode TIFF", |cursor| {
+        TiffEncoder::new(cursor)
+    })
+}
+
 fn encode_webp(image: &DynamicImage) -> Result<Vec<u8>> {
-    let rgba = image.to_rgba8();
-    let mut buffer = Vec::new();
-    {
-        let encoder = WebPEncoder::new_lossless(&mut buffer);
-        encoder
-            .write_image(
-                rgba.as_raw(),
-                rgba.width(),
-                rgba.height(),
-                ExtendedColorType::Rgba8,
-            )
-            .context("failed to encode WebP")?;
-    }
-    Ok(buffer)
+    encode_impl!(image, "failed to encode WebP", |cursor| {
+        WebPEncoder::new_lossless(cursor)
+    })
 }
 
 fn load_png_exif_chunks(source: Option<&Path>) -> Vec<Vec<u8>> {

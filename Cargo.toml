@@ -5,10 +5,19 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-version = "0.9.11"
+version = "0.9.12"
 description = "Pure Rust YuNet face detection workspace."
 
 [workspace.dependencies]
+image = { version = "0.25.9", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+    "tiff",
+    "bmp",
+    "avif",
+    "rayon", # Enable parallel processing support
+] }
 anyhow = "1.0.100"
 arboard = "3.6.1"
 async-channel = "2.5.0"
@@ -25,12 +34,6 @@ egui_extras = "0.33.3"
 env_logger = "0.11.8"
 fast_image_resize = "5.4.0"
 ico = "0.5.0"
-image = { version = "0.25.9", default-features = false, features = [
-    "png",
-    "jpeg",
-    "webp",
-    "rayon", # Enable parallel processing support
-] }
 imageproc = "0.25.0"
 log = "0.4.29"
 ndarray = { version = "0.17.1", features = ["rayon"] }

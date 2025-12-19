@@ -10,7 +10,7 @@ pub fn show_output_format(app: &mut YuNetApp, ui: &mut Ui, settings_changed: &mu
     ComboBox::from_id_salt("output_format_combo")
         .selected_text(app.settings.crop.output_format.to_ascii_uppercase())
         .show_ui(ui, |ui| {
-            for option in ["png", "jpeg", "webp"] {
+            for option in ["png", "jpeg", "webp", "tiff", "bmp", "avif"] {
                 if ui
                     .selectable_label(
                         app.settings.crop.output_format == option,
