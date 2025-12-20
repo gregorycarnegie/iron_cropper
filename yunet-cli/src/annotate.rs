@@ -75,6 +75,7 @@ fn rect_from_bbox(bbox: &BoundingBox, img_w: u32, img_h: u32) -> Rect {
 }
 
 /// Clamp a floating-point coordinate to a valid integer pixel index.
+#[inline]
 fn clamp_to_i32(value: f32, max_extent: u32) -> i32 {
     if max_extent == 0 {
         return 0;

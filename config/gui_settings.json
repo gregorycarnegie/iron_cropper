@@ -19,9 +19,9 @@
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 47,
-      "green": 16,
-      "blue": 49,
+      "red": 0,
+      "green": 0,
+      "blue": 0,
       "alpha": 255
     },
     "output_format": "avif",
@@ -50,7 +50,7 @@
         "tension": 1.0833331
       }
     },
-    "vignette_softness": 0.25,
+    "vignette_softness": 0.0,
     "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,

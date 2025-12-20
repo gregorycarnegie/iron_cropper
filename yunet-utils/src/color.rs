@@ -73,7 +73,7 @@ pub fn rgb_to_hsv(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
 /// Convert HSV (hue in degrees, saturation/value 0-1) to RGB channels (0-255).
 pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     if s <= 0.0 {
-        let val = (v * 255.0).round().clamp(0.0, 255.0) as u8;
+        let val = (v * 255.0) as u8;
         return (val, val, val);
     }
 
@@ -91,7 +91,7 @@ pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
         _ => (c, 0.0, x),
     };
 
-    let to_byte = |value: f32| -> u8 { ((value + m) * 255.0).round().clamp(0.0, 255.0) as u8 };
+    let to_byte = |value: f32| -> u8 { ((value + m) * 255.0) as u8 };
 
     (to_byte(r1), to_byte(g1), to_byte(b1))
 }
