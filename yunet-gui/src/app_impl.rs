@@ -1,15 +1,15 @@
 //! Additional YuNetApp implementation methods that delegate to module functions.
 
 use crate::PointerSnapshot;
+use crate::core::detection::build_detector;
+use crate::core::settings::load_settings;
 use crate::core::{
     cache, cache::CropPreviewRequest, detection, detection::create_thumbnails, export, quality,
 };
 use crate::interaction::{bbox_drag, drawing, shortcuts};
+use crate::types::{ColorMode, MappingUiState, WebcamState, WebcamStatus};
 use crate::{DetectionCacheEntry, DetectionJobSuccess, GpuStatusMode, JobMessage, YuNetApp};
 
-use crate::core::detection::build_detector;
-use crate::core::settings::load_settings;
-use crate::types::{ColorMode, MappingUiState, WebcamState, WebcamStatus};
 use anyhow::{Context, anyhow};
 #[cfg(not(target_arch = "wasm32"))]
 use arboard::{Clipboard, Error as ClipboardError};

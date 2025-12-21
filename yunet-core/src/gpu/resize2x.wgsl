@@ -21,15 +21,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let oy = global_id.y;
     let oc = global_id.z;
 
-    let output_width = params.input_width * 2u;
-    let output_height = params.input_height * 2u;
+    let output_width = params.input_width << 1u;
+    let output_height = params.input_height << 1u;
 
-    if (ox >= output_width || oy >= output_height || oc >= params.channels) {
+    if ox >= output_width || oy >= output_height || oc >= params.channels {
         return;
     }
 
-    let ix = ox / 2u;
-    let iy = oy / 2u;
+    let ix = ox >> 1u;
+    let iy = oy >> 1u;
 
     let in_index = flatten_index(params.input_width, params.input_height, oc, iy, ix);
     let out_index = flatten_index(output_width, output_height, oc, oy, ox);

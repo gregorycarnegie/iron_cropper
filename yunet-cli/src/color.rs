@@ -106,7 +106,7 @@ fn parse_alpha_value(token: &str) -> Result<u8, String> {
             .trim()
             .parse::<f32>()
             .map_err(|_| format!("invalid alpha percentage '{}'", token))?;
-        pct / 100.0
+        pct * 0.01
     } else {
         let value: f32 = trimmed
             .parse()
@@ -139,13 +139,13 @@ fn parse_percentage_value(token: &str) -> Result<f32, String> {
             .trim()
             .parse::<f32>()
             .map_err(|_| format!("invalid percentage '{}'", token))?;
-        return Ok((pct / 100.0).clamp(0.0, 1.0));
+        return Ok((pct * 0.01).clamp(0.0, 1.0));
     }
     let value: f32 = trimmed
         .parse()
         .map_err(|_| format!("invalid component '{}'", token))?;
     if value > 1.0 {
-        Ok((value / 100.0).clamp(0.0, 1.0))
+        Ok((value * 0.01).clamp(0.0, 1.0))
     } else {
         Ok(value.clamp(0.0, 1.0))
     }

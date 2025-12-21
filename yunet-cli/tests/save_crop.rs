@@ -1,6 +1,8 @@
 use image::{DynamicImage, Rgba, RgbaImage};
 use tempfile::tempdir;
-use yunet_core::{crop_face_from_image, cropper::CropSettings, postprocess::BoundingBox};
+use yunet_core::{
+    Detection, Landmark, crop_face_from_image, cropper::CropSettings, postprocess::BoundingBox,
+};
 
 #[test]
 fn saves_crops_in_various_formats() {
@@ -11,7 +13,7 @@ fn saves_crops_in_various_formats() {
     img.save(&img_path).unwrap();
 
     // Make a synthetic detection
-    let det = yunet_core::Detection {
+    let det = Detection {
         bbox: BoundingBox {
             x: 150.0,
             y: 150.0,
@@ -19,11 +21,11 @@ fn saves_crops_in_various_formats() {
             height: 100.0,
         },
         landmarks: [
-            yunet_core::Landmark { x: 160.0, y: 160.0 },
-            yunet_core::Landmark { x: 190.0, y: 160.0 },
-            yunet_core::Landmark { x: 175.0, y: 180.0 },
-            yunet_core::Landmark { x: 165.0, y: 200.0 },
-            yunet_core::Landmark { x: 185.0, y: 200.0 },
+            Landmark { x: 160.0, y: 160.0 },
+            Landmark { x: 190.0, y: 160.0 },
+            Landmark { x: 175.0, y: 180.0 },
+            Landmark { x: 165.0, y: 200.0 },
+            Landmark { x: 185.0, y: 200.0 },
         ],
         score: 0.9,
     };

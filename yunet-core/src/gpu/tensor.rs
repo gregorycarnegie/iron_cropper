@@ -361,8 +361,7 @@ fn read_buffer(
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use yunet_utils::gpu::GpuBufferPool;
-    use yunet_utils::gpu::{GpuAvailability, GpuContextOptions};
+    use yunet_utils::gpu::{GpuAvailability, GpuBufferPool, GpuContextOptions};
 
     fn test_context() -> Option<Arc<GpuContext>> {
         match GpuContext::init_with_fallback(&GpuContextOptions::default()) {

@@ -25,7 +25,7 @@ impl YuNetApp {
                 });
                 ui.add_space(8.0);
 
-                let btn_width = (ui.available_width() - 8.0) / 2.0;
+                let btn_width = (ui.available_width() - 8.0) * 0.5;
                 let button_height = 32.0;
                 Grid::new("quick_actions_grid")
                     .num_columns(2)

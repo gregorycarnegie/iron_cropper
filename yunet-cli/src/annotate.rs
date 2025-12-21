@@ -68,10 +68,10 @@ fn rect_from_bbox(bbox: &BoundingBox, img_w: u32, img_h: u32) -> Rect {
     let x2 = (bbox.x + bbox.width).clamp(0.0, max_x);
     let y2 = (bbox.y + bbox.height).clamp(0.0, max_y);
 
-    let width = (x2 - x1).max(1.0).round() as u32;
-    let height = (y2 - y1).max(1.0).round() as u32;
+    let width = (x2 - x1).max(1.0) as u32;
+    let height = (y2 - y1).max(1.0) as u32;
 
-    Rect::at(x1.round() as i32, y1.round() as i32).of_size(width, height)
+    Rect::at(x1 as i32, y1 as i32).of_size(width, height)
 }
 
 /// Clamp a floating-point coordinate to a valid integer pixel index.
@@ -81,5 +81,5 @@ fn clamp_to_i32(value: f32, max_extent: u32) -> i32 {
         return 0;
     }
     let max = (max_extent - 1) as f32;
-    value.clamp(0.0, max).round() as i32
+    value.clamp(0.0, max) as i32
 }

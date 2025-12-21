@@ -1,8 +1,10 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::{hint::black_box, sync::Arc};
-use yunet_core::gpu::activation::ActivationKind;
-use yunet_core::gpu::conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims};
-use yunet_core::gpu::ops::GpuInferenceOps;
+use yunet_core::gpu::{
+    activation::ActivationKind,
+    conv2d::{Conv2dChannels, Conv2dConfig, Conv2dOptions, SpatialDims},
+    ops::GpuInferenceOps,
+};
 use yunet_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
 
 fn setup_gpu() -> Option<Arc<GpuContext>> {

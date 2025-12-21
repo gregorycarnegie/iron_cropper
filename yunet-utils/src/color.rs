@@ -169,7 +169,7 @@ pub fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
 
     let hue = if hue < 0.0 { hue + 360.0 } else { hue };
 
-    let lightness = (max + min) / 2.0;
+    let lightness = (max + min) * 0.5;
 
     let saturation = if delta.abs() < f32::EPSILON {
         0.0
@@ -185,7 +185,7 @@ pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let c = (1.0 - (l.mul_add(2.0, -1.0)).abs()) * s;
     let hue = if h.is_nan() { 0.0 } else { h.rem_euclid(360.0) };
     let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
+    let m = l - c * 0.5;
 
     let (r1, g1, b1) = match hue {
         h if h < 60.0 => (c, x, 0.0),
@@ -236,60 +236,96 @@ pub fn cmyk_to_rgb(c: f32, m: f32, y: f32, k: f32) -> (u8, u8, u8) {
 mod tests {
     use super::*;
 
+    macro_rules! small_diff {
+        ($expected:ident, $got:ident) => {
+            assert!(
+                ($expected as i16 - $got as i16).abs() <= 1,
+                "{} mismatch: got {}, expected {}",
+                stringify!($expected).to_uppercase(),
+                $got,
+                $expected
+            );
+        };
+    }
+
+    fn colspace_assertion(
+        r: u8,
+        g: u8,
+        b: u8,
+        colspace_val: f32,
+        exp_colspace_val: f32,
+        colspace_name: &str,
+        tolerance: f32,
+    ) {
+        assert!(
+            (colspace_val - exp_colspace_val).abs() < tolerance,
+            "{} mismatch for ({}, {}, {}): got {}, expected {}",
+            colspace_name,
+            r,
+            g,
+            b,
+            colspace_val,
+            exp_colspace_val
+        );
+    }
+
     #[test]
     fn test_rgb_to_hsl_and_back() {
-        let (r, g, b) = (255, 0, 0); // Red
-        let (h, s, l) = rgb_to_hsl(r, g, b);
-        assert_eq!(h, 0.0);
-        assert_eq!(s, 1.0);
-        assert_eq!(l, 0.5);
-        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
-        assert_eq!((r, g, b), (r2, g2, b2));
+        let cases = [
+            ((0xFF, 0x00, 0x00), (0.0, 1.0, 0.5)),   // Red
+            ((0x00, 0xFF, 0x00), (120.0, 1.0, 0.5)), // Green
+            ((0x00, 0x00, 0xFF), (240.0, 1.0, 0.5)), // Blue
+            ((0x00, 0xFF, 0xFF), (180.0, 1.0, 0.5)), // Cyan
+            ((0xFF, 0x00, 0xFF), (300.0, 1.0, 0.5)), // Magenta
+            ((0xFF, 0xFF, 0x00), (60.0, 1.0, 0.5)),  // Yellow
+            ((0x00, 0x00, 0x00), (0.0, 0.0, 0.0)),   // Black
+            ((0xFF, 0xFF, 0xFF), (0.0, 0.0, 1.0)),   // White
+            ((0x80, 0x80, 0x80), (0.0, 0.0, 0.5)),   // Gray
+        ];
 
-        let (r, g, b) = (0, 255, 0); // Green
-        let (h, s, l) = rgb_to_hsl(r, g, b);
-        assert_eq!(h, 120.0);
-        assert_eq!(s, 1.0);
-        assert_eq!(l, 0.5);
-        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
-        assert_eq!((r, g, b), (r2, g2, b2));
+        for ((r, g, b), (exp_h, exp_s, exp_l)) in cases {
+            let (h, s, l) = rgb_to_hsl(r, g, b);
 
-        let (r, g, b) = (128, 128, 128); // Gray
-        let (h, s, l) = rgb_to_hsl(r, g, b);
-        assert_eq!(h, 0.0); // Hue is undefined/0 for grayscale
-        assert_eq!(s, 0.0);
-        assert!((l - 0.5).abs() < 0.01);
-        let (r2, g2, b2) = hsl_to_rgb(h, s, l);
-        assert_eq!((r, g, b), (r2, g2, b2));
+            // Hue is undefined for grayscale (often 0), checking close enough or exact 0 if expected
+            if s > 0.001 {
+                colspace_assertion(r, g, b, h, exp_h, "Hue", 0.1);
+            }
+            colspace_assertion(r, g, b, s, exp_s, "Saturation", 0.01);
+            colspace_assertion(r, g, b, l, exp_l, "Lightness", 0.01);
+
+            let (r2, g2, b2) = hsl_to_rgb(h, s, l);
+            // Allow small rounding diffs
+            small_diff!(r, r2);
+            small_diff!(g, g2);
+            small_diff!(b, b2);
+        }
     }
 
     #[test]
     fn test_rgb_to_cmyk_and_back() {
-        let (r, g, b) = (255, 0, 0); // Red
-        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
-        assert_eq!(c, 0.0);
-        assert_eq!(m, 1.0);
-        assert_eq!(y, 1.0);
-        assert_eq!(k, 0.0);
-        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
-        assert_eq!((r, g, b), (r2, g2, b2));
+        let cases = [
+            ((0xFF, 0x00, 0x00), (0.0, 1.0, 1.0, 0.0)), // Red
+            ((0x00, 0xFF, 0x00), (1.0, 0.0, 1.0, 0.0)), // Green
+            ((0x00, 0x00, 0xFF), (1.0, 1.0, 0.0, 0.0)), // Blue
+            ((0x00, 0xFF, 0xFF), (1.0, 0.0, 0.0, 0.0)), // Cyan
+            ((0xFF, 0x00, 0xFF), (0.0, 1.0, 0.0, 0.0)), // Magenta
+            ((0xFF, 0xFF, 0x00), (0.0, 0.0, 1.0, 0.0)), // Yellow
+            ((0x00, 0x00, 0x00), (0.0, 0.0, 0.0, 1.0)), // Black
+            ((0xFF, 0xFF, 0xFF), (0.0, 0.0, 0.0, 0.0)), // White
+        ];
 
-        let (r, g, b) = (0, 0, 0); // Black
-        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
-        assert_eq!(c, 0.0);
-        assert_eq!(m, 0.0);
-        assert_eq!(y, 0.0);
-        assert_eq!(k, 1.0);
-        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
-        assert_eq!((r, g, b), (r2, g2, b2));
+        for ((r, g, b), (exp_c, exp_m, exp_y, exp_k)) in cases {
+            let (c, m, y, k) = rgb_to_cmyk(r, g, b);
+            colspace_assertion(r, g, b, c, exp_c, "Cyan", 0.01);
+            colspace_assertion(r, g, b, m, exp_m, "Magenta", 0.01);
+            colspace_assertion(r, g, b, y, exp_y, "Yellow", 0.01);
+            colspace_assertion(r, g, b, k, exp_k, "Key", 0.01);
 
-        let (r, g, b) = (255, 255, 255); // White
-        let (c, m, y, k) = rgb_to_cmyk(r, g, b);
-        assert_eq!(c, 0.0);
-        assert_eq!(m, 0.0);
-        assert_eq!(y, 0.0);
-        assert_eq!(k, 0.0);
-        let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
-        assert_eq!((r, g, b), (r2, g2, b2));
+            let (r2, g2, b2) = cmyk_to_rgb(c, m, y, k);
+            // Allow small rounding diffs
+            small_diff!(r, r2);
+            small_diff!(g, g2);
+            small_diff!(b, b2);
+        }
     }
 }

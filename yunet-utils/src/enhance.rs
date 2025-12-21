@@ -544,11 +544,11 @@ fn background_blur_from_rgba(
         return DynamicImage::ImageRgba8(sharp.clone());
     }
 
-    let cx = w as f32 / 2.0;
-    let cy = h as f32 / 2.0;
+    let cx = w as f32 * 0.5;
+    let cy = h as f32 * 0.5;
     let mask_size = mask_size.clamp(0.3, 1.0);
-    let rx = (w as f32 / 2.0) * mask_size;
-    let ry = (h as f32 / 2.0) * mask_size;
+    let rx = (w as f32 * 0.5) * mask_size;
+    let ry = (h as f32 * 0.5) * mask_size;
 
     // Squared radii for distance checks
     let rx_sq = rx * rx;
@@ -585,7 +585,7 @@ fn background_blur_from_rgba(
                     1.0
                 } else {
                     let dist = dist_sq.sqrt();
-                    (dist - 0.9) / 0.2
+                    (dist - 0.9) * 5.0
                 };
 
                 let idx = x << 2; // Optimized: x * 4
@@ -1445,11 +1445,11 @@ mod benches {
             return DynamicImage::ImageRgba8(sharp.clone());
         }
 
-        let cx = w as f32 / 2.0;
-        let cy = h as f32 / 2.0;
+        let cx = w as f32 * 0.5;
+        let cy = h as f32 * 0.5;
         let mask_size = mask_size.clamp(0.3, 1.0);
-        let rx = (w as f32 / 2.0) * mask_size;
-        let ry = (h as f32 / 2.0) * mask_size;
+        let rx = (w as f32 * 0.5) * mask_size;
+        let ry = (h as f32 * 0.5) * mask_size;
 
         let rx_sq = rx * rx;
         let ry_sq = ry * ry;
@@ -1473,7 +1473,7 @@ mod benches {
                     1.0
                 } else {
                     let dist = dist_sq.sqrt();
-                    (dist - 0.9) / 0.2
+                    (dist - 0.9) * 5.0
                 };
 
                 let sharp_px = sharp.get_pixel(x, y).0;
