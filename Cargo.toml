@@ -47,7 +47,7 @@ parquet = { version = "57.1.0", default-features = false, features = [
     "zstd",
 ] }
 pollster = "0.4.0"
-prost = "0.11.9" # Set to 0.11.9 for tract-onnx v0.22.0 compatibility
+prost = "=0.11.9" # Set to 0.11.9 for tract-onnx v0.22.0 compatibility
 rayon = "1.11.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -56,7 +56,7 @@ tempfile = "3.23.0"
 thiserror = "2.0.17"
 tiny-skia = "0.11.4"
 tract-onnx = "0.22.0"
-wgpu = "27.0.1" # Set to 27.0.1 for eframe v0.33.3 compatibility
+wgpu = "=27.0.1" # Set to 27.0.1 for eframe v0.33.3 compatibility
 wide = "1.1.0"
 windows = { version = "0.62.2", features = [
     "Win32_Graphics_Dxgi",
