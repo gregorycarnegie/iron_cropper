@@ -41,6 +41,9 @@ fn show_detection_content(
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Detected faces").strong());
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.checkbox(&mut app.show_crop_overlay, "Show crop guides");
+            });
         });
 
         if app.preview.detections.is_empty() {
@@ -78,9 +81,6 @@ fn show_detection_content(
                     }
                 }
             }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.checkbox(&mut app.show_crop_overlay, "Show crop guides");
-            });
         });
 
         let total = app.preview.detections.len() as f32;

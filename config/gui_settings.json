@@ -44,7 +44,7 @@
     "shape": {
       "kind": "ellipse"
     },
-    "vignette_softness": 0.29924253,
+    "vignette_softness": 0.2689393,
     "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,
@@ -63,7 +63,7 @@
     "saturation": 1.0,
     "sharpness": 0.0,
     "skin_smooth": 0.0,
-    "red_eye_removal": true,
+    "red_eye_removal": false,
     "background_blur": false
   },
   "telemetry": {
