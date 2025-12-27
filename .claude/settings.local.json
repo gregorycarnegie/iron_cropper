@@ -11,7 +11,9 @@
       "Bash(cargo tree:*)",
       "Bash(xargs grep:*)",
       "Bash(du:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

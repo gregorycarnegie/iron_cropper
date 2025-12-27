@@ -598,13 +598,9 @@ pub fn apply_shape_mask(
             let mask = blurred.as_raw();
             for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
                 let mask_alpha = mask_px[3] as f32 / 255.0;
-                let alpha = mask_alpha * vignette_intensity + (1.0 - vignette_intensity);
 
-                // Mix original pixel with vignette color based on mask alpha
-                // Output = Image * mask_alpha + VignetteColor * intensity * (1.0 - mask_alpha)
+                // Vignette color mixing: blend toward vignette color in masked-out regions
                 let inv_mask = 1.0 - mask_alpha;
-                let vig_weight = inv_mask * vignette_intensity;
-
                 for c in 0..3 {
                     let img_val = pixel[c] as f32;
                     let vig_val = match c {
@@ -613,27 +609,35 @@ pub fn apply_shape_mask(
                         2 => vignette_color.blue as f32,
                         _ => 0.0,
                     };
-                    pixel[c] =
-                        (img_val * mask_alpha + vig_val * vig_weight).clamp(0.0, 255.0) as u8;
+                    // Blend image with vignette color based on mask and intensity
+                    pixel[c] = (img_val + inv_mask * vignette_intensity * (vig_val - img_val))
+                        .clamp(0.0, 255.0) as u8;
                 }
-                pixel[3] = (pixel[3] as f32 * alpha).clamp(0.0, 255.0) as u8;
+
+                // Alpha: purely based on mask, independent of vignette intensity
+                pixel[3] = (pixel[3] as f32 * mask_alpha).clamp(0.0, 255.0) as u8;
             }
         } else {
             let mask = pixmap.data();
             for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
                 let mask_alpha = mask_px[3] as f32 / 255.0;
+
+                // Outside the shape: apply vignette color and make transparent
                 if mask_alpha < 0.5 {
-                    pixel[0] = (vignette_color.red as f32 * vignette_intensity
-                        + pixel[0] as f32 * (1.0 - vignette_intensity))
-                        .clamp(0.0, 255.0) as u8;
-                    pixel[1] = (vignette_color.green as f32 * vignette_intensity
-                        + pixel[1] as f32 * (1.0 - vignette_intensity))
-                        .clamp(0.0, 255.0) as u8;
-                    pixel[2] = (vignette_color.blue as f32 * vignette_intensity
-                        + pixel[2] as f32 * (1.0 - vignette_intensity))
-                        .clamp(0.0, 255.0) as u8;
-                    pixel[3] =
-                        (pixel[3] as f32 * (1.0 - vignette_intensity)).clamp(0.0, 255.0) as u8;
+                    // Mix with vignette color based on intensity
+                    for c in 0..3 {
+                        let img_val = pixel[c] as f32;
+                        let vig_val = match c {
+                            0 => vignette_color.red as f32,
+                            1 => vignette_color.green as f32,
+                            2 => vignette_color.blue as f32,
+                            _ => 0.0,
+                        };
+                        pixel[c] = (img_val + vignette_intensity * (vig_val - img_val))
+                            .clamp(0.0, 255.0) as u8;
+                    }
+                    // Alpha: outside is always transparent (clean crop)
+                    pixel[3] = 0;
                 }
             }
         }

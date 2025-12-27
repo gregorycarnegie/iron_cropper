@@ -103,8 +103,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         coverage = coverage * vignette;
     }
 
-    let mask_alpha = coverage * params.vignette_intensity + (1.0 - params.vignette_intensity);
-
     let pixel = pixels[dst];
     let r = f32(pixel & 0xFFu);
     let g = f32((pixel >> 8u) & 0xFFu);
@@ -114,15 +112,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let vr = f32(params.vignette_color & 0xFFu);
     let vg = f32((params.vignette_color >> 8u) & 0xFFu);
     let vb = f32((params.vignette_color >> 16u) & 0xFFu);
-    let va = f32((params.vignette_color >> 24u) & 0xFFu);
 
+    // Vignette color mixing: blend toward vignette color in masked-out regions
+    // intensity controls how much vignette color shows, coverage controls where
     let inv_coverage = 1.0 - coverage;
-    let vig_weight = inv_coverage * params.vignette_intensity;
+    let r_out = u32(clamp(round(r + inv_coverage * params.vignette_intensity * (vr - r)), 0.0, 255.0)) & 0xFFu;
+    let g_out = u32(clamp(round(g + inv_coverage * params.vignette_intensity * (vg - g)), 0.0, 255.0)) & 0xFFu;
+    let b_out = u32(clamp(round(b + inv_coverage * params.vignette_intensity * (vb - b)), 0.0, 255.0)) & 0xFFu;
 
-    let r_out = u32(clamp(round(r * coverage + vr * vig_weight), 0.0, 255.0)) & 0xFFu;
-    let g_out = u32(clamp(round(g * coverage + vg * vig_weight), 0.0, 255.0)) & 0xFFu;
-    let b_out = u32(clamp(round(b * coverage + vb * vig_weight), 0.0, 255.0)) & 0xFFu;
-    let a_out = u32(clamp(round(a * mask_alpha), 0.0, 255.0)) & 0xFFu;
+    // Alpha: purely based on coverage, independent of vignette intensity
+    // This ensures clean transparent crops regardless of intensity setting
+    let a_out = u32(clamp(round(a * coverage), 0.0, 255.0)) & 0xFFu;
 
     pixels[dst] = r_out | (g_out << 8u) | (b_out << 16u) | (a_out << 24u);
 }

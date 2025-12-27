@@ -11,20 +11,20 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "custom",
-    "output_width": 486,
-    "output_height": 541,
+    "preset": "instagram",
+    "output_width": 1080,
+    "output_height": 1080,
     "face_height_pct": 48.120564,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 0,
+      "red": 125,
       "green": 0,
       "blue": 0,
       "alpha": 255
     },
-    "output_format": "avif",
+    "output_format": "png",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
@@ -42,10 +42,16 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "ellipse"
+      "kind": "polygon",
+      "sides": 5,
+      "rotation_deg": 0.0,
+      "corner_style": {
+        "style": "bezier",
+        "tension": 1.0833331
+      }
     },
-    "vignette_softness": 0.2689393,
-    "vignette_intensity": 1.0,
+    "vignette_softness": 0.57575744,
+    "vignette_intensity": 0.49242437,
     "vignette_color": {
       "red": 0,
       "green": 0,
