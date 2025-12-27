@@ -6,14 +6,14 @@
     "resize_quality": "speed"
   },
   "detection": {
-    "score_threshold": 0.9,
+    "score_threshold": 0.8,
     "nms_threshold": 0.3,
     "top_k": 5000
   },
   "crop": {
-    "preset": "linkedin",
-    "output_width": 400,
-    "output_height": 400,
+    "preset": "custom",
+    "output_width": 486,
+    "output_height": 541,
     "face_height_pct": 48.120564,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
@@ -42,15 +42,9 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 5,
-      "rotation_deg": 0.0,
-      "corner_style": {
-        "style": "bezier",
-        "tension": 1.0833331
-      }
+      "kind": "ellipse"
     },
-    "vignette_softness": 0.0,
+    "vignette_softness": 0.29924253,
     "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,
