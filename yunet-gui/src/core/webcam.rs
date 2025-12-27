@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 use yunet_core::YuNetDetector;
-use yunet_utils::{WebcamCapture, estimate_sharpness};
+use yunet_utils::{Quality, WebcamCapture};
 
 impl YuNetApp {
     /// Start the webcam capture in a background thread.
@@ -151,7 +151,6 @@ fn run_webcam_loop(
 
     let frame_duration = Duration::from_millis(1000 / fps.max(1) as u64);
     let mut frame_number = 0u32;
-    let mut last_detections = Vec::new();
 
     loop {
         // Check stop flag
@@ -171,45 +170,36 @@ fn run_webcam_loop(
 
         frame_number += 1;
 
-        // Skip every other frame for detection to improve performance
-        let detections = if frame_number.is_multiple_of(2) {
-            // Reuse detections from previous frame
-            last_detections.clone()
-        } else {
-            // Run detection on this frame
-            match detector.detect_image(&image) {
-                Ok(output) => {
-                    let dets: Vec<DetectionWithQuality> = output
-                        .detections
-                        .into_iter()
-                        .map(|det| {
-                            let bbox_region = image.crop_imm(
-                                det.bbox.x.max(0.0) as u32,
-                                det.bbox.y.max(0.0) as u32,
-                                det.bbox.width.max(1.0) as u32,
-                                det.bbox.height.max(1.0) as u32,
-                            );
-                            let (quality_score, quality) = estimate_sharpness(&bbox_region);
-                            let bbox = det.bbox;
+        // Run detection on every frame
+        // Note: we removed the frame skipping (every 2nd frame) to improve fluidity.
+        // We also removed the `estimate_sharpness` call which required cropping every face,
+        // saving significant CPU time per frame.
+        let detections = match detector.detect_image(&image) {
+            Ok(output) => {
+                let dets: Vec<DetectionWithQuality> = output
+                    .detections
+                    .into_iter()
+                    .map(|det| {
+                        let bbox = det.bbox;
 
-                            DetectionWithQuality {
-                                detection: det,
-                                quality_score,
-                                quality,
-                                thumbnail: None,
-                                current_bbox: bbox,
-                                original_bbox: bbox,
-                                origin: DetectionOrigin::Detector,
-                            }
-                        })
-                        .collect();
-                    last_detections = dets.clone();
-                    dets
-                }
-                Err(e) => {
-                    warn!("Detection failed on frame {}: {}", frame_number, e);
-                    Vec::new()
-                }
+                        DetectionWithQuality {
+                            detection: det,
+                            // Use placeholder quality for real-time preview to avoid
+                            // expensive crop + Laplacian variance calculation per face.
+                            quality_score: 0.0,
+                            quality: Quality::Low,
+                            thumbnail: None,
+                            current_bbox: bbox,
+                            original_bbox: bbox,
+                            origin: DetectionOrigin::Detector,
+                        }
+                    })
+                    .collect();
+                dets
+            }
+            Err(e) => {
+                warn!("Detection failed on frame {}: {}", frame_number, e);
+                Vec::new()
             }
         };
 
