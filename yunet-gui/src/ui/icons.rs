@@ -29,7 +29,7 @@ macro_rules! declare_icon_set {
                     $(
                         $name: SvgIcon::new(
                             concat!("bytes://icons/", stringify!($name), ".svg"),
-                            include_bytes!(concat!("../../assets/icons/gui-", stringify!($name), "-svgrepo-com.svg")),
+                            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/gui-", stringify!($name), "-svgrepo-com.svg")),
                         ),
                     )*
                     default_size: 18.0,
