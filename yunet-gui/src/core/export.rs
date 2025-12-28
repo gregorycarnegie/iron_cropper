@@ -2,7 +2,8 @@
 
 use crate::{
     BatchFileStatus, BatchJobConfig, JobMessage, YuNetApp,
-    core::cache::{apply_mask_with_gpu, calculate_eyes_relative_to_crop, enhance_with_gpu},
+    core::cache::{calculate_eyes_relative_to_crop, enhance_with_gpu},
+    core::compositing::apply_mask_with_gpu,
 };
 
 use image::DynamicImage;

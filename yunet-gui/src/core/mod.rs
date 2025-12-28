@@ -9,6 +9,7 @@
 //! - `webcam`: Webcam capture and real-time detection
 
 pub mod cache;
+pub mod compositing;
 pub mod detection;
 pub mod export;
 pub mod quality;
