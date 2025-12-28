@@ -31,7 +31,7 @@ pub fn show_fill_color_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     let picker_response = color_picker::color_edit_button_srgba(
         ui,
         &mut picker_color,
-        color_picker::Alpha::Opaque,
+        color_picker::Alpha::OnlyBlend,
     )
     .on_hover_text(
         "Choose the color used to fill pixels outside the source image when the crop extends beyond the bounds.",
