@@ -569,18 +569,236 @@ pub fn apply_shape_mask(
         return;
     }
 
+    // Optimization: Use analytical SDFs for "simple" shapes to avoid
+    // the heavy cost of rasterization + blur on the CPU.
+    if matches!(
+        shape,
+        CropShape::Rectangle
+            | CropShape::Ellipse
+            | CropShape::RoundedRectangle { .. }
+            | CropShape::ChamferedRectangle { .. }
+    ) {
+        apply_analytical_mask(
+            image,
+            shape,
+            vignette_softness,
+            vignette_intensity,
+            vignette_color,
+        );
+        return;
+    }
+
+    apply_raster_mask_optimized(
+        image,
+        shape,
+        vignette_softness,
+        vignette_intensity,
+        vignette_color,
+    );
+}
+
+fn apply_analytical_mask(
+    image: &mut RgbaImage,
+    shape: &CropShape,
+    vignette_softness: f32,
+    vignette_intensity: f32,
+    vignette_color: crate::color::RgbaColor,
+) {
+    let (w, h) = image.dimensions();
+    if w == 0 || h == 0 {
+        return;
+    }
+    let width = w as f32;
+    let height = h as f32;
+    let cx = width * 0.5;
+    let cy = height * 0.5;
+
+    // Pre-calculate shape parameters
+    let (param_a, _param_b) = match shape {
+        CropShape::RoundedRectangle { radius_pct } => {
+            let limit = width.min(height) * 0.5;
+            let r = (width.min(height) * radius_pct).clamp(0.0, limit);
+            (r, 0.0)
+        }
+        CropShape::ChamferedRectangle { size_pct } => {
+            let limit = width.min(height) * 0.5;
+            let s = (width.min(height) * size_pct).clamp(0.0, limit);
+            (s, 0.0)
+        }
+        _ => (0.0, 0.0),
+    };
+
+    let softness_px = if vignette_softness > 0.0 {
+        (width.min(height) * 0.5 * vignette_softness).max(1.0)
+    } else {
+        0.0 // Hard edge
+    };
+
+    // Parallel iterator for O(W*H) performance
+    use rayon::prelude::*;
+    image
+        .par_chunks_mut(4 * w as usize)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let py = y as f32 + 0.5; // Pixel center
+            for x in 0..w as usize {
+                let px = x as f32 + 0.5;
+
+                let dist = match shape {
+                    CropShape::Ellipse => {
+                        // Normalized distance from center (0..1 at edge)
+                        // x^2/a^2 + y^2/b^2 = 1
+                        let rx = width * 0.5;
+                        let ry = height * 0.5;
+                        let dx = (px - cx).abs();
+                        let dy = (py - cy).abs();
+                        // dist < 0 inside (far from edge), > 0 outside
+                        // Standard SDF for ellipse is complicated, but we can approximate for vignettes.
+                        // Let's use the explicit equation value.
+                        let val = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+                        // val = 1.0 at edge.
+                        // We want distance in pixels roughly.
+                        // Approx radial distance:
+                        val.sqrt() * (width.min(height) * 0.5) - (width.min(height) * 0.5)
+                    }
+                    CropShape::Rectangle => {
+                        // SDF for box (w, h) centered at (cx, cy)
+                        // d = length(max(abs(p) - b, 0.0)) + min(max(abs(p).x - b.x, abs(p).y - b.y), 0.0)
+                        let bx = width * 0.5;
+                        let by = height * 0.5;
+                        let dx = (px - cx).abs() - bx;
+                        let dy = (py - cy).abs() - by;
+                        // Outer distance
+                        let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
+                        // Inner distance (negative)
+                        let in_dist = dx.max(dy).min(0.0);
+                        out_dist + in_dist
+                    }
+                    CropShape::RoundedRectangle { .. } => {
+                        let radius = param_a;
+                        let bx = width * 0.5 - radius;
+                        let by = height * 0.5 - radius;
+                        let dx = (px - cx).abs() - bx;
+                        let dy = (py - cy).abs() - by;
+                        let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
+                        let in_dist = dx.max(dy).min(0.0);
+                        (out_dist + in_dist) - radius
+                    }
+                    CropShape::ChamferedRectangle { .. } => {
+                        let chamfer = param_a;
+                        // SDF for chamfered box is union of box and rotated planes.
+                        // Simpler: It's the intersection of the rect and a rotated rect (diamond).
+                        // Rectangle distance:
+                        let bx = width * 0.5;
+                        let by = height * 0.5;
+                        let dx = (px - cx).abs() - bx;
+                        let dy = (py - cy).abs() - by;
+                        let rect_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt()
+                            + dx.max(dy).min(0.0);
+
+                        // Cutting planes at corners.
+                        // |x| + |y| < limit
+                        // limit is defined by the line connecting (w/2, h/2 - s) and (w/2 - s, h/2)
+                        // The line eq for corner is x + y = C.
+                        // Intercept is bx + by - chamfer.
+                        // Normalized normal is (1/sqrt(2), 1/sqrt(2)).
+                        // Dist = dot(p, n) - d.
+                        let p_abs_x = (px - cx).abs();
+                        let p_abs_y = (py - cy).abs();
+                        // Distance to x+y = C plane
+                        // C = (width/2) + (height/2) - chamfer * (1 + (w/h aspect correction? No, chamfer is isotropic usually))
+                        // The chamfer is defined as inset from corner.
+                        // Corner point is (bx, by). Chamfer points are (bx-s, by) and (bx, by-s).
+                        // Line passes through those.
+                        // Slope is -1.
+                        // x + y = bx - s + by = bx + by - s.
+                        // Perpendicular distance from origin to line is (bx + by - s) / sqrt(2).
+                        // Projected length of p along diagonal is (p_abs_x + p_abs_y) / sqrt(2).
+                        // Signed dist: current - max.
+                        // But we want dist > 0 outside.
+                        // d = (p_abs_x + p_abs_y - (bx + by - chamfer)) / sqrt(2.0);
+                        let diag_dist = (p_abs_x + p_abs_y - (bx + by - chamfer))
+                            * std::f32::consts::FRAC_1_SQRT_2;
+
+                        rect_dist.max(diag_dist)
+                    }
+                    _ => unreachable!(),
+                };
+
+                // Compute Mask Alpha
+                // 0.0 = fully transparent (outside), 1.0 = fully opaque (inside)
+                // dist > 0 is outside.
+                // If softness == 0, transition is at dist=0.
+                // If softness > 0, transition is over [-softness_px/2, softness_px/2]?
+                // Usually blur radius R implies transition over ~2R.
+                // Let's say edge is at 0.
+                // We want 0.5 at 0.
+                // 0.0 at +spread, 1.0 at -spread.
+                let mask_alpha = if softness_px > 0.0 {
+                    // Smoothstep or linear clamp
+                    // map dist from [softness_px, -softness_px] to [0, 1]
+                    let t = dist / softness_px; // 1 at far out, -1 at far in
+                    // We want 0 at out, 1 at in.
+                    // -t goes -1 to 1.
+                    // 0.5 - 0.5 * t = 0.5 at 0. 0 at 1. 1 at -1.
+                    (0.5 - 0.5 * t).clamp(0.0, 1.0)
+                } else if dist <= 0.0 {
+                    1.0
+                } else {
+                    0.0
+                };
+
+                process_pixel(
+                    &mut row[x * 4..x * 4 + 4],
+                    mask_alpha,
+                    vignette_intensity,
+                    &vignette_color,
+                );
+            }
+        });
+}
+
+fn apply_raster_mask_optimized(
+    image: &mut RgbaImage,
+    shape: &CropShape,
+    vignette_softness: f32,
+    vignette_intensity: f32,
+    vignette_color: crate::color::RgbaColor,
+) {
     let width = image.width();
     let height = image.height();
+    if width == 0 || height == 0 {
+        return;
+    }
 
-    let mut pixmap = match Pixmap::new(width, height) {
+    // Heuristic: For large images, generate mask at reduced resolution.
+    // Max mask dimension 256 for sufficient quality but high speed.
+    // If softness is huge, we can go even smaller, but 256 is safe.
+    let max_dim = 256.0;
+    let scale = if width.max(height) > max_dim as u32 {
+        max_dim / width.max(height) as f32
+    } else {
+        1.0
+    };
+
+    let mask_w = (width as f32 * scale).ceil() as u32;
+    let mask_h = (height as f32 * scale).ceil() as u32;
+
+    let mut pixmap = match Pixmap::new(mask_w, mask_h) {
         Some(p) => p,
         None => return,
     };
     pixmap.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 0));
 
-    if let Some(path) = build_path(width, height, shape) {
+    // build_path returns path for given W/H. We need it for mask_w/mask_h.
+    // Note: shape parameters (like polygon sides) are scale invariant,
+    // but outline_points scales points to the box.
+    if let Some(path) = build_path(mask_w, mask_h, shape) {
         let mut paint = Paint::default();
         paint.set_color_rgba8(255, 255, 255, 255);
+        // Anti-aliasing is critical for small masks
+        paint.anti_alias = true;
+
         pixmap.fill_path(
             &path,
             &paint,
@@ -588,60 +806,116 @@ pub fn apply_shape_mask(
             Transform::identity(),
             None,
         );
-
-        if vignette_softness > 0.0 {
-            let radius = (width.min(height) as f32 * 0.5 * vignette_softness).max(1.0);
-            let blurred = image::imageops::blur(
-                &RgbaImage::from_raw(width, height, pixmap.data().to_vec()).unwrap(),
-                radius,
-            );
-            let mask = blurred.as_raw();
-            for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
-                let mask_alpha = mask_px[3] as f32 / 255.0;
-
-                // Vignette color mixing: blend toward vignette color in masked-out regions
-                let inv_mask = 1.0 - mask_alpha;
-                for c in 0..3 {
-                    let img_val = pixel[c] as f32;
-                    let vig_val = match c {
-                        0 => vignette_color.red as f32,
-                        1 => vignette_color.green as f32,
-                        2 => vignette_color.blue as f32,
-                        _ => 0.0,
-                    };
-                    // Blend image with vignette color based on mask and intensity
-                    pixel[c] = (img_val + inv_mask * vignette_intensity * (vig_val - img_val))
-                        .clamp(0.0, 255.0) as u8;
-                }
-
-                // Alpha: purely based on mask, independent of vignette intensity
-                pixel[3] = (pixel[3] as f32 * mask_alpha).clamp(0.0, 255.0) as u8;
-            }
-        } else {
-            let mask = pixmap.data();
-            for (pixel, mask_px) in image.pixels_mut().zip(mask.chunks_exact(4)) {
-                let mask_alpha = mask_px[3] as f32 / 255.0;
-
-                // Outside the shape: apply vignette color and make transparent
-                if mask_alpha < 0.5 {
-                    // Mix with vignette color based on intensity
-                    for c in 0..3 {
-                        let img_val = pixel[c] as f32;
-                        let vig_val = match c {
-                            0 => vignette_color.red as f32,
-                            1 => vignette_color.green as f32,
-                            2 => vignette_color.blue as f32,
-                            _ => 0.0,
-                        };
-                        pixel[c] = (img_val + vignette_intensity * (vig_val - img_val))
-                            .clamp(0.0, 255.0) as u8;
-                    }
-                    // Alpha: outside is always transparent (clean crop)
-                    pixel[3] = 0;
-                }
-            }
-        }
     }
+
+    // Apply blur to the small mask
+    let mask_buffer = if vignette_softness > 0.0 {
+        let radius = (mask_w.min(mask_h) as f32 * 0.5 * vignette_softness).max(1.0);
+        // imageops::blur is still O(N*R), but N is small (256^2).
+        image::imageops::blur(
+            &RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap(),
+            radius,
+        )
+    } else {
+        RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap()
+    };
+
+    // Apply to main image with bilinear sampling
+    use rayon::prelude::*;
+    // Need raw slice for random access
+    let mask_raw = mask_buffer.as_raw();
+    // Re-bind just to be safe for closure capture
+    let mask_w_usize = mask_w as usize;
+
+    image
+        .par_chunks_mut(4 * width as usize)
+        .enumerate()
+        .for_each(|(y, row)| {
+            let v = (y as f32 + 0.5) * scale;
+            for x in 0..width as usize {
+                let u = (x as f32 + 0.5) * scale;
+
+                // Bilinear sample from mask at (u, v)
+                let sample_x = u - 0.5;
+                let sample_y = v - 0.5;
+
+                let x0 = sample_x.floor() as i32;
+                let y0 = sample_y.floor() as i32;
+                let x1 = x0 + 1;
+                let y1 = y0 + 1;
+
+                let wx = sample_x - x0 as f32;
+                let wy = sample_y - y0 as f32; // Weights for x1, y1
+
+                // Helper to get alpha safely
+                let get_alpha = |ix: i32, iy: i32| -> f32 {
+                    if ix < 0 || iy < 0 || ix >= mask_w as i32 || iy >= mask_h as i32 {
+                        // Clamp to edge or 0? Edge is safer for shapes touching borders.
+                        // But for crop execution, usually we are inside.
+                        // Clamp to border pixel.
+                        let cx = ix.clamp(0, mask_w as i32 - 1) as usize;
+                        let cy = iy.clamp(0, mask_h as i32 - 1) as usize;
+                        mask_raw[(cy * mask_w_usize + cx) * 4 + 3] as f32 / 255.0
+                    } else {
+                        mask_raw[(iy as usize * mask_w_usize + ix as usize) * 4 + 3] as f32 / 255.0
+                    }
+                };
+
+                let tl = get_alpha(x0, y0);
+                let tr = get_alpha(x1, y0);
+                let bl = get_alpha(x0, y1);
+                let br = get_alpha(x1, y1);
+
+                let top = tl * (1.0 - wx) + tr * wx;
+                let bot = bl * (1.0 - wx) + br * wx;
+                let mask_alpha = top * (1.0 - wy) + bot * wy;
+
+                process_pixel(
+                    &mut row[x * 4..x * 4 + 4],
+                    mask_alpha,
+                    vignette_intensity,
+                    &vignette_color,
+                );
+            }
+        });
+}
+
+#[inline(always)]
+fn process_pixel(
+    pixel: &mut [u8],
+    mask_alpha: f32,
+    vignette_intensity: f32,
+    vignette_color: &crate::color::RgbaColor,
+) {
+    let inv_mask = 1.0 - mask_alpha;
+
+    // Quick exit for fully transparent pixels if intensity is high enough to matter?
+    // No, even if transparent, we might need to apply vignette color (which is opaque usually,
+    // but the pixel alpha becomes 0 if mask_alpha is 0).
+    // Previous logic: if mask_alpha < 0.5 { pixel[3] = 0; } for hard crops.
+    // For soft crops, pixel[3] = pixel[3] * mask_alpha.
+
+    // To unify: always multiply alpha.
+    // In "hard" mode (softness=0), we produced binary alpha.
+
+    // Color mixing:
+    // pixel = pixel + inv_mask * intensity * (vig_color - pixel)
+    if vignette_intensity > 0.0 && inv_mask > 0.0 {
+        let vig_r = vignette_color.red as f32;
+        let vig_g = vignette_color.green as f32;
+        let vig_b = vignette_color.blue as f32;
+        let mix_factor = inv_mask * vignette_intensity;
+
+        pixel[0] =
+            (pixel[0] as f32 + mix_factor * (vig_r - pixel[0] as f32)).clamp(0.0, 255.0) as u8;
+        pixel[1] =
+            (pixel[1] as f32 + mix_factor * (vig_g - pixel[1] as f32)).clamp(0.0, 255.0) as u8;
+        pixel[2] =
+            (pixel[2] as f32 + mix_factor * (vig_b - pixel[2] as f32)).clamp(0.0, 255.0) as u8;
+    }
+
+    // Alpha application
+    pixel[3] = (pixel[3] as f32 * mask_alpha).round() as u8;
 }
 
 fn star_points(

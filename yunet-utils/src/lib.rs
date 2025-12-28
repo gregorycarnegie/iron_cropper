@@ -15,6 +15,7 @@ pub mod image_utils;
 /// Macros for reducing GPU shader boilerplate.
 #[macro_use]
 pub mod macros;
+
 /// Data-driven mapping utilities (CSV/Excel/Parquet/SQLite ingestion).
 pub mod mapping;
 /// Image output helpers (encoding, metadata preservation).

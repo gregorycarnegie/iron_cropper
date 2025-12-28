@@ -11,15 +11,15 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "instagram",
-    "output_width": 1080,
-    "output_height": 1080,
+    "preset": "avatar",
+    "output_width": 512,
+    "output_height": 512,
     "face_height_pct": 48.120564,
     "positioning_mode": "center",
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 125,
+      "red": 192,
       "green": 0,
       "blue": 0,
       "alpha": 255
@@ -43,14 +43,14 @@
     },
     "shape": {
       "kind": "polygon",
-      "sides": 5,
-      "rotation_deg": 0.0,
+      "sides": 6,
+      "rotation_deg": 40.909092,
       "corner_style": {
         "style": "bezier",
-        "tension": 1.0833331
+        "tension": 1.0454545
       }
     },
-    "vignette_softness": 0.57575744,
+    "vignette_softness": 0.0,
     "vignette_intensity": 0.49242437,
     "vignette_color": {
       "red": 0,
@@ -69,7 +69,7 @@
     "saturation": 1.0,
     "sharpness": 0.0,
     "skin_smooth": 0.0,
-    "red_eye_removal": false,
+    "red_eye_removal": true,
     "background_blur": false
   },
   "telemetry": {
@@ -81,9 +81,9 @@
     "format": "json"
   },
   "gpu": {
-    "enabled": true,
+    "enabled": false,
     "respect_env": true,
-    "inference": true,
+    "inference": false,
     "preprocessing": true
   }
 }
