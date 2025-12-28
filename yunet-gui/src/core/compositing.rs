@@ -55,11 +55,13 @@ pub fn composite_with_fill_color(image: &mut image::RgbaImage, fill: FillColor) 
         }
         // Standard alpha compositing: result = src * src_a + bg * (1 - src_a)
         let inv_a = 1.0 - src_a;
-        let r = (pixel[0] as f32 * src_a + bg_r * bg_a * inv_a).round() as u8;
-        let g = (pixel[1] as f32 * src_a + bg_g * bg_a * inv_a).round() as u8;
-        let b = (pixel[2] as f32 * src_a + bg_b * bg_a * inv_a).round() as u8;
+
+        let func = |src: u8, bg: f32| (src as f32 * src_a + bg * bg_a * inv_a) as u8;
+        let r = func(pixel[0], bg_r);
+        let g = func(pixel[1], bg_g);
+        let b = func(pixel[2], bg_b);
         // Output alpha: src_a + bg_a * (1 - src_a), clamped to 255
-        let a = ((src_a + bg_a * inv_a) * 255.0).round().min(255.0) as u8;
+        let a = ((src_a + bg_a * inv_a) * 255.0).min(255.0) as u8;
         *pixel = Rgba([r, g, b, a]);
     }
 }
