@@ -6,6 +6,7 @@
 use crate::point::Point;
 
 use image::{DynamicImage, RgbaImage};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
@@ -635,7 +636,6 @@ fn apply_analytical_mask(
     };
 
     // Parallel iterator for O(W*H) performance
-    use rayon::prelude::*;
     image
         .par_chunks_mut(4 * w as usize)
         .enumerate()
@@ -821,7 +821,6 @@ fn apply_raster_mask_optimized(
     };
 
     // Apply to main image with bilinear sampling
-    use rayon::prelude::*;
     // Need raw slice for random access
     let mask_raw = mask_buffer.as_raw();
     // Re-bind just to be safe for closure capture
