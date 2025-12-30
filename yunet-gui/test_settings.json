@@ -11,13 +11,13 @@
     "top_k": 5000
   },
   "crop": {
-    "preset": "instagram",
-    "output_width": 1080,
-    "output_height": 1080,
+    "preset": "linkedin",
+    "output_width": 400,
+    "output_height": 400,
     "face_height_pct": 70.0,
     "positioning_mode": "center",
     "vertical_offset": 0.0,
-    "horizontal_offset": 0.0,
+    "horizontal_offset": 0.5,
     "fill_color": {
       "red": 0,
       "green": 0,

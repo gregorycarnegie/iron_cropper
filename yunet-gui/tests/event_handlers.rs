@@ -12,15 +12,20 @@ fn test_undo_redo_shortcuts() {
     assert!(app.settings.crop.horizontal_offset > 0.0);
     assert_eq!(app.crop_history_index, 1); // Initial (0) + 1 change
 
-    // 2. Setup Undo Shortcut (Ctrl+Z)
+    // 2. Setup Undo Shortcut (Cmd+Z)
     let ctx = Context::default();
     let mut input = RawInput::default();
+    input.modifiers = Modifiers {
+        command: true,
+        ctrl: true,
+        ..Modifiers::default()
+    };
     input.events.push(Event::Key {
         key: Key::Z,
         physical_key: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers::CTRL,
+        modifiers: input.modifiers,
     });
 
     // Begin frame to populate input
@@ -39,12 +44,17 @@ fn test_undo_redo_shortcuts() {
     // 5. Setup Redo Shortcut (Ctrl+Y or Ctrl+Shift+Z)
     // Testing Ctrl+Y
     let mut input_redo = RawInput::default();
+    input_redo.modifiers = Modifiers {
+        command: true,
+        ctrl: true,
+        ..Modifiers::default()
+    };
     input_redo.events.push(Event::Key {
         key: Key::Y,
         physical_key: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers::CTRL,
+        modifiers: input_redo.modifiers,
     });
     ctx.begin_pass(input_redo);
 
@@ -62,7 +72,7 @@ fn test_undo_redo_shortcuts() {
 fn test_preset_shortcuts() {
     let mut app = YuNetApp::test_instance();
 
-    // 1. Setup Shortcut for "LinkedIn" (Ctrl+1)
+    // 1. Setup Shortcut for "LinkedIn" (Num1)
     let ctx = Context::default();
     let mut input = RawInput::default();
     input.events.push(Event::Key {
@@ -70,7 +80,7 @@ fn test_preset_shortcuts() {
         physical_key: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers::CTRL,
+        modifiers: Modifiers::NONE,
     });
 
     ctx.begin_pass(input);
@@ -82,14 +92,14 @@ fn test_preset_shortcuts() {
     assert_eq!(app.settings.crop.preset, "linkedin");
     assert_eq!(app.settings.crop.output_width, 400);
 
-    // Test "Passport" (Ctrl+3)
+    // Test "Passport" (Num2)
     let mut input_passport = RawInput::default();
     input_passport.events.push(Event::Key {
-        key: Key::Num3,
+        key: Key::Num2,
         physical_key: None,
         pressed: true,
         repeat: false,
-        modifiers: Modifiers::CTRL,
+        modifiers: Modifiers::NONE,
     });
     ctx.begin_pass(input_passport);
 
