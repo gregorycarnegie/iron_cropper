@@ -8,7 +8,7 @@ use yunet_utils::gpu::{GpuStatusIndicator, red_eye::RedEye};
 
 use crate::core::compositing::{apply_mask_with_gpu, composite_with_fill_color};
 use egui::{Context as EguiContext, TextureHandle, TextureOptions};
-use image::DynamicImage;
+use image::{DynamicImage, imageops::FilterType};
 use log::warn;
 use lru::LruCache;
 use std::{path::PathBuf, sync::Arc};
@@ -99,15 +99,33 @@ pub fn calculate_eyes_relative_to_crop(
         let new_y = (ly - cy as f32) * scale_y;
 
         // Approximate radius based on inter-pupillary distance
-        let dx = landmarks[1].x - landmarks[0].x;
-        let dy = landmarks[1].y - landmarks[0].y;
-        let dist = (dx * dx + dy * dy).sqrt() * scale_x;
-        let radius = dist * 0.15;
+        let dl = landmarks[1] - landmarks[0];
+        let dist = dl.hypot() * scale_x;
 
         eye_list.push(RedEye {
             x: new_x,
             y: new_y,
-            radius,
+            radius: dist * 0.15,
+            _pad: 0.0,
+        });
+    }
+    eye_list
+}
+
+pub fn calculate_eyes_absolute(landmarks: &[yunet_core::Landmark; 5]) -> Vec<RedEye> {
+    // Landmarks 0 and 1 are eyes
+    let mut eye_list = Vec::with_capacity(2);
+    for i in 0..2 {
+        let landmark = landmarks[i];
+
+        // Approximate radius based on inter-pupillary distance
+        let dl = landmarks[1] - landmarks[0];
+        let dist = dl.hypot();
+
+        eye_list.push(RedEye {
+            x: landmark.x,
+            y: landmark.y,
+            radius: dist * 0.15,
             _pad: 0.0,
         });
     }
@@ -181,9 +199,9 @@ pub fn ensure_crop_preview_entry(
         det.bbox = bbox;
         det
     };
-    let cpu_crop = || crop_face_from_image(img.as_ref(), &detection_for_crop, crop_settings);
 
-    let resized = if crop_settings.output_width > 0
+    // Attempt GPU crop path if applicable
+    let gpu_crop_result = if crop_settings.output_width > 0
         && crop_settings.output_height > 0
         && gpu_cropper.is_some()
         && !crop_region.requires_padding()
@@ -198,63 +216,111 @@ pub fn ensure_crop_preview_entry(
                 output_width: crop_settings.output_width,
                 output_height: crop_settings.output_height,
             });
-        match gpu_cropper.as_ref().and_then(|cropper| {
+
+        gpu_cropper.as_ref().and_then(|cropper| {
             bounds.and_then(|request| match cropper.crop(img.as_ref(), &[request]) {
-                Ok(mut images) => {
-                    if images.len() == 1 {
-                        images.pop()
-                    } else {
-                        warn!(
-                            "GPU cropper returned {} preview images (expected 1)",
-                            images.len()
-                        );
-                        None
-                    }
+                Ok(mut images) if images.len() == 1 => images.pop(),
+                Ok(images) => {
+                    warn!("GPU cropper returned {} images (expected 1)", images.len());
+                    None
                 }
                 Err(err) => {
                     warn!("GPU preview crop failed: {err}; falling back to CPU path.");
                     None
                 }
             })
-        }) {
-            Some(image) => image,
-            None => cpu_crop(),
-        }
+        })
     } else {
-        cpu_crop()
+        None
     };
-    let processed = if enhance_enabled {
-        let eyes = if enhancement_settings.red_eye_removal {
-            let landmarks = &detection.detection.landmarks;
-            Some(calculate_eyes_relative_to_crop(
-                landmarks,
-                &crop_region,
-                img.width(),
-                img.height(),
-                crop_settings.output_width,
-                crop_settings.output_height,
-            ))
+
+    let masked = if let Some(gpu_cropped) = gpu_crop_result {
+        // GPU Path: We have a cropped image (raw). Now enhance it.
+        let enhanced = if enhance_enabled {
+            let eyes = if enhancement_settings.red_eye_removal {
+                let landmarks = &detection.detection.landmarks;
+                Some(calculate_eyes_relative_to_crop(
+                    landmarks,
+                    &crop_region,
+                    img.width(),
+                    img.height(),
+                    crop_settings.output_width,
+                    crop_settings.output_height,
+                ))
+            } else {
+                None
+            };
+            enhance_with_gpu(
+                &gpu_cropped,
+                enhancement_settings,
+                gpu_enhancer.as_ref(),
+                eyes.as_deref(),
+            )
         } else {
-            None
+            gpu_cropped
         };
 
-        enhance_with_gpu(
-            &resized,
-            enhancement_settings,
+        // Apply masking to the enhanced GPU crop
+        apply_mask_with_gpu(
+            enhanced,
+            &crop_config.shape,
+            crop_config.vignette_softness,
+            crop_config.vignette_intensity,
+            crop_config.vignette_color,
             gpu_enhancer.as_ref(),
-            eyes.as_deref(),
         )
     } else {
-        resized
+        // CPU / Fallback Path: Enhance Full -> Extract Full -> Mask Full -> Resize.
+        // This avoids edge blur artifacts by enhancing the full resolution image first
+        // and applying the mask at source resolution (supersampling).
+
+        // 1. Enhance Full Image
+        let source_to_crop = if enhance_enabled {
+            let eyes = if enhancement_settings.red_eye_removal {
+                // Use absolute coordinates for full image
+                Some(calculate_eyes_absolute(&detection.detection.landmarks))
+            } else {
+                None
+            };
+            enhance_with_gpu(
+                img.as_ref(),
+                enhancement_settings,
+                gpu_enhancer.as_ref(),
+                eyes.as_deref(),
+            )
+        } else {
+            img.as_ref().clone()
+        };
+
+        // 2. Extract Full Resolution (Unsized) Crop
+        // We clone settings but set output dims to 0 to get raw crop.
+        let mut full_res_settings = crop_settings.clone();
+        full_res_settings.output_width = 0;
+        full_res_settings.output_height = 0;
+
+        let full_crop =
+            crop_face_from_image(&source_to_crop, &detection_for_crop, &full_res_settings);
+
+        // 3. Mask Full Resolution Crop
+        let masked_full = apply_mask_with_gpu(
+            full_crop,
+            &crop_config.shape,
+            crop_config.vignette_softness,
+            crop_config.vignette_intensity,
+            crop_config.vignette_color,
+            gpu_enhancer.as_ref(),
+        );
+
+        // 4. Resize to Target Dimensions
+        let resized = image::imageops::resize(
+            &masked_full,
+            crop_settings.output_width,
+            crop_settings.output_height,
+            FilterType::Lanczos3,
+        );
+        DynamicImage::ImageRgba8(resized)
     };
-    let masked = apply_mask_with_gpu(
-        processed,
-        &crop_config.shape,
-        crop_config.vignette_softness,
-        crop_config.vignette_intensity,
-        crop_config.vignette_color,
-        gpu_enhancer.as_ref(),
-    );
+
     let mut rgba = masked.to_rgba8();
     // Composite the masked image onto the fill color background so that
     // transparent areas show the fill color in the preview (matching export)

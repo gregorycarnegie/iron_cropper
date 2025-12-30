@@ -14,6 +14,10 @@ impl Point {
             y: self.y.mul_add(a, b.y),
         }
     }
+
+    pub fn hypot(self) -> f32 {
+        self.x.hypot(self.y)
+    }
 }
 
 impl Add for Point {

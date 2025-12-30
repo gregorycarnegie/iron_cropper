@@ -1,5 +1,8 @@
 use anyhow::Result;
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    ops::{Add, Mul, Neg, Sub},
+};
 use tract_onnx::prelude::{Tensor, tract_ndarray::ArrayView2};
 use yunet_utils::config::DetectionSettings;
 
@@ -76,6 +79,64 @@ pub struct Landmark {
     pub x: f32,
     /// The y-coordinate of the landmark.
     pub y: f32,
+}
+
+impl Landmark {
+    pub fn hypot(self) -> f32 {
+        self.x.hypot(self.y)
+    }
+}
+
+impl Add for Landmark {
+    type Output = Landmark;
+
+    fn add(self, other: Landmark) -> Landmark {
+        Landmark {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+impl Sub for Landmark {
+    type Output = Landmark;
+
+    fn sub(self, other: Landmark) -> Landmark {
+        Landmark {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+}
+
+impl Mul<Landmark> for Landmark {
+    type Output = f32;
+
+    fn mul(self, other: Landmark) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+}
+
+impl Mul<f32> for Landmark {
+    type Output = Landmark;
+
+    fn mul(self, other: f32) -> Landmark {
+        Landmark {
+            x: self.x * other,
+            y: self.y * other,
+        }
+    }
+}
+
+impl Neg for Landmark {
+    type Output = Landmark;
+
+    fn neg(self) -> Landmark {
+        Landmark {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
 }
 
 /// A single YuNet detection result, including a bounding box, landmarks, and confidence score.

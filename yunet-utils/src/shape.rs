@@ -531,11 +531,13 @@ fn cubic_bezier(p0: Point, p1: Point, p2: Point, p3: Point, t: f32) -> Point {
 
 #[inline]
 fn distance(a: Point, b: Point) -> f32 {
-    ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+    // ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt()
+    (a - b).hypot()
 }
 
 fn normalize(v: Point) -> Point {
-    let len = (v.x * v.x + v.y * v.y).sqrt();
+    // let len = (v.x * v.x + v.y * v.y).sqrt();
+    let len = v.hypot();
     if len <= f32::EPSILON {
         Point { x: 0.0, y: 0.0 }
     } else {
@@ -772,9 +774,8 @@ fn apply_raster_mask_optimized(
     }
 
     // Heuristic: For large images, generate mask at reduced resolution.
-    // Max mask dimension 256 for sufficient quality but high speed.
-    // If softness is huge, we can go even smaller, but 256 is safe.
-    let max_dim = 256.0;
+    // Max mask dimension 2048 (was 256) for sufficient quality.
+    let max_dim = 2048.0;
     let scale = if width.max(height) > max_dim as u32 {
         max_dim / width.max(height) as f32
     } else {
@@ -808,16 +809,30 @@ fn apply_raster_mask_optimized(
         );
     }
 
-    // Apply blur to the small mask
+    // Extract the hard mask (rasterized shape)
+    let hard_mask = RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap();
+
+    // Apply blur to create the vignette mask, but CLIP it to the hard mask.
+    // This prevents the blur from bleeding outside the shape boundaries.
     let mask_buffer = if vignette_softness > 0.0 {
         let radius = (mask_w.min(mask_h) as f32 * 0.5 * vignette_softness).max(1.0);
-        // imageops::blur is still O(N*R), but N is small (256^2).
-        image::imageops::blur(
-            &RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap(),
-            radius,
-        )
+
+        // Generate the soft vignette mask by blurring the hard mask
+        let soft_mask = image::imageops::blur(&hard_mask, radius);
+
+        // Multiply the hard mask by the soft mask
+        // Hard=0 (Outside) * Soft (>0) = 0 (Transparent/Clipped)
+        // Hard=1 (Inside) * Soft (Gradient) = Gradient (Vignette)
+        let mut combined = hard_mask.clone();
+        for (c_pixel, s_pixel) in combined.pixels_mut().zip(soft_mask.pixels()) {
+            let hard_a = c_pixel[3] as f32 / 255.0;
+            let soft_a = s_pixel[3] as f32 / 255.0;
+            let final_a = (hard_a * soft_a * 255.0 + 0.5) as u8;
+            c_pixel[3] = final_a;
+        }
+        combined
     } else {
-        RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap()
+        hard_mask
     };
 
     // Apply to main image with bilinear sampling

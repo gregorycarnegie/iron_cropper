@@ -19,10 +19,10 @@
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 255,
-      "green": 255,
-      "blue": 255,
-      "alpha": 255
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 0
     },
     "output_format": "png",
     "jpeg_quality": 81,
@@ -50,8 +50,8 @@
         "tension": 1.0454545
       }
     },
-    "vignette_softness": 0.15151526,
-    "vignette_intensity": 0.23863636,
+    "vignette_softness": 0.13636364,
+    "vignette_intensity": 0.5113636,
     "vignette_color": {
       "red": 0,
       "green": 0,
@@ -81,9 +81,9 @@
     "format": "json"
   },
   "gpu": {
-    "enabled": true,
+    "enabled": false,
     "respect_env": true,
-    "inference": true,
+    "inference": false,
     "preprocessing": true
   }
 }
