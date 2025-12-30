@@ -329,21 +329,15 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
         .collect();
 
     // 3. Populate Grid
+    let grid_helper =
+        |b: f32, cell_d: f32| ((b) / cell_d).floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+
     for (i, d) in detections.iter().enumerate() {
         let b = d.bbox;
-
-        let c_min = ((b.x - min_x) / cell_w)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let c_max = ((b.x + b.width - min_x) / cell_w)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let r_min = ((b.y - min_y) / cell_h)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let r_max = ((b.y + b.height - min_y) / cell_h)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let c_min = grid_helper(b.x - min_x, cell_w);
+        let c_max = grid_helper(b.x + b.width - min_x, cell_w);
+        let r_min = grid_helper(b.y - min_y, cell_h);
+        let r_max = grid_helper(b.y + b.height - min_y, cell_h);
 
         for r in r_min..=r_max {
             let row_offset = r * GRID_SIZE;
@@ -364,18 +358,10 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
         }
 
         let b = detections[i].bbox;
-        let c_min = ((b.x - min_x) / cell_w)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let c_max = ((b.x + b.width - min_x) / cell_w)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let r_min = ((b.y - min_y) / cell_h)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
-        let r_max = ((b.y + b.height - min_y) / cell_h)
-            .floor()
-            .clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+        let c_min = grid_helper(b.x - min_x, cell_w);
+        let c_max = grid_helper(b.x + b.width - min_x, cell_w);
+        let r_min = grid_helper(b.y - min_y, cell_h);
+        let r_max = grid_helper(b.y + b.height - min_y, cell_h);
 
         for r in r_min..=r_max {
             let row_offset = r * GRID_SIZE;

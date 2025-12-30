@@ -43,6 +43,14 @@
     },
     "shape": {
       "kind": "rectangle"
+    },
+    "vignette_softness": 0.0,
+    "vignette_intensity": 1.0,
+    "vignette_color": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
     }
   },
   "enhance": {
