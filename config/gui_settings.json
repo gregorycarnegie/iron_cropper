@@ -42,13 +42,10 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 40.909092,
-      "corner_style": {
-        "style": "bezier",
-        "tension": 1.0454545
-      }
+      "kind": "koch_polygon",
+      "sides": 3,
+      "rotation_deg": 0.0,
+      "iterations": 5
     },
     "vignette_softness": 0.13636364,
     "vignette_intensity": 0.5113636,

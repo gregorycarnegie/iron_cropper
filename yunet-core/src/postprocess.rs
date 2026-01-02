@@ -262,8 +262,9 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
         .collect();
 
     // 3. Populate Grid
-    let grid_helper =
-        |b: f32, cell_d: f32| ((b) / cell_d).floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize;
+    let grid_helper = |b: f32, cell_d: f32| -> usize {
+        ((b) / cell_d).floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize
+    };
 
     for (i, d) in detections.iter().enumerate() {
         let b = d.bbox;
