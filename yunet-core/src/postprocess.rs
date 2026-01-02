@@ -490,7 +490,7 @@ mod tests {
 #[cfg(test)]
 mod benches {
     use super::*;
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     fn apply_nms_in_place_baseline(detections: &mut Vec<Detection>, threshold: f32) {
         let len = detections.len();
@@ -540,8 +540,8 @@ mod benches {
                 bbox: BoundingBox {
                     x: rng.next_f32() * 2000.0,
                     y: rng.next_f32() * 2000.0,
-                    width: 20.0 + rng.next_f32() * 100.0,
-                    height: 20.0 + rng.next_f32() * 100.0,
+                    width: rng.next_f32().mul_add(100.0, 20.0),
+                    height: rng.next_f32().mul_add(100.0, 20.0),
                 },
                 landmarks: [Landmark { x: 0.0, y: 0.0 }; 5],
                 score: rng.next_f32(),
@@ -558,8 +558,8 @@ mod benches {
         let template = synthetic_detections(5_000);
         let iterations = 20;
 
-        let mut optimized_total = std::time::Duration::ZERO;
-        let mut baseline_total = std::time::Duration::ZERO;
+        let mut optimized_total = Duration::ZERO;
+        let mut baseline_total = Duration::ZERO;
 
         for i in 0..iterations {
             if i % 2 == 0 {
