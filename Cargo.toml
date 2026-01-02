@@ -15,7 +15,6 @@ image = { version = "0.25.9", default-features = false, features = [
     "webp",
     "tiff",
     "bmp",
-    "avif",
     "rayon", # Enable parallel processing support
 ] }
 anyhow = "1.0.100"
