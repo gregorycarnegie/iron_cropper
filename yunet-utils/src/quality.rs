@@ -6,14 +6,21 @@
 //! or motion smearing. We bucket raw variance values into three coarse bands:
 //! `Low` (≤300), `Medium` (300‒1000), and `High` (>1000). Those thresholds
 //! were calibrated against the YuNet fixtures so that High roughly aligns with
-//! the faces we would confidently ship to customers, Medium covers “usable but
-//! soft” captures, and Low highlights frames that should be skipped or
+//! the faces we would confidently ship to customers, Medium covers "usable but
+//! soft" captures, and Low highlights frames that should be skipped or
 //! re-shot. The helpers in this module expose both the raw variance score and
 //! the derived `Quality` so higher layers (CLI/GUI) can implement automation
 //! such as auto-selecting the sharpest face or applying filename suffixes.
 
 use image::{DynamicImage, GenericImageView, GrayImage};
 use serde::{Deserialize, Serialize};
+
+/// Laplacian variance threshold for high quality images.
+pub const QUALITY_HIGH_THRESHOLD: f64 = 1000.0;
+/// Laplacian variance threshold for medium quality images.
+pub const QUALITY_MEDIUM_THRESHOLD: f64 = 300.0;
+/// Maximum dimension for quality analysis (images are downscaled for performance).
+const QUALITY_MAX_DIM: u32 = 512;
 
 /// Quality levels derived from Laplacian variance thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -26,10 +33,10 @@ pub enum Quality {
 
 impl Quality {
     /// Map a Laplacian variance score into a `Quality` bucket.
-    pub fn from_variance(v: f64) -> Self {
-        if v > 1000.0 {
+    pub const fn from_variance(v: f64) -> Self {
+        if v > QUALITY_HIGH_THRESHOLD {
             Quality::High
-        } else if v > 300.0 {
+        } else if v > QUALITY_MEDIUM_THRESHOLD {
             Quality::Medium
         } else {
             Quality::Low
@@ -131,9 +138,12 @@ impl QualityFilter {
 pub fn laplacian_variance(img: &DynamicImage) -> f64 {
     // Optimization: Downscale large images to speed up variance calculation
     let (w, h) = img.dimensions();
-    let max_dim = 512;
-    let img_to_process = if w > max_dim || h > max_dim {
-        std::borrow::Cow::Owned(img.resize(max_dim, max_dim, image::imageops::FilterType::Triangle))
+    let img_to_process = if w > QUALITY_MAX_DIM || h > QUALITY_MAX_DIM {
+        std::borrow::Cow::Owned(img.resize(
+            QUALITY_MAX_DIM,
+            QUALITY_MAX_DIM,
+            image::imageops::FilterType::Triangle,
+        ))
     } else {
         std::borrow::Cow::Borrowed(img)
     };

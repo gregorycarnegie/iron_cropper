@@ -42,10 +42,10 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "koch_polygon",
-      "sides": 3,
-      "rotation_deg": 0.0,
-      "iterations": 5
+      "kind": "star",
+      "points": 5,
+      "inner_radius_pct": 0.5,
+      "rotation_deg": 0.0
     },
     "vignette_softness": 0.13636364,
     "vignette_intensity": 0.5113636,
@@ -78,9 +78,9 @@
     "format": "json"
   },
   "gpu": {
-    "enabled": false,
+    "enabled": true,
     "respect_env": true,
-    "inference": false,
+    "inference": true,
     "preprocessing": true
   }
 }

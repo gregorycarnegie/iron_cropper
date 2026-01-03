@@ -3,6 +3,18 @@ use std::cmp::Ordering;
 use tract_onnx::prelude::{Tensor, tract_ndarray::ArrayView2};
 use yunet_utils::{config::DetectionSettings, point::Point};
 
+/// Default minimum confidence score for a detection to be considered valid.
+pub const DEFAULT_SCORE_THRESHOLD: f32 = 0.9;
+/// Default threshold for non-maximum suppression to merge overlapping bounding boxes.
+pub const DEFAULT_NMS_THRESHOLD: f32 = 0.3;
+/// Default maximum number of detections to return after sorting by score.
+pub const DEFAULT_TOP_K: usize = 5_000;
+
+/// Number of columns in YuNet detection output (bbox + landmarks + score).
+const DETECTION_OUTPUT_COLS: usize = 15;
+/// Index of the confidence score in a detection row.
+const DETECTION_SCORE_INDEX: usize = 14;
+
 /// Canonical YuNet detection configuration.
 ///
 /// These parameters control how raw model outputs are filtered and refined.
@@ -19,9 +31,9 @@ pub struct PostprocessConfig {
 impl Default for PostprocessConfig {
     fn default() -> Self {
         Self {
-            score_threshold: 0.9,
-            nms_threshold: 0.3,
-            top_k: 5_000,
+            score_threshold: DEFAULT_SCORE_THRESHOLD,
+            nms_threshold: DEFAULT_NMS_THRESHOLD,
+            top_k: DEFAULT_TOP_K,
         }
     }
 }
@@ -104,13 +116,14 @@ pub fn apply_postprocess(
 ) -> Result<Vec<Detection>> {
     let rows = detection_rows(output)?;
     anyhow::ensure!(
-        rows.shape()[1] == 15,
-        "YuNet output must have 15 columns per detection"
+        rows.shape()[1] == DETECTION_OUTPUT_COLS,
+        "YuNet output must have {} columns per detection",
+        DETECTION_OUTPUT_COLS
     );
 
     let mut detections = Vec::with_capacity(rows.nrows());
     for row in rows.rows() {
-        let score = row[14];
+        let score = row[DETECTION_SCORE_INDEX];
         if !score.is_finite() || score < config.score_threshold {
             continue;
         }
@@ -168,10 +181,12 @@ pub fn apply_postprocess(
 fn detection_rows<'a>(output: &'a Tensor) -> Result<ArrayView2<'a, f32>> {
     let shape = output.shape();
     let rows = match shape {
-        [rows, 15] => *rows,
-        [1, rows, 15] => *rows,
+        [rows, DETECTION_OUTPUT_COLS] => *rows,
+        [1, rows, DETECTION_OUTPUT_COLS] => *rows,
         other => anyhow::bail!(
-            "YuNet output must have shape [N, 15] or [1, N, 15] (got {:?})",
+            "YuNet output must have shape [N, {}] or [1, N, {}] (got {:?})",
+            DETECTION_OUTPUT_COLS,
+            DETECTION_OUTPUT_COLS,
             other
         ),
     };
@@ -180,7 +195,7 @@ fn detection_rows<'a>(output: &'a Tensor) -> Result<ArrayView2<'a, f32>> {
         .as_slice::<f32>()
         .map_err(|e| anyhow::anyhow!("YuNet output is not f32: {e}"))?;
 
-    ArrayView2::from_shape((rows, 15), slice)
+    ArrayView2::from_shape((rows, DETECTION_OUTPUT_COLS), slice)
         .map_err(|_| anyhow::anyhow!("YuNet output data is not contiguous"))
 }
 

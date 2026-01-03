@@ -11,6 +11,21 @@ use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
+/// Number of segments used for ellipse outlines.
+const ELLIPSE_SEGMENTS: usize = 128;
+/// Number of segments per corner for rounded rectangles.
+const ROUNDED_RECT_CORNER_SEGMENTS: usize = 16;
+/// Number of segments per corner for rounded polygons.
+const ROUNDED_POLYGON_CORNER_SEGMENTS: usize = 8;
+/// Number of segments for Bezier polygon interpolation.
+const BEZIER_POLYGON_SEGMENTS: usize = 16;
+/// Maximum Koch fractal iterations (to prevent excessive computation).
+const MAX_KOCH_ITERATIONS: u8 = 5;
+/// Minimum number of polygon sides.
+const MIN_POLYGON_SIDES: u8 = 3;
+/// Maximum mask resolution for raster-based shape masking.
+const MAX_MASK_RESOLUTION: f32 = 2048.0;
+
 /// Polygon corner styles.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(tag = "style", rename_all = "snake_case")]
@@ -79,7 +94,7 @@ impl CropShape {
                 rotation_deg,
                 corner_style,
             } => CropShape::Polygon {
-                sides: (*sides).max(3),
+                sides: (*sides).max(MIN_POLYGON_SIDES),
                 rotation_deg: *rotation_deg,
                 corner_style: match corner_style {
                     PolygonCornerStyle::Sharp => PolygonCornerStyle::Sharp,
@@ -99,7 +114,7 @@ impl CropShape {
                 inner_radius_pct,
                 rotation_deg,
             } => CropShape::Star {
-                points: (*points).max(3),
+                points: (*points).max(MIN_POLYGON_SIDES),
                 inner_radius_pct: inner_radius_pct.clamp(0.0, 1.0),
                 rotation_deg: *rotation_deg,
             },
@@ -108,12 +123,12 @@ impl CropShape {
                 rotation_deg,
                 iterations,
             } => CropShape::KochPolygon {
-                sides: (*sides).max(3),
+                sides: (*sides).max(MIN_POLYGON_SIDES),
                 rotation_deg: *rotation_deg,
-                iterations: (*iterations).min(5),
+                iterations: (*iterations).min(MAX_KOCH_ITERATIONS),
             },
             CropShape::KochRectangle { iterations } => CropShape::KochRectangle {
-                iterations: (*iterations).min(5),
+                iterations: (*iterations).min(MAX_KOCH_ITERATIONS),
             },
         }
     }
@@ -135,10 +150,9 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
         CropShape::Ellipse => {
             let cx = w * 0.5;
             let cy = h * 0.5;
-            let segments = 128;
-            (0..segments)
+            (0..ELLIPSE_SEGMENTS)
                 .map(|i| {
-                    let theta = (i as f32 / segments as f32) * 2.0 * PI;
+                    let theta = (i as f32 / ELLIPSE_SEGMENTS as f32) * 2.0 * PI;
                     Point {
                         x: theta.cos().mul_add(cx, cx),
                         y: theta.sin().mul_add(cy, cy),
@@ -148,7 +162,7 @@ fn outline_points(width: u32, height: u32, shape: &CropShape) -> Vec<Point> {
         }
         CropShape::RoundedRectangle { radius_pct } => {
             let radius = (w.min(h) * radius_pct).clamp(0.0, w.min(h) * 0.5);
-            rounded_rect_points(w, h, radius, 16)
+            rounded_rect_points(w, h, radius, ROUNDED_RECT_CORNER_SEGMENTS)
         }
         CropShape::ChamferedRectangle { size_pct } => {
             let inset = (w.min(h) * size_pct).clamp(0.0, w.min(h) * 0.5);
@@ -365,7 +379,7 @@ fn polygon_points(
     rotation_deg: f32,
     corner_style: PolygonCornerStyle,
 ) -> Vec<Point> {
-    let n = sides.max(3) as usize;
+    let n = sides.max(MIN_POLYGON_SIDES) as usize;
     let cx = width * 0.5;
     let cy = height * 0.5;
     let radius = 0.5 * width.min(height);
@@ -385,9 +399,11 @@ fn polygon_points(
         }
         PolygonCornerStyle::Rounded { radius_pct } => {
             let r = (width.min(height) * radius_pct).clamp(0.0, radius);
-            rounded_polygon(&base_vertices, r, 8)
+            rounded_polygon(&base_vertices, r, ROUNDED_POLYGON_CORNER_SEGMENTS)
         }
-        PolygonCornerStyle::Bezier { tension } => bezier_polygon(&base_vertices, tension, 16),
+        PolygonCornerStyle::Bezier { tension } => {
+            bezier_polygon(&base_vertices, tension, BEZIER_POLYGON_SEGMENTS)
+        }
     }
 }
 
@@ -774,10 +790,8 @@ fn apply_raster_mask_optimized(
     }
 
     // Heuristic: For large images, generate mask at reduced resolution.
-    // Max mask dimension 2048 (was 256) for sufficient quality.
-    let max_dim = 2048.0;
-    let scale = if width.max(height) > max_dim as u32 {
-        max_dim / width.max(height) as f32
+    let scale = if width.max(height) > MAX_MASK_RESOLUTION as u32 {
+        MAX_MASK_RESOLUTION / width.max(height) as f32
     } else {
         1.0
     };
@@ -939,7 +953,7 @@ fn star_points(
     inner_radius_pct: f32,
     rotation_deg: f32,
 ) -> Vec<Point> {
-    let n = points.max(3) as usize;
+    let n = points.max(MIN_POLYGON_SIDES) as usize;
     let cx = width * 0.5;
     let cy = height * 0.5;
     let outer_radius = 0.5 * width.min(height);

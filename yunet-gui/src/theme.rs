@@ -2,6 +2,23 @@
 
 use egui::{Color32, Context, CornerRadius, Margin, Shadow, Stroke, Visuals};
 
+// Theme spacing constants
+const ITEM_SPACING_X: f32 = 10.0;
+const ITEM_SPACING_Y: f32 = 8.0;
+const BUTTON_PADDING_X: f32 = 12.0;
+const BUTTON_PADDING_Y: f32 = 8.0;
+const WINDOW_MARGIN: i8 = 14;
+const WINDOW_CORNER_RADIUS: u8 = 18;
+const MENU_CORNER_RADIUS: u8 = 12;
+
+// Window shadow constants
+const WINDOW_SHADOW_OFFSET_Y: i8 = 6;
+const WINDOW_SHADOW_BLUR: u8 = 24;
+const WINDOW_SHADOW_SPREAD: u8 = 2;
+const POPUP_SHADOW_OFFSET_Y: i8 = 4;
+const POPUP_SHADOW_BLUR: u8 = 20;
+const POPUP_SHADOW_SPREAD: u8 = 1;
+
 /// Shared color palette used by the GUI.
 #[derive(Clone, Copy)]
 pub struct Palette {
@@ -40,9 +57,9 @@ pub fn apply(ctx: &Context) {
     let palette = palette();
     let mut style = (*ctx.style()).clone();
 
-    style.spacing.item_spacing = egui::vec2(10.0, 8.0);
-    style.spacing.button_padding = egui::vec2(12.0, 8.0);
-    style.spacing.window_margin = Margin::same(14);
+    style.spacing.item_spacing = egui::vec2(ITEM_SPACING_X, ITEM_SPACING_Y);
+    style.spacing.button_padding = egui::vec2(BUTTON_PADDING_X, BUTTON_PADDING_Y);
+    style.spacing.window_margin = Margin::same(WINDOW_MARGIN);
     style.visuals = visuals_from_palette(palette);
 
     ctx.set_style(style);
@@ -71,18 +88,18 @@ fn visuals_from_palette(palette: Palette) -> Visuals {
     visuals.selection.bg_fill = palette.accent;
     visuals.selection.stroke = Stroke::new(1.5, palette.panel_dark);
 
-    visuals.window_corner_radius = CornerRadius::same(18);
-    visuals.menu_corner_radius = CornerRadius::same(12);
+    visuals.window_corner_radius = CornerRadius::same(WINDOW_CORNER_RADIUS);
+    visuals.menu_corner_radius = CornerRadius::same(MENU_CORNER_RADIUS);
     visuals.window_shadow = Shadow {
-        offset: [0, 6],
-        blur: 24,
-        spread: 2,
+        offset: [0, WINDOW_SHADOW_OFFSET_Y],
+        blur: WINDOW_SHADOW_BLUR,
+        spread: WINDOW_SHADOW_SPREAD,
         color: Color32::from_rgba_unmultiplied(0, 0, 0, 220),
     };
     visuals.popup_shadow = Shadow {
-        offset: [0, 4],
-        blur: 20,
-        spread: 1,
+        offset: [0, POPUP_SHADOW_OFFSET_Y],
+        blur: POPUP_SHADOW_BLUR,
+        spread: POPUP_SHADOW_SPREAD,
         color: Color32::from_rgba_unmultiplied(0, 0, 0, 200),
     };
 

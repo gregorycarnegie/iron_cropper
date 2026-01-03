@@ -8,6 +8,12 @@ pub struct Point {
 }
 
 impl Point {
+    /// Create a new point with the given coordinates.
+    #[inline]
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
     pub fn mul_add(self, a: f32, b: Point) -> Point {
         Point {
             x: self.x.mul_add(a, b.x),

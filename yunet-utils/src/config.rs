@@ -15,6 +15,21 @@ use std::{
     str::FromStr,
 };
 
+/// Default input width in pixels.
+pub const DEFAULT_INPUT_WIDTH: u32 = 640;
+/// Default input height in pixels.
+pub const DEFAULT_INPUT_HEIGHT: u32 = 640;
+/// Default minimum confidence score for a detection to be considered valid.
+pub const DEFAULT_SCORE_THRESHOLD: f32 = 0.9;
+/// Default threshold for non-maximum suppression.
+pub const DEFAULT_NMS_THRESHOLD: f32 = 0.3;
+/// Default maximum number of detections to return.
+pub const DEFAULT_TOP_K: usize = 5_000;
+/// Default path to the YuNet ONNX model.
+pub const DEFAULT_MODEL_PATH: &str = "models/face_detection_yunet_2023mar_640.onnx";
+/// Default path for persisted GUI settings.
+pub const DEFAULT_SETTINGS_PATH: &str = "config/gui_settings.json";
+
 /// Shared detection parameters that should mirror YuNet defaults.
 ///
 /// These settings directly control the behavior of the post-processing steps,
@@ -33,9 +48,9 @@ pub struct DetectionSettings {
 impl Default for DetectionSettings {
     fn default() -> Self {
         Self {
-            score_threshold: 0.9,
-            nms_threshold: 0.3,
-            top_k: 5_000,
+            score_threshold: DEFAULT_SCORE_THRESHOLD,
+            nms_threshold: DEFAULT_NMS_THRESHOLD,
+            top_k: DEFAULT_TOP_K,
         }
     }
 }
@@ -54,7 +69,7 @@ pub enum ResizeQuality {
 }
 
 impl ResizeQuality {
-    pub fn as_label(self) -> &'static str {
+    pub const fn as_label(self) -> &'static str {
         match self {
             ResizeQuality::Quality => "Quality",
             ResizeQuality::Speed => "Speed",
@@ -101,8 +116,8 @@ pub struct InputDimensions {
 impl Default for InputDimensions {
     fn default() -> Self {
         Self {
-            width: 640,
-            height: 640,
+            width: DEFAULT_INPUT_WIDTH,
+            height: DEFAULT_INPUT_HEIGHT,
             resize_quality: ResizeQuality::Speed,
         }
     }
@@ -370,7 +385,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         let mut settings = Self {
-            model_path: Some("models/face_detection_yunet_2023mar_640.onnx".into()),
+            model_path: Some(DEFAULT_MODEL_PATH.into()),
             input: InputDimensions::default(),
             detection: DetectionSettings::default(),
             crop: CropSettings::default(),
@@ -458,8 +473,8 @@ impl AppSettings {
 /// Returns the default path for persisted application settings (`config/gui_settings.json`).
 pub fn default_settings_path() -> PathBuf {
     env::current_dir()
-        .map(|dir| dir.join("config/gui_settings.json"))
-        .unwrap_or_else(|_| PathBuf::from("config/gui_settings.json"))
+        .map(|dir| dir.join(DEFAULT_SETTINGS_PATH))
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_SETTINGS_PATH))
 }
 
 /// GPU-specific runtime preferences.
