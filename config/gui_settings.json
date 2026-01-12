@@ -44,7 +44,7 @@
     "shape": {
       "kind": "star",
       "points": 5,
-      "inner_radius_pct": 0.5,
+      "inner_radius_pct": 0.6818182,
       "rotation_deg": 0.0
     },
     "vignette_softness": 0.13636364,

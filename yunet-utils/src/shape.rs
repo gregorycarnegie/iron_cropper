@@ -908,7 +908,7 @@ fn apply_raster_mask_optimized(
         });
 }
 
-#[inline(always)]
+// #[inline(always)]
 fn process_pixel(
     pixel: &mut [u8],
     mask_alpha: f32,
@@ -928,18 +928,17 @@ fn process_pixel(
 
     // Color mixing:
     // pixel = pixel + inv_mask * intensity * (vig_color - pixel)
+    let vign_helper = |pixel: u8, vig: u8, mix_factor: f32| {
+        (pixel as f32 + mix_factor * (vig as f32 - pixel as f32))
+            .clamp(0.0, 255.0) as u8
+    };
+
     if vignette_intensity > 0.0 && inv_mask > 0.0 {
-        let vig_r = vignette_color.red as f32;
-        let vig_g = vignette_color.green as f32;
-        let vig_b = vignette_color.blue as f32;
         let mix_factor = inv_mask * vignette_intensity;
 
-        pixel[0] =
-            (pixel[0] as f32 + mix_factor * (vig_r - pixel[0] as f32)).clamp(0.0, 255.0) as u8;
-        pixel[1] =
-            (pixel[1] as f32 + mix_factor * (vig_g - pixel[1] as f32)).clamp(0.0, 255.0) as u8;
-        pixel[2] =
-            (pixel[2] as f32 + mix_factor * (vig_b - pixel[2] as f32)).clamp(0.0, 255.0) as u8;
+        pixel[0] = vign_helper(pixel[0], vignette_color.red, mix_factor);
+        pixel[1] = vign_helper(pixel[1], vignette_color.green, mix_factor);
+        pixel[2] = vign_helper(pixel[2], vignette_color.blue, mix_factor);
     }
 
     // Alpha application
