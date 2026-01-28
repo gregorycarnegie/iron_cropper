@@ -23,12 +23,12 @@ log.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-rfd = "0.16.0"
+rfd = "0.17.2"
 yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 tempfile.workspace = true
 arboard.workspace = true
-lru = "0.16.2"
+lru = "0.16.3"
 
 [dev-dependencies]
 tempfile.workspace = true
