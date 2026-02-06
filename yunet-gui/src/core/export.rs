@@ -349,6 +349,11 @@ fn sanitize_override_path(p: &Path) -> PathBuf {
         .collect()
 }
 
+/// Maximum number of images processed concurrently in a batch to prevent OOM.
+/// Each image can require ~100 MB of staging + intermediate buffers, so
+/// capping this avoids exhausting system memory on large batches.
+const MAX_BATCH_PARALLELISM: usize = 4;
+
 /// Runs batch export processing in parallel.
 pub fn run_batch_export(
     tasks: Vec<(usize, PathBuf, Option<PathBuf>)>,
@@ -356,19 +361,27 @@ pub fn run_batch_export(
     config: Arc<BatchJobConfig>,
     tx: Option<Sender<JobMessage>>,
 ) -> Vec<(usize, BatchFileStatus)> {
-    tasks
-        .into_par_iter()
-        .map(|(idx, path, override_path)| {
-            let status = run_batch_job(detector.clone(), path, config.clone(), override_path);
-            if let Some(tx) = &tx {
-                let _ = tx.send(JobMessage::BatchProgress {
-                    index: idx,
-                    status: status.clone(),
-                });
-            }
-            (idx, status)
-        })
-        .collect()
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(MAX_BATCH_PARALLELISM)
+        .build()
+        .expect("failed to build batch thread pool");
+
+    pool.install(|| {
+        tasks
+            .into_par_iter()
+            .map(|(idx, path, override_path)| {
+                let status =
+                    run_batch_job(detector.clone(), path, config.clone(), override_path);
+                if let Some(tx) = &tx {
+                    let _ = tx.send(JobMessage::BatchProgress {
+                        index: idx,
+                        status: status.clone(),
+                    });
+                }
+                (idx, status)
+            })
+            .collect()
+    })
 }
 
 /// Exports selected faces from the preview to disk.

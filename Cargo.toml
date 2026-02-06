@@ -22,7 +22,7 @@ arboard = "3.6.1"
 async-channel = "2.5.0"
 base64 = "0.22.1"
 bytemuck = { version = "1.24.0", features = ["derive"] }
-calamine = "0.32.0"
+calamine = "0.33.0"
 clap = { version = "4.5.55", features = ["derive"] }
 crc32fast = "1.5.0"
 criterion = "0.8.1"
@@ -53,7 +53,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tempfile = "3.24.0"
 thiserror = "2.0.18"
-tiny-skia = "0.11.4"
+tiny-skia = "0.12.0"
 tract-onnx = "0.22.0"
 wgpu = "=27.0.1" # Set to 27.0.1 for eframe v0.33.3 compatibility
 wide = "1.1.1"
