@@ -305,7 +305,10 @@ pub fn run_batch_job(
     }
 }
 
-/// Resolves the output path for a mapped file, handling relative and absolute paths.
+/// Resolves the output path for a mapped file.
+///
+/// Security: absolute paths and `..` traversal components from the mapping
+/// data are stripped so the output always stays inside `output_dir`.
 fn resolve_mapping_override_path(
     output_dir: &Path,
     override_target: &Path,
@@ -314,16 +317,14 @@ fn resolve_mapping_override_path(
     multi_face: bool,
 ) -> PathBuf {
     let cleaned_ext = ext.trim_start_matches('.').to_string();
-    let parent = if override_target.is_absolute() {
-        override_target
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_default()
-    } else {
-        let rel_parent = override_target.parent().unwrap_or_else(|| Path::new(""));
-        output_dir.join(rel_parent)
-    };
-    let base_name = override_target
+
+    // Strip traversal components so the path is always relative.
+    let safe_target = sanitize_override_path(override_target);
+
+    let rel_parent = safe_target.parent().unwrap_or_else(|| Path::new(""));
+    let parent = output_dir.join(rel_parent);
+
+    let base_name = safe_target
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .filter(|s| !s.is_empty())
@@ -337,6 +338,15 @@ fn resolve_mapping_override_path(
     final_path.push(final_base);
     final_path.set_extension(cleaned_ext);
     final_path
+}
+
+/// Strip path traversal components and root prefixes so the result is always
+/// a relative path that stays inside the output directory.
+fn sanitize_override_path(p: &Path) -> PathBuf {
+    use std::path::Component;
+    p.components()
+        .filter(|c| matches!(c, Component::Normal(_)))
+        .collect()
 }
 
 /// Runs batch export processing in parallel.

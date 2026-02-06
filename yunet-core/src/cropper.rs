@@ -259,10 +259,12 @@ pub fn calculate_crop_region(
     let left = (-src_w).mul_add(0.5, cx);
     let top = (-src_h).mul_add(0.5, cy);
 
-    let x = left.round() as i32;
-    let y = top.round() as i32;
-    let width = src_w.round().clamp(1.0, u32::MAX as f32).max(1.0) as u32;
-    let height = src_h.round().clamp(1.0, u32::MAX as f32).max(1.0) as u32;
+    // Clamp coordinates to i32 range to prevent undefined behaviour from
+    // out-of-range float-to-int casts (NaN, infinity, extreme values).
+    let x = left.round().clamp(i32::MIN as f32, i32::MAX as f32) as i32;
+    let y = top.round().clamp(i32::MIN as f32, i32::MAX as f32) as i32;
+    let width = src_w.round().clamp(1.0, u32::MAX as f32) as u32;
+    let height = src_h.round().clamp(1.0, u32::MAX as f32) as u32;
 
     let x_i = x as i64;
     let y_i = y as i64;

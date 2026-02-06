@@ -47,7 +47,11 @@ fn skin_kernel(radius: i32, sigma_space: f32, sigma_color: f32) -> Arc<SkinKerne
         sigma_color_bits: sigma_color.to_bits(),
     };
     let cache = SKIN_KERNEL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(hit) = cache.lock().expect("kernel cache poisoned").get(&key) {
+    if let Some(hit) = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&key)
+    {
         return hit.clone();
     }
 
@@ -74,7 +78,7 @@ fn skin_kernel(radius: i32, sigma_space: f32, sigma_color: f32) -> Arc<SkinKerne
     });
     cache
         .lock()
-        .expect("kernel cache poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(key, kernel.clone());
     kernel
 }

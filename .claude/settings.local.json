@@ -14,7 +14,11 @@
       "Bash(xargs ls:*)",
       "Bash(cargo check:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(dir:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo generate-lockfile:*)"
     ],
     "deny": [],
     "ask": []

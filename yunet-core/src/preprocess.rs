@@ -554,7 +554,9 @@ fn gpu_preprocess(
     let output_f32_len = output_pixels * 3;
     let output_size_bytes = (output_f32_len * std::mem::size_of::<f32>()) as u64;
 
-    let mut pool_guard = pool.lock().expect("gpu resource pool poisoned");
+    let mut pool_guard = pool
+        .lock()
+        .map_err(|_| anyhow::anyhow!("GPU resource pool lock was poisoned"))?;
     let mut buffers = pool_guard.acquire(device, src_size, output_size_bytes);
     drop(pool_guard);
 
@@ -646,7 +648,9 @@ fn gpu_preprocess(
     drop(data);
     readback_buffer.unmap();
 
-    let mut pool_guard = pool.lock().expect("gpu resource pool poisoned");
+    let mut pool_guard = pool
+        .lock()
+        .map_err(|_| anyhow::anyhow!("GPU resource pool lock was poisoned"))?;
     pool_guard.recycle(buffers);
 
     anyhow::ensure!(

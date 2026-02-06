@@ -509,6 +509,7 @@ fn resolve_sql_query(conn: &Connection, options: &MappingReadOptions) -> Result<
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
     {
+        validate_sql_query(query)?;
         return Ok(query.to_string());
     }
 
@@ -540,6 +541,48 @@ fn list_sqlite_tables_conn(conn: &Connection) -> Result<Vec<String>> {
 fn quote_identifier(name: &str) -> String {
     let escaped = name.replace('"', "\"\"");
     format!("\"{escaped}\"")
+}
+
+/// Validate a user-supplied SQL query to prevent injection.
+/// Only read-only SELECT statements are permitted; DDL/DML and multiple
+/// statements are rejected.
+fn validate_sql_query(query: &str) -> Result<()> {
+    let normalized = query.trim().to_ascii_uppercase();
+
+    anyhow::ensure!(
+        normalized.starts_with("SELECT"),
+        "custom SQL queries must begin with SELECT"
+    );
+
+    // Reject statement separators (prevents multi-statement injection).
+    anyhow::ensure!(
+        !query.contains(';'),
+        "custom SQL queries must not contain semicolons"
+    );
+
+    // Reject DDL/DML keywords that could modify the database.
+    let forbidden = [
+        "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "REPLACE", "ATTACH", "DETACH",
+        "PRAGMA", "REINDEX", "VACUUM",
+    ];
+    for keyword in &forbidden {
+        // Match as whole word: check that the character before and after is not alphanumeric.
+        let upper = normalized.as_str();
+        let mut start = 0;
+        while let Some(pos) = upper[start..].find(keyword) {
+            let abs_pos = start + pos;
+            let before_ok = abs_pos == 0 || !upper.as_bytes()[abs_pos - 1].is_ascii_alphanumeric();
+            let after_pos = abs_pos + keyword.len();
+            let after_ok =
+                after_pos >= upper.len() || !upper.as_bytes()[after_pos].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                anyhow::bail!("custom SQL queries must not contain the {keyword} keyword");
+            }
+            start = abs_pos + keyword.len();
+        }
+    }
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

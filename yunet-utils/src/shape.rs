@@ -929,8 +929,7 @@ fn process_pixel(
     // Color mixing:
     // pixel = pixel + inv_mask * intensity * (vig_color - pixel)
     let vign_helper = |pixel: u8, vig: u8, mix_factor: f32| {
-        (pixel as f32 + mix_factor * (vig as f32 - pixel as f32))
-            .clamp(0.0, 255.0) as u8
+        (pixel as f32 + mix_factor * (vig as f32 - pixel as f32)).clamp(0.0, 255.0) as u8
     };
 
     if vignette_intensity > 0.0 && inv_mask > 0.0 {

@@ -55,6 +55,21 @@ impl Default for DetectionSettings {
     }
 }
 
+impl DetectionSettings {
+    /// Clamp values to valid ranges, replacing NaN/infinity with defaults.
+    pub fn sanitize(&mut self) {
+        if !self.score_threshold.is_finite() {
+            self.score_threshold = DEFAULT_SCORE_THRESHOLD;
+        }
+        self.score_threshold = self.score_threshold.clamp(0.0, 1.0);
+
+        if !self.nms_threshold.is_finite() {
+            self.nms_threshold = DEFAULT_NMS_THRESHOLD;
+        }
+        self.nms_threshold = self.nms_threshold.clamp(0.0, 1.0);
+    }
+}
+
 /// Inference input resolution in pixels (width x height).
 ///
 /// The input image will be resized to these dimensions before being passed to the model.
@@ -123,6 +138,18 @@ impl Default for InputDimensions {
     }
 }
 
+impl InputDimensions {
+    /// Replace zero dimensions with defaults.
+    pub fn sanitize(&mut self) {
+        if self.width == 0 {
+            self.width = DEFAULT_INPUT_WIDTH;
+        }
+        if self.height == 0 {
+            self.height = DEFAULT_INPUT_HEIGHT;
+        }
+    }
+}
+
 /// Settings for face cropping operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -173,6 +200,15 @@ impl CropSettings {
         self.shape = self.shape.sanitized();
         self.vignette_softness = self.vignette_softness.clamp(0.0, 1.0);
         self.vignette_intensity = self.vignette_intensity.clamp(0.0, 1.0);
+        self.face_height_pct = self.face_height_pct.clamp(1.0, 100.0);
+        self.vertical_offset = self.vertical_offset.clamp(-1.0, 1.0);
+        self.horizontal_offset = self.horizontal_offset.clamp(-1.0, 1.0);
+        if self.output_width == 0 {
+            self.output_width = 512;
+        }
+        if self.output_height == 0 {
+            self.output_height = 512;
+        }
     }
 }
 
@@ -452,6 +488,8 @@ impl AppSettings {
             settings.model_path = Some(AppSettings::default().model_path.unwrap());
         }
 
+        settings.input.sanitize();
+        settings.detection.sanitize();
         settings.crop.sanitize();
 
         Ok(settings)

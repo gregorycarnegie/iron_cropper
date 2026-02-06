@@ -137,11 +137,33 @@ pub fn collect_mapping_targets(
     for (idx, entry) in entries.into_iter().enumerate() {
         let row_no = idx + 1;
         let raw_source = PathBuf::from(entry.source_path);
-        let resolved_source = if raw_source.is_absolute() {
-            raw_source
-        } else {
-            mapping_dir.join(raw_source)
-        };
+
+        // Security: reject absolute paths from mapping files; sources must be
+        // relative to the mapping file's directory.
+        if raw_source.is_absolute() {
+            warn!(
+                "Skipping mapping row {}: absolute source paths are not allowed ({})",
+                row_no,
+                raw_source.display()
+            );
+            continue;
+        }
+
+        let resolved_source = mapping_dir.join(&raw_source);
+
+        // Verify the resolved path does not escape the mapping directory via `..`.
+        if let (Ok(canon_source), Ok(canon_dir)) =
+            (resolved_source.canonicalize(), mapping_dir.canonicalize())
+            && !canon_source.starts_with(&canon_dir)
+        {
+            warn!(
+                "Skipping mapping row {}: source path escapes the mapping directory ({})",
+                row_no,
+                raw_source.display()
+            );
+            continue;
+        }
+
         if !resolved_source.exists() {
             warn!(
                 "Skipping mapping row {}: source {} was not found",
@@ -193,16 +215,14 @@ pub fn resolve_override_output_path(
     multi_face: bool,
 ) -> PathBuf {
     let cleaned_ext = ext.trim_start_matches('.').to_string();
-    let parent = if override_target.is_absolute() {
-        override_target
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_default()
-    } else {
-        let rel_parent = override_target.parent().unwrap_or_else(|| Path::new(""));
-        output_dir.join(rel_parent)
-    };
-    let base_name = override_target
+
+    // Security: reject absolute paths and path traversal components from mapping data.
+    let safe_target = sanitize_override_path(override_target);
+
+    let rel_parent = safe_target.parent().unwrap_or_else(|| Path::new(""));
+    let parent = output_dir.join(rel_parent);
+
+    let base_name = safe_target
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .filter(|s| !s.is_empty())
@@ -216,4 +236,13 @@ pub fn resolve_override_output_path(
     final_path.push(final_base);
     final_path.set_extension(cleaned_ext);
     final_path
+}
+
+/// Strip path traversal components and root prefixes so the result is always
+/// a relative path that stays inside the output directory.
+fn sanitize_override_path(p: &Path) -> PathBuf {
+    use std::path::Component;
+    p.components()
+        .filter(|c| matches!(c, Component::Normal(_)))
+        .collect()
 }

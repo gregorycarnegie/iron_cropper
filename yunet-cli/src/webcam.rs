@@ -1,6 +1,6 @@
 //! Webcam capture mode functionality.
 
-use std::{fs, sync::Arc};
+use std::{fs, io::Write, sync::Arc};
 
 use anyhow::{Context, Result};
 use log::{debug, info, warn};
@@ -136,16 +136,35 @@ pub fn run_webcam_mode(
 
         // Save annotated frame if requested
         if let Some(dir) = annotate_dir.as_ref() {
-            let frame_name = format!("frame_{:06}.png", frame_count);
-            let frame_path = std::env::temp_dir().join(&frame_name);
-            if let Err(e) = frame.save(&frame_path) {
-                warn!("Failed to save temporary frame: {}", e);
-            } else {
-                match annotate_image(&frame_path, &output.detections, dir) {
-                    Ok(path) => debug!("Saved annotated frame to {}", path.display()),
-                    Err(e) => warn!("Failed to annotate frame {}: {}", frame_count, e),
+            match tempfile::Builder::new()
+                .prefix("yunet_frame_")
+                .suffix(".png")
+                .tempfile()
+            {
+                Ok(mut tmp) => {
+                    let frame_path = tmp.path().to_path_buf();
+                    // Encode as PNG and write to the secure temp file.
+                    let png_data = {
+                        let mut buf = std::io::Cursor::new(Vec::new());
+                        if let Err(e) = frame.write_to(&mut buf, image::ImageFormat::Png) {
+                            warn!("Failed to encode temporary frame: {}", e);
+                            continue;
+                        }
+                        buf.into_inner()
+                    };
+                    if let Err(e) = tmp.write_all(&png_data) {
+                        warn!("Failed to write temporary frame: {}", e);
+                        continue;
+                    }
+                    match annotate_image(&frame_path, &output.detections, dir) {
+                        Ok(path) => debug!("Saved annotated frame to {}", path.display()),
+                        Err(e) => warn!("Failed to annotate frame {}: {}", frame_count, e),
+                    }
+                    // tmp is dropped here, which deletes the file automatically.
                 }
-                let _ = fs::remove_file(&frame_path);
+                Err(e) => {
+                    warn!("Failed to create temporary frame file: {}", e);
+                }
             }
         }
 
