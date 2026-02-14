@@ -3,7 +3,7 @@
 use crate::{
     BatchFileStatus, BatchJobConfig, JobMessage, YuNetApp,
     core::cache::{calculate_eyes_relative_to_crop, enhance_with_gpu},
-    core::compositing::apply_mask_with_gpu,
+    core::compositing::{apply_mask_with_gpu, composite_with_fill_color},
 };
 
 use image::DynamicImage;
@@ -31,6 +31,12 @@ struct FaceCandidate {
     quality: Quality,
     quality_score: f64,
     score: f32,
+}
+
+fn composite_export_background(image: DynamicImage, fill: yunet_core::FillColor) -> DynamicImage {
+    let mut rgba = image.to_rgba8();
+    composite_with_fill_color(&mut rgba, fill);
+    DynamicImage::ImageRgba8(rgba)
 }
 
 /// Runs a single batch job for one image file.
@@ -160,7 +166,8 @@ pub fn run_batch_job(
             config.crop_config.vignette_color,
             config.gpu_enhancer.as_ref(),
         );
-        let final_image = Arc::new(masked);
+        let composited = composite_export_background(masked, config.crop_settings.fill_color);
+        let final_image = Arc::new(composited);
 
         let (quality_score, quality) = estimate_sharpness(final_image.as_ref());
         candidates.push(FaceCandidate {
@@ -370,8 +377,7 @@ pub fn run_batch_export(
         tasks
             .into_par_iter()
             .map(|(idx, path, override_path)| {
-                let status =
-                    run_batch_job(detector.clone(), path, config.clone(), override_path);
+                let status = run_batch_job(detector.clone(), path, config.clone(), override_path);
                 if let Some(tx) = &tx {
                     let _ = tx.send(JobMessage::BatchProgress {
                         index: idx,
@@ -476,6 +482,7 @@ pub fn export_selected_faces(app: &mut YuNetApp) {
             app.settings.crop.vignette_color,
             app.gpu_enhancer.as_ref(),
         );
+        let final_image = composite_export_background(final_image, app.settings.crop.fill_color);
 
         let mut output_filename = format!("{}_face_{:02}.{}", source_stem, face_idx + 1, ext);
         if let Some(suffix) = app.quality_suffix(det.quality) {
@@ -721,4 +728,38 @@ pub fn start_batch_export(app: &mut YuNetApp) {
 
         let _ = tx.send(JobMessage::BatchComplete { completed, failed });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::composite_export_background;
+    use image::{DynamicImage, Rgba, RgbaImage};
+    use yunet_core::FillColor;
+
+    #[test]
+    fn export_background_compositing_applies_fill_color_to_transparent_pixels() {
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 0])));
+        let fill = FillColor::opaque(12, 34, 56);
+
+        let composited = composite_export_background(image, fill).to_rgba8();
+        let pixel = composited.get_pixel(0, 0);
+
+        assert_eq!(*pixel, Rgba([12, 34, 56, 255]));
+    }
+
+    #[test]
+    fn export_background_compositing_handles_semitransparent_fill() {
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 0])));
+        let fill = FillColor {
+            red: 100,
+            green: 150,
+            blue: 200,
+            alpha: 128,
+        };
+
+        let composited = composite_export_background(image, fill).to_rgba8();
+        let pixel = composited.get_pixel(0, 0);
+
+        assert_eq!(*pixel, Rgba([50, 75, 100, 128]));
+    }
 }

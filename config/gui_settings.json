@@ -19,12 +19,12 @@
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 68,
-      "green": 97,
-      "blue": 113,
-      "alpha": 225
+      "red": 255,
+      "green": 255,
+      "blue": 255,
+      "alpha": 255
     },
-    "output_format": "png",
+    "output_format": "jpeg",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
@@ -42,13 +42,10 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "star",
-      "points": 5,
-      "inner_radius_pct": 0.6818182,
-      "rotation_deg": 0.0
+      "kind": "ellipse"
     },
     "vignette_softness": 0.13636364,
-    "vignette_intensity": 0.5113636,
+    "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,
       "green": 0,
@@ -66,7 +63,7 @@
     "saturation": 1.0,
     "sharpness": 0.0,
     "skin_smooth": 0.0,
-    "red_eye_removal": true,
+    "red_eye_removal": false,
     "background_blur": false
   },
   "telemetry": {
