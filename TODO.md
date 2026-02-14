@@ -548,19 +548,21 @@ Leverage GPU compute for massive performance gains in image processing operation
 - [ ] **CI/CD**
   - [x] Set up GitHub Actions workflow
   - [x] Automated testing on Windows
-  - [ ] Automated testing on macOS/Linux
+  - [x] Verify model checksums in CI/release workflows
+  - [ ] Automated testing on macOS/Linux (deferred to a future release)
   - [x] Clippy and format checks
-  - [ ] Release binary builds for all platforms
+  - [x] Release binary build for Windows (v1.0.0 target)
+  - [ ] Release binary builds for all platforms (deferred to a future release)
 
 - [ ] **Packaging**
-  - [ ] Windows installer (MSI or NSIS)
-  - [ ] macOS app bundle (.app)
-  - [ ] Linux AppImage or .deb package
+  - [ ] Windows installer (MSI or NSIS) (v1.0.0 target)
+  - [ ] macOS app bundle (.app) (deferred to a future release)
+  - [ ] Linux AppImage or .deb package (deferred to a future release)
   - [ ] Include sample images and presets
 
 - [ ] **Release**
   - [ ] Tag `v1.0.0`
   - [ ] Create GitHub release with binaries
-  - [ ] Write release notes documenting all features
-  - [ ] Update README with installation instructions
+  - [x] Write release notes documenting all features
+  - [x] Update README with installation instructions
   - [ ] Add screenshots/GIFs demonstrating crop features

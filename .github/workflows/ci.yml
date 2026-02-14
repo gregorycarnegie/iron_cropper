@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  YUNET_ORIGINAL_SHA256: 7a9523b9b84d67a2e836d2e2263b83a0463abdf9ea7affd0c2f62c61a1aaa4a3
+  YUNET_640_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
 
 jobs:
   build:
@@ -44,6 +46,48 @@ jobs:
       run: |
         # Fallback if the previous complex command failed due to syntax
         onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+
+    - name: Verify model checksums
+      shell: bash
+      run: |
+        python - <<'PY'
+        import hashlib
+        import os
+        import pathlib
+        import sys
+
+        expected = {
+            "models/face_detection_yunet_2023mar.onnx": os.environ["YUNET_ORIGINAL_SHA256"],
+            "models/face_detection_yunet_2023mar_640.onnx": os.environ["YUNET_640_SHA256"],
+        }
+
+        def sha256(path: pathlib.Path) -> str:
+            h = hashlib.sha256()
+            with path.open("rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        failed = False
+        for rel_path, expected_hash in expected.items():
+            path = pathlib.Path(rel_path)
+            if not path.exists():
+                print(f"Missing model file: {rel_path}", file=sys.stderr)
+                failed = True
+                continue
+            actual_hash = sha256(path)
+            if actual_hash != expected_hash:
+                print(
+                    f"Checksum mismatch for {rel_path}: expected {expected_hash}, got {actual_hash}",
+                    file=sys.stderr,
+                )
+                failed = True
+            else:
+                print(f"Verified {rel_path}: {actual_hash}")
+
+        if failed:
+            sys.exit(1)
+        PY
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable

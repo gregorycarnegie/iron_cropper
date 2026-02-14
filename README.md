@@ -51,6 +51,25 @@ The project includes comprehensive GPU acceleration via wgpu and WGSL compute sh
 
 - **NASM**: You must have [NASM](https://www.nasm.us/) installed and added to your system `PATH` to build the project.
 
+## Installation (Windows)
+
+For `v1.0.0`, official binaries are Windows-focused.
+
+1. Download `iron-cropper-windows-x86_64.zip` and `SHA256SUMS.txt` from the GitHub Release page.
+2. Verify checksum in PowerShell:
+
+```powershell
+Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
+```
+
+3. Confirm it matches the hash in `SHA256SUMS.txt`.
+4. Extract the zip to a folder of your choice.
+5. Run:
+   - `yunet-gui.exe` for the desktop app
+   - `yunet-cli.exe --help` for CLI usage
+
+The release package includes `face_detection_yunet_2023mar_640.onnx`. Keep that file next to the executables (or configure an explicit model path in app settings/CLI flags).
+
 ## Development Tasks
 
 - `cargo check --workspace` – Fast type checking across all crates.
