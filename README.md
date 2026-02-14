@@ -74,6 +74,12 @@ The release package includes `face_detection_yunet_2023mar_640.onnx`. Keep that 
 
 Release screenshots/GIF asset plan lives in `screenshots/README.md`.
 
+![Main GUI](screenshots/gui-main.png)
+![Crop Configuration](screenshots/gui-crop-config.png)
+![Batch Workflow](screenshots/gui-batch.png)
+![Enhancement Controls](screenshots/gui-enhancement.png)
+![CLI Example](screenshots/cli-example.png)
+
 ## Development Tasks
 
 - `cargo check --workspace` – Fast type checking across all crates.

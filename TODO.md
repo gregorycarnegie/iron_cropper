@@ -565,4 +565,4 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] Create GitHub release with binaries
   - [x] Write release notes documenting all features
   - [x] Update README with installation instructions
-  - [ ] Add screenshots/GIFs demonstrating crop features
+  - [x] Add screenshots/GIFs demonstrating crop features
