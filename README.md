@@ -70,6 +70,10 @@ Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
 
 The release package includes `face_detection_yunet_2023mar_640.onnx`. Keep that file next to the executables (or configure an explicit model path in app settings/CLI flags).
 
+## Screenshots
+
+Release screenshots/GIF asset plan lives in `screenshots/README.md`.
+
 ## Development Tasks
 
 - `cargo check --workspace` – Fast type checking across all crates.
