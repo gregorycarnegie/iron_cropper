@@ -68,7 +68,10 @@ impl GpuYuNet {
 
         // 1. Acquire a tensor from the pool or create a new one
         let input_gpu = {
-            let mut workspace = self.workspace.lock().unwrap();
+            let mut workspace = self
+                .workspace
+                .lock()
+                .map_err(|_| anyhow!("GPU workspace lock poisoned while acquiring input tensor"))?;
             let maybe_tensor = workspace.input_tensors.pop();
 
             if let Some(existing) = maybe_tensor {
@@ -100,7 +103,10 @@ impl GpuYuNet {
 
         // 3. Return tensor to pool
         {
-            let mut workspace = self.workspace.lock().unwrap();
+            let mut workspace = self
+                .workspace
+                .lock()
+                .map_err(|_| anyhow!("GPU workspace lock poisoned while returning input tensor"))?;
             workspace.input_tensors.push(input_gpu);
         }
 

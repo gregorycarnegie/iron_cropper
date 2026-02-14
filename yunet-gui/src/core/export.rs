@@ -665,9 +665,9 @@ pub fn start_batch_export(app: &mut YuNetApp) {
                 )
                 .map(|s| s.into_bytes())
                 .map_err(std::io::Error::other),
-                BatchLogFormat::Csv => {
+                BatchLogFormat::Csv => (|| -> std::io::Result<Vec<u8>> {
                     let mut wtr = Vec::new();
-                    writeln!(&mut wtr, "index,path,error,faces_detected").unwrap();
+                    writeln!(&mut wtr, "index,path,error,faces_detected")?;
                     for (idx, status) in logged_items {
                         let file_path = tasks
                             .get(*idx)
@@ -705,11 +705,10 @@ pub fn start_batch_export(app: &mut YuNetApp) {
                             &mut wtr,
                             "{},{},{},{}",
                             idx, clean_path, clean_err, faces_count
-                        )
-                        .unwrap();
+                        )?;
                     }
                     Ok(wtr)
-                }
+                })(),
             };
 
             match write_result {
