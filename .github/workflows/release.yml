@@ -8,8 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  YUNET_ORIGINAL_SHA256: 7a9523b9b84d67a2e836d2e2263b83a0463abdf9ea7affd0c2f62c61a1aaa4a3
-  YUNET_640_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+  YUNET_ORIGINAL_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+  YUNET_640_SHA256: d2c5a887db77802389261b13d2b9f5e1171b9d5787cb315d0add225812ff4d96
 
 jobs:
   windows-release:
@@ -27,7 +27,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install onnxsim
-        run: pip install onnxsim
+        run: pip install onnxsim==0.4.36
 
       - name: Download and process models
         shell: bash

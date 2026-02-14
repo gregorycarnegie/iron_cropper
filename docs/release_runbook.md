@@ -2,19 +2,19 @@
 
 This runbook covers the release flow used by `.github/workflows/release.yml`.
 
-## 1) Prepare main branch
+## 1) Prepare default branch
 
-1. Ensure CI is green on `main`.
+1. Ensure CI is green on `master` (or your repo default branch).
 2. Confirm release notes are updated in `docs/releases/v1.0.0.md`.
 3. Confirm `README.md` installation section is current.
 
 ## 2) Cut a release candidate
 
 ```bash
-git checkout main
+git checkout master
 git pull --ff-only
-git tag v1.0.0-rc1
-git push origin v1.0.0-rc1
+git tag v1.0.0-rc2
+git push origin v1.0.0-rc2
 ```
 
 This triggers the tag-based release workflow and publishes Windows assets for validation.
@@ -52,4 +52,3 @@ Then publish/edit release notes using `docs/releases/v1.0.0.md`.
 
 1. Mark release checklist items complete in `TODO.md`.
 2. If needed, create hotfix tag `v1.0.1`.
-
