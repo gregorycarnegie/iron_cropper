@@ -560,9 +560,9 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] Linux AppImage or .deb package (deferred to a future release)
   - [ ] Include sample images and presets
 
-- [ ] **Release**
-  - [ ] Tag `v1.0.0`
-  - [ ] Create GitHub release with binaries
+- [x] **Release**
+  - [x] Tag `v1.0.0`
+  - [x] Create GitHub release with binaries
   - [x] Write release notes documenting all features
   - [x] Update README with installation instructions
   - [x] Add screenshots/GIFs demonstrating crop features
