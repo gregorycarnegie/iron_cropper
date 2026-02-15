@@ -555,7 +555,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [ ] Release binary builds for all platforms (deferred to a future release)
 
 - [ ] **Packaging**
-  - [ ] Windows installer (MSI or NSIS) (v1.0.0 target)
+  - [x] Windows installer (MSI or NSIS) (v1.0.0 target)
   - [ ] macOS app bundle (.app) (deferred to a future release)
   - [ ] Linux AppImage or .deb package (deferred to a future release)
   - [ ] Include sample images and presets
