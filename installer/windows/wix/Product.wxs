@@ -4,7 +4,7 @@
     Id="*"
     Name="Iron Cropper"
     Language="1033"
-    Version="$(var.ProductVersion)"
+    Version="$(var.MsiVersion)"
     Manufacturer="Iron Cropper"
     UpgradeCode="9CEB8A9D-9DCD-4DFA-B928-6A5ADFC65A9E">
 
@@ -31,4 +31,3 @@
     </Feature>
   </Product>
 </Wix>
-

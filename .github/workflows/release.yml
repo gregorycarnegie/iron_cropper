@@ -185,12 +185,16 @@ jobs:
           $RawVersion = "${{ github.ref_name }}"
           if ($RawVersion.StartsWith("v")) { $RawVersion = $RawVersion.Substring(1) }
           $MsiVersion = $RawVersion.Split("-")[0]
+          if ($MsiVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid MSI version '$MsiVersion' derived from tag '${{ github.ref_name }}'"
+          }
 
           $DistDir = Join-Path $PWD "dist\$DistName"
           $WixDir = Join-Path $PWD "installer\windows\wix"
           $Harvested = Join-Path $WixDir "HarvestedFiles.wxs"
           $WixObjDir = Join-Path $WixDir "obj"
           $MsiOut = Join-Path $PWD "dist\iron-cropper-windows-x86_64.msi"
+          Write-Host "Using MSI version: $MsiVersion"
 
           New-Item -ItemType Directory -Force -Path $WixObjDir | Out-Null
 
@@ -226,10 +230,10 @@ jobs:
           $Candle = Resolve-Tool "candle.exe"
           $Light = Resolve-Tool "light.exe"
 
-          & $Heat dir "$DistDir" -gg -srd -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
+          & $Heat dir "$DistDir" -gg -srd -sreg -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "heat failed with exit code $LASTEXITCODE" }
 
-          & $Candle -nologo -dSourceDir="$DistDir" -dProductVersion=$MsiVersion -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
+          & $Candle -nologo -dSourceDir="$DistDir" -dMsiVersion="$MsiVersion" -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
 
           & $Light -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
