@@ -233,6 +233,19 @@ jobs:
           & $Heat dir "$DistDir" -gg -srd -sreg -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "heat failed with exit code $LASTEXITCODE" }
 
+          # Heat emits components without Win64 by default, which WiX treats as 32-bit.
+          # Because we install under ProgramFiles64Folder, force all harvested components to 64-bit.
+          [xml]$harvestXml = Get-Content -Path "$Harvested"
+          $ns = New-Object System.Xml.XmlNamespaceManager($harvestXml.NameTable)
+          $ns.AddNamespace("w", "http://schemas.microsoft.com/wix/2006/wi")
+          $components = $harvestXml.SelectNodes("//w:Component", $ns)
+          foreach ($component in $components) {
+            if ($component.GetAttribute("Win64") -ne "yes") {
+              $component.SetAttribute("Win64", "yes")
+            }
+          }
+          $harvestXml.Save("$Harvested")
+
           & $Candle -nologo -dSourceDir="$DistDir" -dMsiVersion="$MsiVersion" -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
 
