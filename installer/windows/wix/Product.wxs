@@ -2,10 +2,10 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product
     Id="*"
-    Name="Iron Cropper"
+    Name="Face Crop Studio"
     Language="1033"
     Version="$(var.MsiVersion)"
-    Manufacturer="Iron Cropper"
+    Manufacturer="Face Crop Studio"
     UpgradeCode="9CEB8A9D-9DCD-4DFA-B928-6A5ADFC65A9E">
 
     <Package
@@ -15,19 +15,21 @@
       Platform="x64" />
 
     <MajorUpgrade
-      DowngradeErrorMessage="A newer version of Iron Cropper is already installed." />
+      DowngradeErrorMessage="A newer version of Face Crop Studio is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <Icon Id="AppIcon.ico" SourceFile="$(var.SourceDir)\app_icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
     <UIRef Id="WixUI_InstallDir" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLDIR" Name="Iron Cropper" />
+        <Directory Id="INSTALLDIR" Name="Face Crop Studio" />
       </Directory>
     </Directory>
 
-    <Feature Id="MainFeature" Title="Iron Cropper" Level="1">
+    <Feature Id="MainFeature" Title="Face Crop Studio" Level="1">
       <ComponentGroupRef Id="AppFiles" />
     </Feature>
   </Product>
