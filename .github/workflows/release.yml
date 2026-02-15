@@ -149,8 +149,28 @@ jobs:
           $DistDir = Join-Path $PWD "dist\$DistName"
           $OutFile = Join-Path $PWD "dist\iron-cropper-windows-x86_64-setup.exe"
           $Script = Join-Path $PWD "installer\windows\iron_cropper.nsi"
+          $env:Path = "C:\ProgramData\chocolatey\bin;$env:Path"
 
-          & makensis.exe /DAPP_VERSION=$Version /DDIST_DIR="$DistDir" /DOUT_FILE="$OutFile" "$Script"
+          $Makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $Makensis) {
+            $Candidates = @(
+              "$env:ProgramFiles(x86)\NSIS\makensis.exe",
+              "$env:ProgramFiles\NSIS\makensis.exe",
+              "C:\Program Files (x86)\NSIS\makensis.exe",
+              "C:\Program Files\NSIS\makensis.exe"
+            )
+            foreach ($Candidate in $Candidates) {
+              if (Test-Path $Candidate) {
+                $Makensis = $Candidate
+                break
+              }
+            }
+          }
+          if (-not $Makensis) {
+            throw "makensis.exe not found after NSIS installation"
+          }
+
+          & $Makensis /DAPP_VERSION=$Version /DDIST_DIR="$DistDir" /DOUT_FILE="$OutFile" "$Script"
           if ($LASTEXITCODE -ne 0) {
             throw "NSIS installer build failed with exit code $LASTEXITCODE"
           }
