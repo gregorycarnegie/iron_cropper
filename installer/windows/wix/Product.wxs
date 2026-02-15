@@ -11,7 +11,8 @@
     <Package
       InstallerVersion="500"
       Compressed="yes"
-      InstallScope="perMachine" />
+      InstallScope="perMachine"
+      Platform="x64" />
 
     <MajorUpgrade
       DowngradeErrorMessage="A newer version of Iron Cropper is already installed." />

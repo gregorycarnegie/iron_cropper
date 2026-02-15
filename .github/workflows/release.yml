@@ -246,7 +246,7 @@ jobs:
           }
           $harvestXml.Save("$Harvested")
 
-          & $Candle -nologo -dSourceDir="$DistDir" -dMsiVersion="$MsiVersion" -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
+          & $Candle -nologo -arch x64 -dSourceDir="$DistDir" -dMsiVersion="$MsiVersion" -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
 
           & $Light -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
