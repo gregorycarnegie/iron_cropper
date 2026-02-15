@@ -194,19 +194,45 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path $WixObjDir | Out-Null
 
-          $WixBin = "${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin"
-          if (-not (Test-Path $WixBin)) {
-            throw "WiX bin directory not found: $WixBin"
-          }
-          $env:Path = "$WixBin;$env:Path"
+          $env:Path = "C:\ProgramData\chocolatey\bin;$env:Path"
 
-          & heat.exe dir "$DistDir" -gg -srd -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
+          function Resolve-Tool([string]$exeName) {
+            $cmd = (Get-Command $exeName -ErrorAction SilentlyContinue).Source
+            if ($cmd) { return $cmd }
+
+            $candidates = @(
+              "C:\Program Files (x86)\WiX Toolset v3.11\bin\$exeName",
+              "C:\Program Files\WiX Toolset v3.11\bin\$exeName",
+              "C:\Program Files (x86)\WiX Toolset v3.14\bin\$exeName",
+              "C:\Program Files\WiX Toolset v3.14\bin\$exeName",
+              "C:\ProgramData\chocolatey\lib\wixtoolset\tools\$exeName",
+              "C:\ProgramData\chocolatey\lib\wixtoolset\tools\bin\$exeName"
+            )
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) { return $candidate }
+            }
+
+            $searchRoots = @("C:\Program Files", "C:\Program Files (x86)", "C:\ProgramData\chocolatey\lib")
+            foreach ($root in $searchRoots) {
+              if (-not (Test-Path $root)) { continue }
+              $found = Get-ChildItem -Path $root -Recurse -Filter $exeName -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($found) { return $found.FullName }
+            }
+
+            throw "$exeName not found after WiX installation"
+          }
+
+          $Heat = Resolve-Tool "heat.exe"
+          $Candle = Resolve-Tool "candle.exe"
+          $Light = Resolve-Tool "light.exe"
+
+          & $Heat dir "$DistDir" -gg -srd -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "heat failed with exit code $LASTEXITCODE" }
 
-          & candle.exe -nologo -dSourceDir="$DistDir" -dProductVersion=$MsiVersion -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
+          & $Candle -nologo -dSourceDir="$DistDir" -dProductVersion=$MsiVersion -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
           if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
 
-          & light.exe -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
+          & $Light -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
           if ($LASTEXITCODE -ne 0) { throw "light failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path $MsiOut)) { throw "MSI missing at $MsiOut" }
 
