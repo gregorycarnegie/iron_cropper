@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="Iron Cropper"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    Manufacturer="Iron Cropper"
+    UpgradeCode="9CEB8A9D-9DCD-4DFA-B928-6A5ADFC65A9E">
+
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Iron Cropper is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <UIRef Id="WixUI_InstallDir" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Iron Cropper" />
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Iron Cropper" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+    </Feature>
+  </Product>
+</Wix>
+

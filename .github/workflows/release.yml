@@ -90,6 +90,16 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
 
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          choco install wixtoolset --no-progress -y
+
       - name: Build release binaries
         run: cargo build --release -p yunet-cli -p yunet-gui
 
@@ -129,11 +139,64 @@ jobs:
             exit 1
           }
 
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          $DistName = "iron-cropper-windows-x86_64"
+          $Version = "${{ github.ref_name }}"
+          if ($Version.StartsWith("v")) { $Version = $Version.Substring(1) }
+
+          $DistDir = Join-Path $PWD "dist\$DistName"
+          $OutFile = Join-Path $PWD "dist\iron-cropper-windows-x86_64-setup.exe"
+          $Script = Join-Path $PWD "installer\windows\iron_cropper.nsi"
+
+          & makensis.exe /DAPP_VERSION=$Version /DDIST_DIR="$DistDir" /DOUT_FILE="$OutFile" "$Script"
+          if ($LASTEXITCODE -ne 0) {
+            throw "NSIS installer build failed with exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path $OutFile)) {
+            throw "Installer missing at $OutFile"
+          }
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          $DistName = "iron-cropper-windows-x86_64"
+          $RawVersion = "${{ github.ref_name }}"
+          if ($RawVersion.StartsWith("v")) { $RawVersion = $RawVersion.Substring(1) }
+          $MsiVersion = $RawVersion.Split("-")[0]
+
+          $DistDir = Join-Path $PWD "dist\$DistName"
+          $WixDir = Join-Path $PWD "installer\windows\wix"
+          $Harvested = Join-Path $WixDir "HarvestedFiles.wxs"
+          $WixObjDir = Join-Path $WixDir "obj"
+          $MsiOut = Join-Path $PWD "dist\iron-cropper-windows-x86_64.msi"
+
+          New-Item -ItemType Directory -Force -Path $WixObjDir | Out-Null
+
+          $WixBin = "${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin"
+          if (-not (Test-Path $WixBin)) {
+            throw "WiX bin directory not found: $WixBin"
+          }
+          $env:Path = "$WixBin;$env:Path"
+
+          & heat.exe dir "$DistDir" -gg -srd -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
+          if ($LASTEXITCODE -ne 0) { throw "heat failed with exit code $LASTEXITCODE" }
+
+          & candle.exe -nologo -dSourceDir="$DistDir" -dProductVersion=$MsiVersion -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
+          if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
+
+          & light.exe -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
+          if ($LASTEXITCODE -ne 0) { throw "light failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $MsiOut)) { throw "MSI missing at $MsiOut" }
+
       - name: Generate checksums
         shell: bash
         run: |
           cd dist
           sha256sum iron-cropper-windows-x86_64.zip > SHA256SUMS.txt
+          sha256sum iron-cropper-windows-x86_64-setup.exe >> SHA256SUMS.txt
+          sha256sum iron-cropper-windows-x86_64.msi >> SHA256SUMS.txt
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -141,6 +204,8 @@ jobs:
           name: windows-release-artifacts
           path: |
             dist/iron-cropper-windows-x86_64.zip
+            dist/iron-cropper-windows-x86_64-setup.exe
+            dist/iron-cropper-windows-x86_64.msi
             dist/SHA256SUMS.txt
 
       - name: Publish GitHub release assets
@@ -148,4 +213,6 @@ jobs:
         with:
           files: |
             dist/iron-cropper-windows-x86_64.zip
+            dist/iron-cropper-windows-x86_64-setup.exe
+            dist/iron-cropper-windows-x86_64.msi
             dist/SHA256SUMS.txt
