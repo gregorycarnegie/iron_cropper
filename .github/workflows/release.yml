@@ -99,10 +99,11 @@ jobs:
           $DistName = "iron-cropper-windows-x86_64"
           $DistDir = "dist/$DistName"
           New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+          New-Item -ItemType Directory -Force -Path "$DistDir/models" | Out-Null
 
           Copy-Item target/release/yunet-cli.exe "$DistDir/yunet-cli.exe"
           Copy-Item target/release/yunet-gui.exe "$DistDir/yunet-gui.exe"
-          Copy-Item models/face_detection_yunet_2023mar_640.onnx "$DistDir/face_detection_yunet_2023mar_640.onnx"
+          Copy-Item models/face_detection_yunet_2023mar_640.onnx "$DistDir/models/face_detection_yunet_2023mar_640.onnx"
           if (Test-Path README.md) {
             Copy-Item README.md "$DistDir/README.md"
           }
@@ -117,6 +118,16 @@ jobs:
           }
 
           Compress-Archive -Path "$DistDir/*" -DestinationPath "dist/$DistName.zip" -Force
+
+      - name: Verify packaged model path
+        shell: pwsh
+        run: |
+          $DistName = "iron-cropper-windows-x86_64"
+          $ModelPath = "dist/$DistName/models/face_detection_yunet_2023mar_640.onnx"
+          if (-not (Test-Path $ModelPath)) {
+            Write-Error "Expected packaged model missing at $ModelPath"
+            exit 1
+          }
 
       - name: Generate checksums
         shell: bash

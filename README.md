@@ -68,7 +68,7 @@ Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
    - `yunet-gui.exe` for the desktop app
    - `yunet-cli.exe --help` for CLI usage
 
-The release package includes `face_detection_yunet_2023mar_640.onnx`. Keep that file next to the executables (or configure an explicit model path in app settings/CLI flags).
+The release package includes `models/face_detection_yunet_2023mar_640.onnx` by default, so detection works out-of-the-box without manually selecting a model path.
 
 ## Screenshots
 
