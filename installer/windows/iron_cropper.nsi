@@ -27,11 +27,14 @@ InstallDirRegKey HKLM "Software\Face Crop Studio" "Install_Dir"
 RequestExecutionLevel admin
 
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
+!include "WinMessages.nsh"
 !define MUI_ICON "${DIST_DIR}\app_icon.ico"
 !define MUI_UNICON "${DIST_DIR}\app_icon.ico"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -41,7 +44,8 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "English"
 
-Section "Install"
+Section "Application Files (required)" SecMain
+  SectionIn RO
   SetOutPath "$INSTDIR"
   File /r "${DIST_DIR}\*.*"
 
@@ -63,7 +67,36 @@ Section "Install"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "NoRepair" 1
 SectionEnd
 
+Section /o "Desktop Shortcut" SecDesktop
+  CreateShortCut "$DESKTOP\Face Crop Studio.lnk" "$INSTDIR\yunet-gui.exe" "" "$INSTDIR\yunet-gui.exe" 0
+SectionEnd
+
+Section /o "Add install directory to PATH (Current user)" SecPathUser
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne ''''}};if($parts -notcontains ''$INSTDIR''){$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''User'')}"'
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser" 1
+  Call BroadcastEnvironmentChange
+SectionEnd
+
+Section /o "Add install directory to PATH (All users)" SecPathSystem
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne ''''}};if($parts -notcontains ''$INSTDIR''){$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''Machine'')}"'
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem" 1
+  Call BroadcastEnvironmentChange
+SectionEnd
+
 Section "Uninstall"
+  ReadRegDWORD $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser"
+  ${If} $0 == 1
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne '''' -and $_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''User'')"'
+  ${EndIf}
+
+  ReadRegDWORD $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem"
+  ${If} $1 == 1
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne '''' -and $_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''Machine'')"'
+  ${EndIf}
+
+  Call BroadcastEnvironmentChange
+
+  Delete "$DESKTOP\Face Crop Studio.lnk"
   Delete "$SMPROGRAMS\Face Crop Studio\Face Crop Studio.lnk"
   Delete "$SMPROGRAMS\Face Crop Studio\Uninstall Face Crop Studio.lnk"
   RMDir "$SMPROGRAMS\Face Crop Studio"
@@ -74,3 +107,7 @@ Section "Uninstall"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio"
   DeleteRegKey HKLM "Software\Face Crop Studio"
 SectionEnd
+
+Function BroadcastEnvironmentChange
+  System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
+FunctionEnd

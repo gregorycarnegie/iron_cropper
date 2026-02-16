@@ -21,16 +21,103 @@
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
-    <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_Mondo" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLDIR" Name="Face Crop Studio" />
+        <Directory Id="INSTALLDIR" Name="Face Crop Studio">
+          <Component Id="UserPathComponent" Guid="{A5C6DE9B-B61B-4FC9-A8E6-68BFA9B18B33}">
+            <Environment
+              Id="UserPathEnv"
+              Name="PATH"
+              Action="set"
+              Part="last"
+              System="no"
+              Value="[INSTALLDIR]" />
+            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasUserPathEntry" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+
+          <Component Id="SystemPathComponent" Guid="{B8E50542-D193-46B1-A23E-72B1C7C0B19F}">
+            <Environment
+              Id="SystemPathEnv"
+              Name="PATH"
+              Action="set"
+              Part="last"
+              System="yes"
+              Value="[INSTALLDIR]" />
+            <RegistryValue Root="HKLM" Key="Software\Face Crop Studio" Name="HasSystemPathEntry" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Face Crop Studio">
+          <Component Id="StartMenuShortcutComponent" Guid="{2DE86506-43F4-413D-A506-8900CFC96D1F}">
+            <Shortcut
+              Id="StartMenuGuiShortcut"
+              Name="Face Crop Studio"
+              Description="Launch Face Crop Studio"
+              Target="[INSTALLDIR]yunet-gui.exe"
+              WorkingDirectory="INSTALLDIR"
+              Icon="AppIcon.ico" />
+            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+
+          <Component Id="StartMenuFolderCleanupComponent" Guid="{EFD6EC07-10AB-4D1C-A10C-3CDDC13EA793}">
+            <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuFolderCleanup" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="DesktopFolder">
+        <Component Id="DesktopShortcutComponent" Guid="{9B2D602E-D0A9-4E1D-A996-6E507A12A1AE}">
+          <Shortcut
+            Id="DesktopGuiShortcut"
+            Name="Face Crop Studio"
+            Description="Launch Face Crop Studio"
+            Target="[INSTALLDIR]yunet-gui.exe"
+            WorkingDirectory="INSTALLDIR"
+            Icon="AppIcon.ico" />
+          <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasDesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
       </Directory>
     </Directory>
 
     <Feature Id="MainFeature" Title="Face Crop Studio" Level="1">
       <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="StartMenuFolderCleanupComponent" />
+    </Feature>
+
+    <Feature
+      Id="DesktopShortcutFeature"
+      Title="Desktop Shortcut"
+      Description="Create a desktop shortcut for Face Crop Studio."
+      Level="2"
+      AllowAdvertise="no"
+      Absent="allow">
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <Feature
+      Id="UserPathFeature"
+      Title="Add install directory to PATH (Current user)"
+      Description="Adds the install directory to the current user's PATH environment variable."
+      Level="2"
+      AllowAdvertise="no"
+      Absent="allow">
+      <ComponentRef Id="UserPathComponent" />
+    </Feature>
+
+    <Feature
+      Id="SystemPathFeature"
+      Title="Add install directory to PATH (All users)"
+      Description="Adds the install directory to the system PATH environment variable."
+      Level="2"
+      AllowAdvertise="no"
+      Absent="allow">
+      <ComponentRef Id="SystemPathComponent" />
     </Feature>
   </Product>
 </Wix>

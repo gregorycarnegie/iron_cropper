@@ -56,21 +56,21 @@ The project includes comprehensive GPU acceleration via wgpu and WGSL compute sh
 For `v1.0.0`, official binaries are Windows-focused.
 
 1. Download either:
-   - `iron-cropper-windows-x86_64.msi` (enterprise installer), or
-   - `iron-cropper-windows-x86_64-setup.exe` (installer), or
-   - `iron-cropper-windows-x86_64.zip` (portable package),
+   - `face-crop-studio-windows-x86_64.msi` (enterprise installer), or
+   - `face-crop-studio-windows-x86_64-setup.exe` (installer), or
+   - `face-crop-studio-windows-x86_64.zip` (portable package),
    plus `SHA256SUMS.txt` from the GitHub Release page.
 2. Verify checksum in PowerShell:
 
 ```powershell
-Get-FileHash .\iron-cropper-windows-x86_64.msi -Algorithm SHA256
-Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
+Get-FileHash .\face-crop-studio-windows-x86_64.msi -Algorithm SHA256
+Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
 ```
 
 3. Confirm it matches the hash in `SHA256SUMS.txt`.
 4. If you downloaded the MSI, install with:
-   - `msiexec /i iron-cropper-windows-x86_64.msi`
-5. If you downloaded the EXE installer, run `iron-cropper-windows-x86_64-setup.exe`.
+   - `msiexec /i face-crop-studio-windows-x86_64.msi`
+5. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
 6. If you downloaded the zip, extract it to a folder of your choice.
 7. Run:
    - `yunet-gui.exe` for the desktop app

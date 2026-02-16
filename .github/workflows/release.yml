@@ -101,12 +101,14 @@ jobs:
           choco install wixtoolset --no-progress -y
 
       - name: Build release binaries
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --release -p yunet-cli -p yunet-gui
 
       - name: Package artifacts
         shell: pwsh
         run: |
-          $DistName = "iron-cropper-windows-x86_64"
+          $DistName = "face-crop-studio-windows-x86_64"
           $DistDir = "dist/$DistName"
           New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
           New-Item -ItemType Directory -Force -Path "$DistDir/models" | Out-Null
@@ -133,7 +135,7 @@ jobs:
       - name: Verify packaged model path
         shell: pwsh
         run: |
-          $DistName = "iron-cropper-windows-x86_64"
+          $DistName = "face-crop-studio-windows-x86_64"
           $ModelPath = "dist/$DistName/models/face_detection_yunet_2023mar_640.onnx"
           if (-not (Test-Path $ModelPath)) {
             Write-Error "Expected packaged model missing at $ModelPath"
@@ -143,12 +145,12 @@ jobs:
       - name: Build NSIS installer
         shell: pwsh
         run: |
-          $DistName = "iron-cropper-windows-x86_64"
+          $DistName = "face-crop-studio-windows-x86_64"
           $Version = "${{ github.ref_name }}"
           if ($Version.StartsWith("v")) { $Version = $Version.Substring(1) }
 
           $DistDir = Join-Path $PWD "dist\$DistName"
-          $OutFile = Join-Path $PWD "dist\iron-cropper-windows-x86_64-setup.exe"
+          $OutFile = Join-Path $PWD "dist\face-crop-studio-windows-x86_64-setup.exe"
           $Script = Join-Path $PWD "installer\windows\iron_cropper.nsi"
           $env:Path = "C:\ProgramData\chocolatey\bin;$env:Path"
 
@@ -182,7 +184,7 @@ jobs:
       - name: Build MSI installer
         shell: pwsh
         run: |
-          $DistName = "iron-cropper-windows-x86_64"
+          $DistName = "face-crop-studio-windows-x86_64"
           $RawVersion = "${{ github.ref_name }}"
           if ($RawVersion.StartsWith("v")) { $RawVersion = $RawVersion.Substring(1) }
           $MsiVersion = $RawVersion.Split("-")[0]
@@ -194,7 +196,7 @@ jobs:
           $WixDir = Join-Path $PWD "installer\windows\wix"
           $Harvested = Join-Path $WixDir "HarvestedFiles.wxs"
           $WixObjDir = Join-Path $WixDir "obj"
-          $MsiOut = Join-Path $PWD "dist\iron-cropper-windows-x86_64.msi"
+          $MsiOut = Join-Path $PWD "dist\face-crop-studio-windows-x86_64.msi"
           Write-Host "Using MSI version: $MsiVersion"
 
           New-Item -ItemType Directory -Force -Path $WixObjDir | Out-Null
@@ -258,25 +260,25 @@ jobs:
         shell: bash
         run: |
           cd dist
-          sha256sum iron-cropper-windows-x86_64.zip > SHA256SUMS.txt
-          sha256sum iron-cropper-windows-x86_64-setup.exe >> SHA256SUMS.txt
-          sha256sum iron-cropper-windows-x86_64.msi >> SHA256SUMS.txt
+          sha256sum face-crop-studio-windows-x86_64.zip > SHA256SUMS.txt
+          sha256sum face-crop-studio-windows-x86_64-setup.exe >> SHA256SUMS.txt
+          sha256sum face-crop-studio-windows-x86_64.msi >> SHA256SUMS.txt
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-release-artifacts
           path: |
-            dist/iron-cropper-windows-x86_64.zip
-            dist/iron-cropper-windows-x86_64-setup.exe
-            dist/iron-cropper-windows-x86_64.msi
+            dist/face-crop-studio-windows-x86_64.zip
+            dist/face-crop-studio-windows-x86_64-setup.exe
+            dist/face-crop-studio-windows-x86_64.msi
             dist/SHA256SUMS.txt
 
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/iron-cropper-windows-x86_64.zip
-            dist/iron-cropper-windows-x86_64-setup.exe
-            dist/iron-cropper-windows-x86_64.msi
+            dist/face-crop-studio-windows-x86_64.zip
+            dist/face-crop-studio-windows-x86_64-setup.exe
+            dist/face-crop-studio-windows-x86_64.msi
             dist/SHA256SUMS.txt
