@@ -1,10 +1,10 @@
-# Face Crop Forge
+# Face Crop Studio
 
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![WGSL](https://img.shields.io/badge/WGSL-GPU%20Compute-blue?logo=webgpu)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Face Crop Forge is a Rust workspace that wraps the YuNet face detector with deterministic cropping, quality analysis, enhancement, and export tooling. The project ships both a command-line workflow and an egui desktop application, backed by shared utilities for image processing, metadata handling, and configuration. Both CPU and GPU acceleration paths are supported via wgpu/WGSL compute shaders for preprocessing, enhancement, and custom YuNet inference.
+Face Crop Studio is a Rust workspace that wraps the YuNet face detector with deterministic cropping, quality analysis, enhancement, and export tooling. The project ships both a command-line workflow and an egui desktop application, backed by shared utilities for image processing, metadata handling, and configuration. Both CPU and GPU acceleration paths are supported via wgpu/WGSL compute shaders for preprocessing, enhancement, and custom YuNet inference.
 
 ## Crates
 
