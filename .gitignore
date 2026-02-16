@@ -7,6 +7,11 @@
 !/fixtures/opencv/**
 /screenshots/*
 !/screenshots/.gitkeep
+!/screenshots/README.md
+!/screenshots/*.png
+!/screenshots/*.gif
+!/screenshots/*.webp
+!/screenshots/*.mp4
 *.onnx
 *.log
 /cache
