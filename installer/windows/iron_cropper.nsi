@@ -72,13 +72,13 @@ Section /o "Desktop Shortcut" SecDesktop
 SectionEnd
 
 Section /o "Add install directory to PATH (Current user)" SecPathUser
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne ''''}};if($parts -notcontains ''$INSTDIR''){$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''User'')}"'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne ''''}};if($$parts -notcontains ''$INSTDIR''){$$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''User'')}"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser" 1
   Call BroadcastEnvironmentChange
 SectionEnd
 
 Section /o "Add install directory to PATH (All users)" SecPathSystem
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne ''''}};if($parts -notcontains ''$INSTDIR''){$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''Machine'')}"'
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne ''''}};if($$parts -notcontains ''$INSTDIR''){$$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''Machine'')}"'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem" 1
   Call BroadcastEnvironmentChange
 SectionEnd
@@ -86,15 +86,15 @@ SectionEnd
 Section "Uninstall"
   ReadRegDWORD $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser"
   ${If} $0 == 1
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne '''' -and $_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''User'')"'
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne '''' -and $$_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''User'')"'
   ${EndIf}
 
   ReadRegDWORD $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem"
   ${If} $1 == 1
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$parts=@();if($p){$parts=$p.Split('';'')|Where-Object{$_ -and $_.Trim() -ne '''' -and $_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($parts -join '';''),''Machine'')"'
+    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne '''' -and $$_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''Machine'')"'
   ${EndIf}
 
-  Call BroadcastEnvironmentChange
+  Call un.BroadcastEnvironmentChange
 
   Delete "$DESKTOP\Face Crop Studio.lnk"
   Delete "$SMPROGRAMS\Face Crop Studio\Face Crop Studio.lnk"
@@ -109,5 +109,9 @@ Section "Uninstall"
 SectionEnd
 
 Function BroadcastEnvironmentChange
+  System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
+FunctionEnd
+
+Function un.BroadcastEnvironmentChange
   System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
 FunctionEnd
