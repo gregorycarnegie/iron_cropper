@@ -83,10 +83,19 @@ The release package includes `models/face_detection_yunet_2023mar_640.onnx` by d
 Release screenshots/GIF asset plan lives in `screenshots/README.md`.
 
 ![Main GUI](screenshots/gui-main.png)
+*Caption: Main GUI workspace with loaded image, detections, and export controls.*
+
 ![Crop Configuration](screenshots/gui-crop-config.png)
+*Caption: Crop configuration panel showing presets, sizing, positioning, and fill controls.*
+
 ![Batch Workflow](screenshots/gui-batch.png)
+*Caption: Batch processing workflow with queue management and progress status.*
+
 ![Enhancement Controls](screenshots/gui-enhancement.png)
+*Caption: Enhancement controls for post-crop adjustments and quality tuning.*
+
 ![CLI Example](screenshots/cli-example.png)
+*Caption: Representative CLI run for automation and batch-friendly usage.*
 
 ## Development Tasks
 
