@@ -5,7 +5,8 @@
 
 use anyhow::{Context, Result};
 use fast_image_resize::{self as fir, images::Image as FirImage, images::ImageRef as FirImageRef};
-use image::{DynamicImage, RgbImage, imageops::FilterType};
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageDecoder, ImageReader, RgbImage, imageops::FilterType};
 use ndarray::Array3;
 use rayon::prelude::*;
 use std::{borrow::Cow, cell::RefCell, path::Path};
@@ -22,7 +23,20 @@ thread_local! {
 /// * `path` - The path to the image file.
 pub fn load_image<P: AsRef<Path>>(path: P) -> Result<DynamicImage> {
     let path_ref = path.as_ref();
-    image::open(path_ref).with_context(|| format!("failed to open image {}", path_ref.display()))
+    let reader = ImageReader::open(path_ref)
+        .with_context(|| format!("failed to open image {}", path_ref.display()))?
+        .with_guessed_format()
+        .with_context(|| format!("failed to guess image format for {}", path_ref.display()))?;
+
+    let mut decoder = reader
+        .into_decoder()
+        .with_context(|| format!("failed to create decoder for {}", path_ref.display()))?;
+
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut image = DynamicImage::from_decoder(decoder)
+        .with_context(|| format!("failed to decode image {}", path_ref.display()))?;
+    image.apply_orientation(orientation);
+    Ok(image)
 }
 
 /// Resize an image to the requested resolution using the provided filter.

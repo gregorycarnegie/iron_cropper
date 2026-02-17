@@ -21,6 +21,7 @@ use image::{
         tiff::TiffEncoder,
         webp::WebPEncoder,
     },
+    metadata::Orientation,
 };
 use log::{debug, warn};
 use rgb::FromSlice;
@@ -411,12 +412,29 @@ fn load_jpeg_exif(source: Option<&Path>) -> Option<Vec<u8>> {
             let mut segment = Vec::with_capacity(length + 2);
             segment.extend_from_slice(&[0xFF, 0xE1]);
             segment.extend_from_slice(&bytes[index..index + length]);
+            clear_jpeg_exif_orientation(&mut segment);
             return Some(segment);
         }
 
         index = data_end;
     }
     None
+}
+
+fn clear_jpeg_exif_orientation(segment: &mut [u8]) {
+    if segment.len() < 10 {
+        return;
+    }
+    if !(segment[0] == 0xFF && segment[1] == 0xE1) {
+        return;
+    }
+
+    let payload = &mut segment[4..];
+    if payload.len() < 6 || &payload[..6] != b"Exif\0\0" {
+        return;
+    }
+
+    let _ = Orientation::remove_from_exif_chunk(&mut payload[6..]);
 }
 
 fn inject_png_metadata(
