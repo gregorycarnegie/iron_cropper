@@ -21,7 +21,11 @@
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)EULA.rtf" />
     <UIRef Id="WixUI_Mondo" />
+    <Condition Message="Choose either 'Current user PATH' or 'All users PATH', not both.">
+      NOT ((&amp;UserPathFeature=3) AND (&amp;SystemPathFeature=3))
+    </Condition>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
@@ -94,7 +98,7 @@
       Id="DesktopShortcutFeature"
       Title="Desktop Shortcut"
       Description="Create a desktop shortcut for Face Crop Studio."
-      Level="2"
+      Level="1"
       AllowAdvertise="no"
       Absent="allow">
       <ComponentRef Id="DesktopShortcutComponent" />

@@ -29,6 +29,7 @@ RequestExecutionLevel admin
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "WinMessages.nsh"
+!include "Sections.nsh"
 !define MUI_ICON "${DIST_DIR}\app_icon.ico"
 !define MUI_UNICON "${DIST_DIR}\app_icon.ico"
 
@@ -67,7 +68,7 @@ Section "Application Files (required)" SecMain
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "NoRepair" 1
 SectionEnd
 
-Section /o "Desktop Shortcut" SecDesktop
+Section "Desktop Shortcut" SecDesktop
   CreateShortCut "$DESKTOP\Face Crop Studio.lnk" "$INSTDIR\yunet-gui.exe" "" "$INSTDIR\yunet-gui.exe" 0
 SectionEnd
 
@@ -114,4 +115,17 @@ FunctionEnd
 
 Function un.BroadcastEnvironmentChange
   System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
+FunctionEnd
+
+Function .onSelChange
+  SectionGetFlags ${SecPathUser} $0
+  IntOp $1 $0 & ${SF_SELECTED}
+  SectionGetFlags ${SecPathSystem} $2
+  IntOp $3 $2 & ${SF_SELECTED}
+
+  ${If} $1 <> 0
+  ${AndIf} $3 <> 0
+    IntOp $4 $0 & ~${SF_SELECTED}
+    SectionSetFlags ${SecPathUser} $4
+  ${EndIf}
 FunctionEnd
