@@ -100,9 +100,25 @@ jobs:
         run: |
           choco install wixtoolset --no-progress -y
 
+      - name: Install pkg-config
+        shell: pwsh
+        run: |
+          choco install pkgconfiglite --no-progress -y
+
+      - name: Install dav1d (vcpkg)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
+            git clone https://github.com/microsoft/vcpkg C:\vcpkg
+            & C:\vcpkg\bootstrap-vcpkg.bat
+          }
+          & C:\vcpkg\vcpkg.exe install dav1d:x64-windows-static
+
       - name: Build release binaries
         env:
           RUSTFLAGS: -C target-feature=+crt-static
+          PKG_CONFIG_PATH: C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
+          PKG_CONFIG_ALL_STATIC: "1"
         run: cargo build --release -p yunet-cli -p yunet-gui
 
       - name: Package artifacts
