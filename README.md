@@ -1,5 +1,10 @@
 # Face Crop Studio
 
+GPU accelerated face detection and cropping software built in Rust.
+
+🌐 Official Website:
+<https://facecropstudio.com>
+
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![WGSL](https://img.shields.io/badge/WGSL-GPU%20Compute-blue?logo=webgpu)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -67,12 +72,12 @@ Get-FileHash .\face-crop-studio-windows-x86_64.msi -Algorithm SHA256
 Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
 ```
 
-3. Confirm it matches the hash in `SHA256SUMS.txt`.
-4. If you downloaded the MSI, install with:
+1. Confirm it matches the hash in `SHA256SUMS.txt`.
+2. If you downloaded the MSI, install with:
    - `msiexec /i face-crop-studio-windows-x86_64.msi`
-5. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
-6. If you downloaded the zip, extract it to a folder of your choice.
-7. Run:
+3. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
+4. If you downloaded the zip, extract it to a folder of your choice.
+5. Run:
    - `yunet-gui.exe` for the desktop app
    - `yunet-cli.exe --help` for CLI usage
 
