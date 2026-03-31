@@ -16,7 +16,7 @@ image = { version = "0.25.10", default-features = false, features = [
     "tiff",
     "bmp",
     "avif-native",
-    "rayon",       # Enable parallel processing support
+    "rayon",
 ] }
 anyhow = "1.0.102"
 arboard = "3.6.1"
@@ -47,7 +47,7 @@ parquet = { version = "58.1.0", default-features = false, features = [
     "zstd",
 ] }
 pollster = "0.4.0"
-prost = "=0.11.9" # Set to 0.11.9 for tract-onnx v0.22.0 compatibility
+prost = "=0.11.9" # Set to 0.11.9 for tract-onnx v0.22.1 compatibility
 rayon = "1.11.0"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -56,7 +56,7 @@ tempfile = "3.27.0"
 thiserror = "2.0.18"
 tiny-skia = "0.12.0"
 tract-onnx = "0.22.1"
-wgpu = "29.0.1" # Set to 27.0.1 for eframe v0.33.3 compatibility
+wgpu = "29.0.1" # Set to 29.0.1 for eframe v0.34.1 compatibility
 wide = "1.2.0"
 windows = { version = "0.62.2", features = [
     "Win32_Graphics_Dxgi",
