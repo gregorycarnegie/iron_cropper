@@ -1,6 +1,8 @@
 use crate::gpu::graph::{
     self, BACKBONE_STAGES, DETECTION_HEADS, DetectionLevelOutputs, WeightProvider,
 };
+use bytemuck::cast_slice;
+use std::sync::mpsc;
 use wgpu::CommandEncoderDescriptor;
 use crate::gpu::onnx::OnnxInitializerMap;
 use crate::gpu::ops::GpuInferenceOps;
@@ -183,10 +185,18 @@ impl WeightProvider for CachedWeights {
 }
 
 fn build_decode_tensors(levels: &[DetectionLevelOutputs; 3]) -> Result<Vec<Tensor>> {
-    let mut cls_tensors = Vec::with_capacity(3);
-    let mut obj_tensors = Vec::with_capacity(3);
-    let mut bbox_tensors = Vec::with_capacity(3);
-    let mut kps_tensors = Vec::with_capacity(3);
+    // Collect the 12 output tensors in the order we need them:
+    //   cls×3, obj×3, bbox×3, kps×3
+    // along with the metadata needed to reorder each one on the CPU.
+    struct BranchMeta {
+        height: usize,
+        width: usize,
+        channels: usize,
+        apply_sigmoid: bool,
+    }
+
+    let mut gpu_tensors: Vec<&GpuTensor> = Vec::with_capacity(DET_HEAD_OUTPUTS);
+    let mut meta: Vec<BranchMeta> = Vec::with_capacity(DET_HEAD_OUTPUTS);
 
     for level in levels.iter() {
         let shape = level.feature.shape().dims();
@@ -197,34 +207,150 @@ fn build_decode_tensors(levels: &[DetectionLevelOutputs; 3]) -> Result<Vec<Tenso
         );
         let height = shape[2];
         let width = shape[3];
-        cls_tensors.push(flatten_branch(&level.cls, height, width, 1, true)?);
-        obj_tensors.push(flatten_branch(&level.obj, height, width, 1, true)?);
-        bbox_tensors.push(flatten_branch(&level.bbox, height, width, 4, false)?);
-        kps_tensors.push(flatten_branch(&level.kps, height, width, 10, false)?);
+
+        // cls, obj, bbox, kps — interleaved by level so we can split later
+        for (tensor, channels, apply_sigmoid) in [
+            (&level.cls, 1usize, true),
+            (&level.obj, 1usize, true),
+            (&level.bbox, 4usize, false),
+            (&level.kps, 10usize, false),
+        ] {
+            gpu_tensors.push(tensor);
+            meta.push(BranchMeta { height, width, channels, apply_sigmoid });
+        }
     }
 
-    let mut outputs = Vec::with_capacity(DET_HEAD_OUTPUTS);
-    outputs.extend(cls_tensors);
-    outputs.extend(obj_tensors);
-    outputs.extend(bbox_tensors);
-    outputs.extend(kps_tensors);
-    Ok(outputs)
+    // One submit + one poll downloads all 12 tensors simultaneously.
+    let raw_data = batch_download(gpu_tensors[0].context(), &gpu_tensors)
+        .context("batch download of detection head outputs")?;
+
+    // Reorder each downloaded buffer from CHW → HWC (+ optional sigmoid)
+    // and build the tract Tensors.
+    let mut outputs: Vec<Tensor> = Vec::with_capacity(DET_HEAD_OUTPUTS);
+    for (flat, m) in raw_data.into_iter().zip(meta.iter()) {
+        let flattened = reorder_hw_major(&flat, m.channels, m.height, m.width, m.apply_sigmoid);
+        let rows = m.height * m.width;
+        outputs.push(
+            Tensor::from_shape(&[rows, m.channels], &flattened)
+                .map_err(|e| anyhow!("failed to build tensor from branch output: {e}"))?,
+        );
+    }
+
+    // The original order was cls×3, obj×3, bbox×3, kps×3 (grouped by type).
+    // Currently outputs are interleaved as [cls0, obj0, bbox0, kps0, cls1, ...].
+    // Re-group them.
+    let cls: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(0, 4, 3);
+    let obj: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(1, 4, 3);
+    let bbox: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(2, 4, 3);
+    let kps: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(3, 4, 3);
+
+    let mut result = Vec::with_capacity(DET_HEAD_OUTPUTS);
+    result.extend(cls);
+    result.extend(obj);
+    result.extend(bbox);
+    result.extend(kps);
+    Ok(result)
 }
 
 const DET_HEAD_OUTPUTS: usize = 12;
 
-fn flatten_branch(
-    tensor: &GpuTensor,
-    height: usize,
-    width: usize,
-    channels: usize,
-    apply_sigmoid: bool,
-) -> Result<Tensor> {
-    let flat = tensor.to_vec().context("download branch tensor")?;
-    let flattened = reorder_hw_major(&flat, channels, height, width, apply_sigmoid);
-    let rows = height * width;
-    Tensor::from_shape(&[rows, channels], &flattened)
-        .map_err(|e| anyhow!("failed to build tensor from branch output: {e}"))
+// Helper trait to simplify the regrouping above.
+trait StepByWithOffset: Iterator + Sized {
+    fn step_by_with_offset(self, offset: usize, step: usize, count: usize) -> Vec<Self::Item>;
+}
+
+impl<I: Iterator> StepByWithOffset for I {
+    fn step_by_with_offset(self, offset: usize, step: usize, count: usize) -> Vec<Self::Item> {
+        self.skip(offset).step_by(step).take(count).collect()
+    }
+}
+
+/// Download multiple GPU tensors in a single submit + single poll.
+///
+/// All buffer copies are recorded into one `CommandEncoder` and submitted
+/// together. The GPU DMA engine can pipeline them, and we block exactly
+/// once instead of once per tensor.
+fn batch_download(context: &Arc<GpuContext>, tensors: &[&GpuTensor]) -> Result<Vec<Vec<f32>>> {
+    if tensors.is_empty() {
+        return Ok(vec![]);
+    }
+    let device = context.device();
+
+    // Allocate one HOST_VISIBLE readback buffer per tensor.
+    let readback_usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
+    let readback_bufs: Vec<wgpu::Buffer> = tensors
+        .iter()
+        .map(|t| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("yunet_batch_readback"),
+                size: t.size_bytes(),
+                usage: readback_usage,
+                mapped_at_creation: false,
+            })
+        })
+        .collect();
+
+    // One encoder copies all tensors to their readback buffers.
+    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+        label: Some("yunet_batch_readback_encoder"),
+    });
+    for (tensor, readback) in tensors.iter().zip(readback_bufs.iter()) {
+        encoder.copy_buffer_to_buffer(tensor.buffer(), 0, readback, 0, tensor.size_bytes());
+    }
+    context.queue().submit(Some(encoder.finish()));
+
+    // One poll waits for all copies to land in system RAM.
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        })
+        .map_err(|e| anyhow!("batch readback poll failed: {e}"))?;
+
+    // Kick off all 12 map_async calls simultaneously (data is already in
+    // HOST_VISIBLE memory so these complete on the next poll).
+    let receivers: Vec<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>> = readback_bufs
+        .iter()
+        .map(|buf| {
+            let (tx, rx) = mpsc::channel();
+            buf.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                let _ = tx.send(r);
+            });
+            rx
+        })
+        .collect();
+
+    // One poll flushes all pending map callbacks.
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        })
+        .map_err(|e| anyhow!("batch readback map poll failed: {e}"))?;
+
+    // Collect data from all mapped buffers and unmap.
+    let mut results = Vec::with_capacity(tensors.len());
+    for (i, (buf, rx)) in readback_bufs.iter().zip(receivers.iter()).enumerate() {
+        rx.recv()
+            .map_err(|_| anyhow!("batch readback channel dropped for tensor {i}"))?
+            .map_err(|e| anyhow!("batch readback map failed for tensor {i}: {e}"))?;
+
+        let elements = tensors[i].shape().elements();
+        let size_bytes = tensors[i].size_bytes();
+        let mapped = buf.slice(0..size_bytes).get_mapped_range();
+        let floats: Vec<f32> = cast_slice(&mapped).to_vec();
+        drop(mapped);
+        buf.unmap();
+
+        anyhow::ensure!(
+            floats.len() == elements,
+            "batch readback tensor {i}: got {} elements, expected {}",
+            floats.len(),
+            elements
+        );
+        results.push(floats);
+    }
+    Ok(results)
 }
 
 fn reorder_hw_major(
