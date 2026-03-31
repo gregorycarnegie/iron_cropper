@@ -66,18 +66,18 @@ impl GpuHistogramEqualizer {
 
         let histogram_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("yunet_histogram_layout"),
-            bind_group_layouts: &[&histogram_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&histogram_bgl)],
+            immediate_size: 0,
         });
         let cdf_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("yunet_hist_cdf_layout"),
-            bind_group_layouts: &[&cdf_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&cdf_bgl)],
+            immediate_size: 0,
         });
         let apply_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("yunet_hist_apply_layout"),
-            bind_group_layouts: &[&apply_bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&apply_bgl)],
+            immediate_size: 0,
         });
 
         let histogram_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

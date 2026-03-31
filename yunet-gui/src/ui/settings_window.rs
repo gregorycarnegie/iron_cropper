@@ -16,17 +16,17 @@ pub fn show_settings_window(app: &mut YuNetApp, ctx: &Context) {
         ViewportBuilder::default()
             .with_title("Settings")
             .with_inner_size([400.0, 600.0]),
-        |ctx, class| {
+        |ui, class| {
             assert!(
                 class == ViewportClass::Immediate,
                 "This egui backend doesn't support multiple viewports"
             );
 
-            CentralPanel::default().show(ctx, |ui| {
-                if ctx.input(|i| i.viewport().close_requested()) {
-                    open = false;
-                }
+            if ui.input(|i| i.viewport().close_requested()) {
+                open = false;
+            }
 
+            CentralPanel::default().show_inside(ui, |ui| {
                 let palette = theme::palette();
                 ScrollArea::vertical().show(ui, |ui| {
                     let mut engine_changed = false;

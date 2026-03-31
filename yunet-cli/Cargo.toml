@@ -20,11 +20,11 @@ yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 
 [dev-dependencies]
-assert_cmd = "2.1.2"
+assert_cmd = "2.2.0"
 tempfile.workspace = true
-predicates = "3.1.3"
+predicates = "3.1.4"
 yunet-core = { path = "../yunet-core" }
 yunet-utils = { path = "../yunet-utils" }
 
 [build-dependencies]
-winresource = "0.1.27"
+winresource = "0.1.31"

@@ -258,7 +258,7 @@ impl YuNetApp {
             }
         }
 
-        if ctx.wants_keyboard_input() {
+        if ctx.egui_wants_keyboard_input() {
             return;
         }
 
@@ -570,7 +570,7 @@ impl YuNetApp {
 
     /// Handles keyboard shortcuts.
     pub fn handle_shortcuts(&mut self, ctx: &EguiContext) {
-        let wants_text = ctx.wants_keyboard_input();
+        let wants_text = ctx.egui_wants_keyboard_input();
         let actions = shortcuts::capture_shortcut_actions(ctx, wants_text);
 
         if actions.export && !self.selected_faces.is_empty() && !self.preview.detections.is_empty()
@@ -881,20 +881,25 @@ impl YuNetApp {
 }
 
 impl App for YuNetApp {
-    fn update(&mut self, ctx: &EguiContext, _frame: &mut Frame) {
+    fn logic(&mut self, ctx: &EguiContext, _frame: &mut Frame) {
         self.process_import_payloads(ctx);
         self.poll_worker(ctx);
-        self.show_status_bar(ctx);
 
-        // Request continuous repaints when webcam is active
         if matches!(
             self.webcam_state.status,
             WebcamStatus::Active | WebcamStatus::Starting
-        ) {
+        ) || self.is_busy
+        {
             ctx.request_repaint();
         }
+    }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
+        let ctx = ui.ctx().clone();
+
+        self.show_status_bar(ui);
+
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             StripBuilder::new(ui)
                 .size(Size::exact(283.0)) // Navigation
                 .size(Size::remainder()) // Preview
@@ -918,7 +923,7 @@ impl App for YuNetApp {
                             .fill(palette.canvas)
                             .inner_margin(egui::Margin::symmetric(16, 16))
                             .show(ui, |ui| {
-                                self.show_preview(ui, ctx);
+                                self.show_preview(ui, &ctx);
                             });
                     });
                     strip.cell(|ui| {
@@ -929,30 +934,26 @@ impl App for YuNetApp {
                             .stroke(egui::Stroke::new(1.0, palette.outline))
                             .inner_margin(egui::Margin::symmetric(16, 18))
                             .show(ui, |ui| {
-                                crate::ui::config::panel::show_configuration_panel(self, ui, ctx);
+                                crate::ui::config::panel::show_configuration_panel(self, ui, &ctx);
                             });
                     });
                 });
         });
 
         if self.show_settings_window {
-            crate::ui::settings_window::show_settings_window(self, ctx);
+            crate::ui::settings_window::show_settings_window(self, &ctx);
         }
         if self.show_batch_window {
-            crate::ui::batch_window::show_batch_window(self, ctx);
+            crate::ui::batch_window::show_batch_window(self, &ctx);
         }
         if self.show_mapping_window {
-            self.show_mapping_window(ctx);
+            self.show_mapping_window(&ctx);
         }
         if self.show_detection_window {
-            crate::ui::config::detections::show_detection_window(self, ctx);
+            crate::ui::config::detections::show_detection_window(self, &ctx);
         }
 
-        self.handle_shortcuts(ctx);
-
-        if self.is_busy {
-            ctx.request_repaint();
-        }
+        self.handle_shortcuts(&ctx);
     }
 }
 

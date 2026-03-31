@@ -65,7 +65,10 @@ fn sd_polygon(p: vec2<f32>) -> f32 {
         let b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
         d = min(d, dot(b, b));
 
-        let c = vec3<bool>(p.y >= vi.y, p.y < vj.y, e.x * w.y > e.y * w.x);
+        let c0 = p.y >= vi.y;
+        let c1 = p.y < vj.y;
+        let c2 = e.x * w.y > e.y * w.x;
+        let c = vec3(c0, c1, c2);
         if all(c) || all(!c) {
             s = -s;
         }

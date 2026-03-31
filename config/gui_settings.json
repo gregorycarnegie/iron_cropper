@@ -19,12 +19,12 @@
     "vertical_offset": -0.08126362,
     "horizontal_offset": 0.026062053,
     "fill_color": {
-      "red": 255,
-      "green": 255,
-      "blue": 255,
-      "alpha": 255
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 0
     },
-    "output_format": "jpeg",
+    "output_format": "png",
     "jpeg_quality": 81,
     "png_compression": "default",
     "webp_quality": 7,
@@ -42,9 +42,14 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "ellipse"
+      "kind": "polygon",
+      "sides": 6,
+      "rotation_deg": 32.748623,
+      "corner_style": {
+        "style": "sharp"
+      }
     },
-    "vignette_softness": 0.13636364,
+    "vignette_softness": 0.0,
     "vignette_intensity": 1.0,
     "vignette_color": {
       "red": 0,

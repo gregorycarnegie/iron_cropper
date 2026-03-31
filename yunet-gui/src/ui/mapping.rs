@@ -21,17 +21,17 @@ impl YuNetApp {
             ViewportBuilder::default()
                 .with_title("Mapping Import")
                 .with_inner_size([600.0, 500.0]),
-            |ctx, class| {
+            |ui, class| {
                 assert!(
                     class == ViewportClass::Immediate,
                     "This egui backend doesn't support multiple viewports"
                 );
 
-                CentralPanel::default().show(ctx, |ui| {
-                    if ctx.input(|i| i.viewport().close_requested()) {
-                        open = false;
-                    }
+                if ui.input(|i| i.viewport().close_requested()) {
+                    open = false;
+                }
 
+                CentralPanel::default().show_inside(ui, |ui| {
                     let palette = theme::palette();
                     self.show_mapping_content(ui, palette);
                 });

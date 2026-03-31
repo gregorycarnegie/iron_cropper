@@ -356,9 +356,9 @@ impl GpuContext {
         }
 
         let mut instance_desc = if options.respect_env {
-            InstanceDescriptor::from_env_or_default()
+            InstanceDescriptor::new_without_display_handle_from_env()
         } else {
-            InstanceDescriptor::default()
+            InstanceDescriptor::new_without_display_handle()
         };
 
         let backends = if options.respect_env {
@@ -375,7 +375,7 @@ impl GpuContext {
         };
         instance_desc.backend_options.dx12.shader_compiler = options.dx12_shader_compiler.clone();
 
-        let instance = Instance::new(&instance_desc);
+        let instance = Instance::new(instance_desc);
         let adapter = block_on(instance.request_adapter(&RequestAdapterOptions {
             power_preference: options.power_preference,
             force_fallback_adapter: options.force_fallback_adapter,

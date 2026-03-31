@@ -18,7 +18,9 @@
       "Bash(dir:*)",
       "Bash(cargo metadata:*)",
       "Bash(cargo audit:*)",
-      "Bash(cargo generate-lockfile:*)"
+      "Bash(cargo generate-lockfile:*)",
+      "Read(//c/Users/grego/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/eframe-0.34.1/src/**)",
+      "Read(//c/Users/grego/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/egui-0.34.1/src/**)"
     ],
     "deny": [],
     "ask": []

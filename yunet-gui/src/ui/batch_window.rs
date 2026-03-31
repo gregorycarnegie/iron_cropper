@@ -5,8 +5,8 @@ use crate::{YuNetApp, theme};
 use yunet_utils::config::BatchLogFormat;
 
 use egui::{
-    Button, CentralPanel, Color32, Context, ProgressBar, RichText, ScrollArea, TopBottomPanel,
-    ViewportBuilder, ViewportClass, ViewportId,
+    Button, CentralPanel, Color32, Context, ProgressBar, RichText, ScrollArea, ViewportBuilder,
+    ViewportClass, ViewportId,
 };
 
 /// Shows the batch queue window.
@@ -17,20 +17,20 @@ pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
         ViewportBuilder::default()
             .with_title("Batch Queue")
             .with_inner_size([500.0, 500.0]), // Slightly taller default
-        |ctx, class| {
+        |ui, class| {
             assert!(
                 class == ViewportClass::Immediate,
                 "This egui backend doesn't support multiple viewports"
             );
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if ui.input(|i| i.viewport().close_requested()) {
                 open = false;
             }
 
             let palette = theme::palette();
 
             if app.batch_files.is_empty() {
-                CentralPanel::default().show(ctx, |ui| {
+                CentralPanel::default().show_inside(ui, |ui| {
                     ui.centered_and_justified(|ui| {
                         ui.label(RichText::new("Batch queue is empty").color(palette.subtle_text));
                     });
@@ -39,31 +39,31 @@ pub fn show_batch_window(app: &mut YuNetApp, ctx: &Context) {
             }
 
             // Bottom Panel: Actions & Logging
-            TopBottomPanel::bottom("batch_footer")
+            egui::Panel::bottom("batch_footer")
                 .resizable(false)
                 .frame(
                     egui::Frame::NONE
                         .fill(palette.panel_light)
                         .inner_margin(8.0),
                 )
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     show_batch_footer(app, ui);
                 });
 
             // Top Panel: Progress
-            TopBottomPanel::top("batch_header")
+            egui::Panel::top("batch_header")
                 .resizable(false)
                 .frame(
                     egui::Frame::NONE
                         .fill(palette.panel_light)
                         .inner_margin(8.0),
                 )
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     show_batch_progress(app, ui);
                 });
 
             // Central Panel: List
-            CentralPanel::default().show(ctx, |ui| {
+            CentralPanel::default().show_inside(ui, |ui| {
                 show_batch_list(app, ui, palette);
             });
         },

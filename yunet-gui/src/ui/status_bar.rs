@@ -3,22 +3,21 @@
 use crate::{GpuStatusMode, YuNetApp, theme};
 
 use egui::{
-    Align, Button, Color32, Context, CornerRadius, Frame, Layout, Margin, RichText, Spinner,
-    Stroke, TopBottomPanel, Ui,
+    Align, Button, Color32, CornerRadius, Frame, Layout, Margin, RichText, Spinner, Stroke, Ui,
 };
 
 impl YuNetApp {
     /// Renders the slim bottom status bar with stats and status badge.
-    pub fn show_status_bar(&mut self, ctx: &Context) {
+    pub fn show_status_bar(&mut self, ui: &mut Ui) {
         let palette = theme::palette();
-        TopBottomPanel::bottom("yunet_status_bar")
+        egui::Panel::bottom("yunet_status_bar")
             .frame(
                 Frame::new()
                     .fill(palette.canvas)
                     .stroke(Stroke::new(1.0, palette.outline))
                     .inner_margin(Margin::symmetric(16, 8)),
             )
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 ui.horizontal(|ui| {
                     // Left side: status chips
                     self.status_chip(

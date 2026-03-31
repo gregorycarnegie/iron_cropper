@@ -55,14 +55,14 @@ pub fn palette() -> Palette {
 /// Apply the global YuNet GUI theme to the provided egui context.
 pub fn apply(ctx: &Context) {
     let palette = palette();
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
 
     style.spacing.item_spacing = egui::vec2(ITEM_SPACING_X, ITEM_SPACING_Y);
     style.spacing.button_padding = egui::vec2(BUTTON_PADDING_X, BUTTON_PADDING_Y);
     style.spacing.window_margin = Margin::same(WINDOW_MARGIN);
     style.visuals = visuals_from_palette(palette);
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 fn visuals_from_palette(palette: Palette) -> Visuals {
