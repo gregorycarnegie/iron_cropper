@@ -1,4 +1,5 @@
 use super::utils::{buffer_entry, create_uniform_buffer, uniform_entry};
+use yunet_utils::create_gpu_pipeline;
 
 use crate::gpu::GpuTensor;
 use anyhow::Result;
@@ -17,39 +18,26 @@ pub(super) struct Upsample2xPipeline {
 
 impl Upsample2xPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_resize2x_shader"),
-            source: wgpu::ShaderSource::Wgsl(super::UPSAMPLE2X_WGSL.into()),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_resize2x_bgl"),
-            entries: &[
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "resize2x",
+            super::UPSAMPLE2X_WGSL,
+            [
                 buffer_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(1, wgpu::BufferBindingType::Storage { read_only: false }),
                 uniform_entry(2),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_resize2x_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_resize2x_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+            ]
+        );
         Ok(Self {
             pipeline,
             bind_group_layout,
         })
     }
 
-    pub(super) fn execute(
+    /// Record the 2x upsample dispatch into `encoder` without submitting.
+    pub(super) fn encode(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         context: &Arc<GpuContext>,
         pool: &Arc<GpuBufferPool>,
         tensor: &GpuTensor,
@@ -96,12 +84,6 @@ impl Upsample2xPipeline {
                 ],
             });
 
-        let mut encoder =
-            context
-                .device()
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("yunet_resize2x_encoder"),
-                });
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_resize2x_pass"),
@@ -116,6 +98,22 @@ impl Upsample2xPipeline {
             );
         }
 
+        Ok(output)
+    }
+
+    pub(super) fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
+        tensor: &GpuTensor,
+    ) -> Result<GpuTensor> {
+        let mut encoder =
+            context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("yunet_resize2x_encoder"),
+                });
+        let output = self.encode(&mut encoder, context, pool, tensor)?;
         context.queue().submit(Some(encoder.finish()));
         Ok(output)
     }

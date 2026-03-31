@@ -1,5 +1,6 @@
 use super::utils::{buffer_entry, create_uniform_buffer, uniform_entry};
 use crate::gpu::GpuTensor;
+use yunet_utils::create_gpu_pipeline;
 
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
@@ -27,51 +28,38 @@ pub(super) struct BatchNormBindings<'a> {
 
 impl BatchNormPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_batch_norm_shader"),
-            source: wgpu::ShaderSource::Wgsl(BATCH_NORM_WGSL.into()),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_batch_norm_bgl"),
-            entries: &[
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "batch_norm",
+            BATCH_NORM_WGSL,
+            [
                 buffer_entry(0, wgpu::BufferBindingType::Storage { read_only: false }),
                 buffer_entry(1, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(2, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(3, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(4, wgpu::BufferBindingType::Storage { read_only: true }),
                 uniform_entry(5),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_batch_norm_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_batch_norm_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+            ]
+        );
         Ok(Self {
             pipeline,
             bind_group_layout,
         })
     }
 
-    pub(super) fn execute(
+    /// Record the batch-norm dispatch into `encoder` without submitting.
+    pub(super) fn encode(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         context: &Arc<GpuContext>,
         tensors: BatchNormBindings,
         config: &BatchNormConfig,
     ) -> Result<GpuTensor> {
         let device = context.device();
-        let queue = context.queue();
-        let tensor_copy = tensors
+        let output = tensors
             .tensor
-            .duplicate(Some("yunet_batch_norm_tensor_copy"))?;
+            .uninitialized_like(Some("yunet_batch_norm_output"))?;
+        tensors.tensor.encode_copy_to(encoder, &output);
         let uniforms = BatchNormUniforms::from(config);
         let uniform_buffer = create_uniform_buffer(device, "yunet_batch_norm_uniforms", &uniforms);
 
@@ -81,7 +69,7 @@ impl BatchNormPipeline {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: tensor_copy.buffer().as_entire_binding(),
+                    resource: output.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -106,10 +94,6 @@ impl BatchNormPipeline {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yunet_batch_norm_encoder"),
-        });
-
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_batch_norm_pass"),
@@ -124,9 +108,23 @@ impl BatchNormPipeline {
             );
         }
 
-        queue.submit(Some(encoder.finish()));
+        Ok(output)
+    }
 
-        Ok(tensor_copy)
+    pub(super) fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        tensors: BatchNormBindings,
+        config: &BatchNormConfig,
+    ) -> Result<GpuTensor> {
+        let mut encoder = context
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("yunet_batch_norm_encoder"),
+            });
+        let output = self.encode(&mut encoder, context, tensors, config)?;
+        context.queue().submit(Some(encoder.finish()));
+        Ok(output)
     }
 }
 

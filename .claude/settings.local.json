@@ -20,7 +20,14 @@
       "Bash(cargo audit:*)",
       "Bash(cargo generate-lockfile:*)",
       "Read(//c/Users/grego/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/eframe-0.34.1/src/**)",
-      "Read(//c/Users/grego/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/egui-0.34.1/src/**)"
+      "Read(//c/Users/grego/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/egui-0.34.1/src/**)",
+      "Read(//c/Users/grego/.cargo/registry/cache/**)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Read(//c/Users/grego/rust_projects/iron_cropper/yunet-core/src/gpu/**)",
+      "Bash(attrib \"c:/Users/grego/rust_projects/iron_cropper/fixtures/images/006.jpg\")",
+      "Read(//c/Users/grego/.claude/projects/c--Users-grego-rust-projects-iron_cropper/memory/**)"
     ],
     "deny": [],
     "ask": []

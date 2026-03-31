@@ -1,6 +1,7 @@
 use crate::gpu::graph::{
     self, BACKBONE_STAGES, DETECTION_HEADS, DetectionLevelOutputs, WeightProvider,
 };
+use wgpu::CommandEncoderDescriptor;
 use crate::gpu::onnx::OnnxInitializerMap;
 use crate::gpu::ops::GpuInferenceOps;
 use crate::gpu::tensor::GpuTensor;
@@ -117,13 +118,32 @@ impl GpuYuNet {
         let weight_provider = CachedWeights {
             tensors: Arc::clone(&self.weights),
         };
-        let features = graph::run_backbone_features(
+
+        // Accumulate the entire forward pass into one command buffer and submit
+        // once. This eliminates ~53 individual queue.submit() calls (one per op)
+        // and gives the GPU a full workload to pipeline, dramatically improving
+        // utilisation vs the previous per-op-submit pattern.
+        let mut encoder = self
+            .ops
+            .context()
+            .device()
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("yunet_inference"),
+            });
+        let features = graph::encode_backbone_features(
+            &mut encoder,
             &self.ops,
             &weight_provider,
             input_gpu,
             BACKBONE_STAGES.len(),
         )?;
-        let levels = graph::run_neck_and_heads(&self.ops, &weight_provider, &features)?;
+        let levels =
+            graph::encode_neck_and_heads(&mut encoder, &self.ops, &weight_provider, &features)?;
+        self.ops
+            .context()
+            .queue()
+            .submit(Some(encoder.finish()));
+
         let outputs = build_decode_tensors(&levels)?;
         decode_yunet_outputs(&outputs, self.input_size)
     }

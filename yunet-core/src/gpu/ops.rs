@@ -68,6 +68,11 @@ impl GpuInferenceOps {
         tensor.to_vec()
     }
 
+    /// Returns the GPU context backing this ops collection.
+    pub fn context(&self) -> &Arc<GpuContext> {
+        &self.context
+    }
+
     /// Returns the estimated total memory usage (in bytes) of buffers managed by the pool.
     pub fn memory_usage(&self) -> u64 {
         self.buffer_pool.memory_usage()
@@ -251,5 +256,69 @@ impl GpuInferenceOps {
         self.ensure_same_context(tensor, "resize tensor")?;
         self.upsample2x
             .execute(&self.context, &self.buffer_pool, tensor)
+    }
+
+    // ── Batched-encoder variants ──────────────────────────────────────────────
+    // These record GPU work into a shared encoder without submitting.
+    // Use them to accumulate an entire inference pass into one command buffer,
+    // then call `context().queue().submit(Some(encoder.finish()))` once.
+
+    pub fn encode_conv2d_tensor(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        input: &GpuTensor,
+        weights: &GpuTensor,
+        bias: &GpuTensor,
+        config: &Conv2dConfig,
+    ) -> Result<GpuTensor> {
+        config.validate(
+            input.shape().elements(),
+            weights.shape().elements(),
+            bias.shape().elements(),
+        )?;
+        self.ensure_same_context(input, "conv2d input")?;
+        self.ensure_same_context(weights, "conv2d weights")?;
+        self.ensure_same_context(bias, "conv2d bias")?;
+        self.conv2d
+            .encode(encoder, &self.context, &self.buffer_pool, input, weights, bias, config)
+    }
+
+    pub fn encode_max_pool_tensor(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        tensor: &GpuTensor,
+        config: &MaxPoolConfig,
+    ) -> Result<GpuTensor> {
+        self.ensure_same_context(tensor, "max_pool tensor")?;
+        self.max_pool
+            .encode(encoder, &self.context, &self.buffer_pool, tensor, config)
+    }
+
+    pub fn encode_add_tensors(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        lhs: &GpuTensor,
+        rhs: &GpuTensor,
+    ) -> Result<GpuTensor> {
+        self.ensure_same_context(lhs, "add lhs")?;
+        self.ensure_same_context(rhs, "add rhs")?;
+        anyhow::ensure!(
+            lhs.shape().dims() == rhs.shape().dims(),
+            "add tensors require identical shapes (lhs={:?}, rhs={:?})",
+            lhs.shape().dims(),
+            rhs.shape().dims()
+        );
+        self.add
+            .encode(encoder, &self.context, &self.buffer_pool, lhs, rhs)
+    }
+
+    pub fn encode_resize2x_tensor(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        tensor: &GpuTensor,
+    ) -> Result<GpuTensor> {
+        self.ensure_same_context(tensor, "resize tensor")?;
+        self.upsample2x
+            .encode(encoder, &self.context, &self.buffer_pool, tensor)
     }
 }

@@ -1,5 +1,10 @@
 /// Common test utilities and macros for CLI integration tests
-use std::{fs, io::Result, path::PathBuf};
+use std::{
+    fs,
+    io::Result,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 pub fn find_model_path() -> Option<PathBuf> {
     let candidates = vec![
@@ -20,10 +25,14 @@ pub fn find_fixture_image() -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
+// Cache fixture bytes so parallel test threads don't race to open the same file
+// (Windows Defender can block concurrent access to newly-accessed files).
+static FIXTURE_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+
 #[allow(dead_code)]
-pub fn copy_fixture_to(src: &PathBuf, dest: &PathBuf) -> Result<()> {
-    fs::copy(src, dest)?;
-    Ok(())
+pub fn copy_fixture_to(src: &PathBuf, dest: &Path) -> Result<()> {
+    let bytes = FIXTURE_BYTES.get_or_init(|| fs::read(src).expect("read fixture image"));
+    fs::write(dest, bytes)
 }
 
 /// Macro to set up common test environment with model, fixture, and temp directories.

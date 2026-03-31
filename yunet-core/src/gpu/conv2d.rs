@@ -1,6 +1,7 @@
 use super::activation::ActivationKind;
 use super::utils::{buffer_entry, compute_output_dim, create_uniform_buffer, uniform_entry};
 use crate::gpu::GpuTensor;
+use yunet_utils::create_gpu_pipeline;
 
 use anyhow::{Context, Result};
 use bytemuck::{Pod, Zeroable};
@@ -20,37 +21,18 @@ pub(super) struct Conv2dPipeline {
 
 impl Conv2dPipeline {
     pub(super) fn new(device: &wgpu::Device, pixels_per_thread: u32) -> Result<Self> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_conv2d_shader"),
-            source: wgpu::ShaderSource::Wgsl(CONV2D_WGSL.into()),
-        });
-
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_conv2d_bgl"),
-            entries: &[
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "conv2d",
+            CONV2D_WGSL,
+            [
                 buffer_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(1, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(2, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(3, wgpu::BufferBindingType::Storage { read_only: false }),
                 uniform_entry(4),
-            ],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_conv2d_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_conv2d_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
-
+            ]
+        );
         Ok(Self {
             pipeline,
             bind_group_layout,
@@ -58,8 +40,10 @@ impl Conv2dPipeline {
         })
     }
 
-    pub(super) fn execute(
+    /// Record the Conv2D dispatch into `encoder` without submitting.
+    pub(super) fn encode(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         context: &Arc<GpuContext>,
         pool: &Arc<GpuBufferPool>,
         input: &GpuTensor,
@@ -68,7 +52,6 @@ impl Conv2dPipeline {
         config: &Conv2dConfig,
     ) -> Result<GpuTensor> {
         let device = context.device();
-        let queue = context.queue();
         let uniforms = Conv2dUniforms::from(config);
         let uniform_buffer = create_uniform_buffer(device, "yunet_conv2d_uniforms", &uniforms);
         let output = GpuTensor::uninitialized_with_pool(
@@ -105,10 +88,6 @@ impl Conv2dPipeline {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yunet_conv2d_encoder"),
-        });
-
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_conv2d_pass"),
@@ -125,8 +104,25 @@ impl Conv2dPipeline {
             );
         }
 
-        queue.submit(Some(encoder.finish()));
+        Ok(output)
+    }
 
+    pub(super) fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
+        input: &GpuTensor,
+        weights: &GpuTensor,
+        bias: &GpuTensor,
+        config: &Conv2dConfig,
+    ) -> Result<GpuTensor> {
+        let mut encoder = context
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("yunet_conv2d_encoder"),
+            });
+        let output = self.encode(&mut encoder, context, pool, input, weights, bias, config)?;
+        context.queue().submit(Some(encoder.finish()));
         Ok(output)
     }
 }

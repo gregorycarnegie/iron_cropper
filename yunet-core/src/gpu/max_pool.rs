@@ -1,4 +1,5 @@
 use super::utils::{buffer_entry, compute_output_dim, create_uniform_buffer, uniform_entry};
+use yunet_utils::create_gpu_pipeline;
 
 use crate::gpu::GpuTensor;
 use anyhow::{Context, Result};
@@ -93,46 +94,32 @@ pub(super) struct MaxPoolPipeline {
 
 impl MaxPoolPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_max_pool_shader"),
-            source: wgpu::ShaderSource::Wgsl(super::MAX_POOL_WGSL.into()),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_max_pool_bgl"),
-            entries: &[
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "max_pool",
+            super::MAX_POOL_WGSL,
+            [
                 buffer_entry(0, wgpu::BufferBindingType::Storage { read_only: true }),
                 buffer_entry(1, wgpu::BufferBindingType::Storage { read_only: false }),
                 uniform_entry(2),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_max_pool_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_max_pool_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+            ]
+        );
         Ok(Self {
             pipeline,
             bind_group_layout,
         })
     }
 
-    pub(super) fn execute(
+    /// Record the max-pool dispatch into `encoder` without submitting.
+    pub(super) fn encode(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         context: &Arc<GpuContext>,
         pool: &Arc<GpuBufferPool>,
         tensor: &GpuTensor,
         config: &MaxPoolConfig,
     ) -> Result<GpuTensor> {
         let device = context.device();
-        let queue = context.queue();
         let output = GpuTensor::uninitialized_with_pool(
             context.clone(),
             Some(pool.clone()),
@@ -170,9 +157,6 @@ impl MaxPoolPipeline {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yunet_max_pool_encoder"),
-        });
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_max_pool_pass"),
@@ -187,7 +171,23 @@ impl MaxPoolPipeline {
             );
         }
 
-        queue.submit(Some(encoder.finish()));
+        Ok(output)
+    }
+
+    pub(super) fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        pool: &Arc<GpuBufferPool>,
+        tensor: &GpuTensor,
+        config: &MaxPoolConfig,
+    ) -> Result<GpuTensor> {
+        let mut encoder = context
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("yunet_max_pool_encoder"),
+            });
+        let output = self.encode(&mut encoder, context, pool, tensor, config)?;
+        context.queue().submit(Some(encoder.finish()));
         Ok(output)
     }
 }

@@ -204,6 +204,23 @@ impl GpuTensor {
         &self.inner.context
     }
 
+    /// Returns the size of the tensor's GPU buffer in bytes.
+    pub fn size_bytes(&self) -> u64 {
+        self.inner.size_bytes
+    }
+
+    /// Allocate an uninitialized tensor with the same shape, context, and pool as `self`.
+    pub fn uninitialized_like(&self, label: Option<&str>) -> Result<Self> {
+        let dims = self.shape().dims().to_vec();
+        let pool = self.inner.pool.clone();
+        Self::uninitialized_with_pool(self.context().clone(), pool, dims, label)
+    }
+
+    /// Record a GPU buffer copy from `self` into `dst` on the given encoder (no submit).
+    pub fn encode_copy_to(&self, encoder: &mut wgpu::CommandEncoder, dst: &GpuTensor) {
+        encoder.copy_buffer_to_buffer(self.buffer(), 0, dst.buffer(), 0, self.inner.size_bytes);
+    }
+
     /// Clone the tensor into a new GPU buffer so callers can keep the original immutable.
     pub fn duplicate(&self, label: Option<&str>) -> Result<Self> {
         let dims = self.shape().dims().to_vec();

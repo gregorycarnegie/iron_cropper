@@ -1,5 +1,6 @@
 use super::utils::{buffer_entry, create_uniform_buffer, div_ceil_uniform, uniform_entry};
 use crate::gpu::GpuTensor;
+use yunet_utils::create_gpu_pipeline;
 
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
@@ -27,46 +28,33 @@ pub(super) struct ActivationPipeline {
 
 impl ActivationPipeline {
     pub(super) fn new(device: &wgpu::Device) -> Result<Self> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_activation_shader"),
-            source: wgpu::ShaderSource::Wgsl(ACTIVATION_WGSL.into()),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("yunet_activation_bgl"),
-            entries: &[
+        let (pipeline, bind_group_layout) = create_gpu_pipeline!(
+            device,
+            "activation",
+            ACTIVATION_WGSL,
+            [
                 buffer_entry(0, wgpu::BufferBindingType::Storage { read_only: false }),
                 uniform_entry(1),
-            ],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("yunet_activation_pipeline_layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_activation_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: Some("main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            cache: None,
-        });
+            ]
+        );
         Ok(Self {
             pipeline,
             bind_group_layout,
         })
     }
 
-    pub(super) fn execute(
+    /// Record the activation dispatch into `encoder` without submitting.
+    pub(super) fn encode(
         &self,
+        encoder: &mut wgpu::CommandEncoder,
         context: &Arc<GpuContext>,
         tensor: &GpuTensor,
         kind: ActivationKind,
     ) -> Result<GpuTensor> {
         let device = context.device();
-        let queue = context.queue();
         let len = tensor.shape().elements();
-        let tensor_copy = tensor.duplicate(Some("yunet_activation_tensor_copy"))?;
+        let output = tensor.uninitialized_like(Some("yunet_activation_output"))?;
+        tensor.encode_copy_to(encoder, &output);
         let uniforms = ActivationUniforms {
             len: len as u32,
             mode: kind as u32,
@@ -78,7 +66,7 @@ impl ActivationPipeline {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: tensor_copy.buffer().as_entire_binding(),
+                    resource: output.buffer().as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -87,9 +75,6 @@ impl ActivationPipeline {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yunet_activation_encoder"),
-        });
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("yunet_activation_pass"),
@@ -104,8 +89,23 @@ impl ActivationPipeline {
             );
         }
 
-        queue.submit(Some(encoder.finish()));
-        Ok(tensor_copy)
+        Ok(output)
+    }
+
+    pub(super) fn execute(
+        &self,
+        context: &Arc<GpuContext>,
+        tensor: &GpuTensor,
+        kind: ActivationKind,
+    ) -> Result<GpuTensor> {
+        let mut encoder = context
+            .device()
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("yunet_activation_encoder"),
+            });
+        let output = self.encode(&mut encoder, context, tensor, kind)?;
+        context.queue().submit(Some(encoder.finish()));
+        Ok(output)
     }
 }
 
