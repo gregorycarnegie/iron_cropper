@@ -117,11 +117,12 @@ impl BatchNormPipeline {
         tensors: BatchNormBindings,
         config: &BatchNormConfig,
     ) -> Result<GpuTensor> {
-        let mut encoder = context
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("yunet_batch_norm_encoder"),
-            });
+        let mut encoder =
+            context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("yunet_batch_norm_encoder"),
+                });
         let output = self.encode(&mut encoder, context, tensors, config)?;
         context.queue().submit(Some(encoder.finish()));
         Ok(output)

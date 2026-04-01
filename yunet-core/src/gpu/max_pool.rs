@@ -181,11 +181,12 @@ impl MaxPoolPipeline {
         tensor: &GpuTensor,
         config: &MaxPoolConfig,
     ) -> Result<GpuTensor> {
-        let mut encoder = context
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("yunet_max_pool_encoder"),
-            });
+        let mut encoder =
+            context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("yunet_max_pool_encoder"),
+                });
         let output = self.encode(&mut encoder, context, pool, tensor, config)?;
         context.queue().submit(Some(encoder.finish()));
         Ok(output)

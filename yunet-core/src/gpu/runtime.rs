@@ -1,14 +1,14 @@
 use crate::gpu::graph::{
     self, BACKBONE_STAGES, DETECTION_HEADS, DetectionLevelOutputs, WeightProvider,
 };
-use bytemuck::cast_slice;
-use std::sync::mpsc;
-use wgpu::CommandEncoderDescriptor;
 use crate::gpu::onnx::OnnxInitializerMap;
 use crate::gpu::ops::GpuInferenceOps;
 use crate::gpu::tensor::GpuTensor;
 use crate::model::decode_yunet_outputs;
 use crate::preprocess::InputSize;
+use bytemuck::cast_slice;
+use std::sync::mpsc;
+use wgpu::CommandEncoderDescriptor;
 
 use anyhow::{Context, Result, anyhow};
 use std::{
@@ -125,13 +125,13 @@ impl GpuYuNet {
         // once. This eliminates ~53 individual queue.submit() calls (one per op)
         // and gives the GPU a full workload to pipeline, dramatically improving
         // utilisation vs the previous per-op-submit pattern.
-        let mut encoder = self
-            .ops
-            .context()
-            .device()
-            .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("yunet_inference"),
-            });
+        let mut encoder =
+            self.ops
+                .context()
+                .device()
+                .create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("yunet_inference"),
+                });
         let features = graph::encode_backbone_features(
             &mut encoder,
             &self.ops,
@@ -141,10 +141,7 @@ impl GpuYuNet {
         )?;
         let levels =
             graph::encode_neck_and_heads(&mut encoder, &self.ops, &weight_provider, &features)?;
-        self.ops
-            .context()
-            .queue()
-            .submit(Some(encoder.finish()));
+        self.ops.context().queue().submit(Some(encoder.finish()));
 
         let outputs = build_decode_tensors(&levels)?;
         decode_yunet_outputs(&outputs, self.input_size)
@@ -216,7 +213,12 @@ fn build_decode_tensors(levels: &[DetectionLevelOutputs; 3]) -> Result<Vec<Tenso
             (&level.kps, 10usize, false),
         ] {
             gpu_tensors.push(tensor);
-            meta.push(BranchMeta { height, width, channels, apply_sigmoid });
+            meta.push(BranchMeta {
+                height,
+                width,
+                channels,
+                apply_sigmoid,
+            });
         }
     }
 

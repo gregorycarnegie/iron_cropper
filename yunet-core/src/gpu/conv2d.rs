@@ -41,6 +41,7 @@ impl Conv2dPipeline {
     }
 
     /// Record the Conv2D dispatch into `encoder` without submitting.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn encode(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -116,11 +117,12 @@ impl Conv2dPipeline {
         bias: &GpuTensor,
         config: &Conv2dConfig,
     ) -> Result<GpuTensor> {
-        let mut encoder = context
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("yunet_conv2d_encoder"),
-            });
+        let mut encoder =
+            context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("yunet_conv2d_encoder"),
+                });
         let output = self.encode(&mut encoder, context, pool, input, weights, bias, config)?;
         context.queue().submit(Some(encoder.finish()));
         Ok(output)

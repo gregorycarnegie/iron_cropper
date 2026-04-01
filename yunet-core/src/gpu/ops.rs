@@ -279,8 +279,15 @@ impl GpuInferenceOps {
         self.ensure_same_context(input, "conv2d input")?;
         self.ensure_same_context(weights, "conv2d weights")?;
         self.ensure_same_context(bias, "conv2d bias")?;
-        self.conv2d
-            .encode(encoder, &self.context, &self.buffer_pool, input, weights, bias, config)
+        self.conv2d.encode(
+            encoder,
+            &self.context,
+            &self.buffer_pool,
+            input,
+            weights,
+            bias,
+            config,
+        )
     }
 
     pub fn encode_max_pool_tensor(

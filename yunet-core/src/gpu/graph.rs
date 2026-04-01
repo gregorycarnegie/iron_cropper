@@ -410,17 +410,20 @@ pub fn encode_neck_and_heads<W: WeightProvider>(
     let c5 = features[4].clone();
 
     let p5_raw = encode_stage_blocks(encoder, ops, weights, &c5, &NECK_BLOCKS[2..3])?;
-    let level2 = encode_detection_level(encoder, ops, weights, p5_raw.clone(), &DETECTION_HEADS[2])?;
+    let level2 =
+        encode_detection_level(encoder, ops, weights, p5_raw.clone(), &DETECTION_HEADS[2])?;
 
     let up_p5 = ops.encode_resize2x_tensor(encoder, &p5_raw)?;
     let merged_p4_input = ops.encode_add_tensors(encoder, &up_p5, &c4)?;
     let p4_raw = encode_stage_blocks(encoder, ops, weights, &merged_p4_input, &NECK_BLOCKS[1..2])?;
-    let level1 = encode_detection_level(encoder, ops, weights, p4_raw.clone(), &DETECTION_HEADS[1])?;
+    let level1 =
+        encode_detection_level(encoder, ops, weights, p4_raw.clone(), &DETECTION_HEADS[1])?;
 
     let up_p4 = ops.encode_resize2x_tensor(encoder, &p4_raw)?;
     let merged_p3_input = ops.encode_add_tensors(encoder, &up_p4, &c3)?;
     let p3_raw = encode_stage_blocks(encoder, ops, weights, &merged_p3_input, &NECK_BLOCKS[0..1])?;
-    let level0 = encode_detection_level(encoder, ops, weights, p3_raw.clone(), &DETECTION_HEADS[0])?;
+    let level0 =
+        encode_detection_level(encoder, ops, weights, p3_raw.clone(), &DETECTION_HEADS[0])?;
 
     Ok([level0, level1, level2])
 }
@@ -528,7 +531,8 @@ fn encode_head_branch<W: WeightProvider>(
         SpatialDims::new(0, 0),
         Conv2dOptions::new(1, None),
     )?;
-    let reduced = ops.encode_conv2d_tensor(encoder, input, &point_weight, &point_bias, &point_cfg)?;
+    let reduced =
+        ops.encode_conv2d_tensor(encoder, input, &point_weight, &point_bias, &point_cfg)?;
 
     let depth_out = depth_weight.shape().dims()[0] as u32;
     anyhow::ensure!(
@@ -602,6 +606,7 @@ fn run_head_branch<W: WeightProvider>(
     ops.conv2d_tensor(&reduced, &depth_weight, &depth_bias, &depth_cfg)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn encode_stage_block<W: WeightProvider>(
     encoder: &mut wgpu::CommandEncoder,
     ops: &GpuInferenceOps,

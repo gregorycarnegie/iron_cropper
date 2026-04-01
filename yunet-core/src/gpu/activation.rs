@@ -98,11 +98,12 @@ impl ActivationPipeline {
         tensor: &GpuTensor,
         kind: ActivationKind,
     ) -> Result<GpuTensor> {
-        let mut encoder = context
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("yunet_activation_encoder"),
-            });
+        let mut encoder =
+            context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("yunet_activation_encoder"),
+                });
         let output = self.encode(&mut encoder, context, tensor, kind)?;
         context.queue().submit(Some(encoder.finish()));
         Ok(output)
