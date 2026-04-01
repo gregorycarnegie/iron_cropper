@@ -2,6 +2,10 @@
 
 ## Project TODO List: YuNet Face Detection
 
+### Release Maintenance
+
+- [x] Align GitHub CI branch triggers with `master` for the `1.0.5-rc2` release path.
+
 This document outlines the development plan for the YuNet face detection project, broken down into phases.
 
 ### Phase 0: Workspace Bootstrap
