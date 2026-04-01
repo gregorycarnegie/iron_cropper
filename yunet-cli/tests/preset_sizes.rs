@@ -19,7 +19,7 @@ macro_rules! preset_test {
                 ["--crop", "--preset", $preset]
             );
 
-            assert_cli_success!(output, concat!("CLI should succeed with ", $display_name, " preset"));
+            assert_cli_success!(output, "CLI should succeed with preset");
 
             let output_files = verify_output_files!(output_dir, "png");
             assert!(!output_files.is_empty(), "Should have output files");
