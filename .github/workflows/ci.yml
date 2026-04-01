@@ -104,6 +104,7 @@ jobs:
       shell: pwsh
       run: |
         choco install pkgconfiglite --no-progress -y
+        echo "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Install dav1d (vcpkg)
       shell: pwsh
