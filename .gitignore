@@ -13,6 +13,7 @@
 !/screenshots/*.webp
 !/screenshots/*.mp4
 *.onnx
+.codex
 *.log
 /cache
 nul
