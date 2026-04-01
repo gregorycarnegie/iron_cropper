@@ -72,6 +72,11 @@ fn collect_parity_cases() -> anyhow::Result<Vec<(std::path::PathBuf, FixtureFile
     let mut counts: HashMap<Category, usize> = HashMap::new();
     let mut cases = Vec::new();
 
+    if !Path::new("fixtures/images").is_dir() {
+        eprintln!("skipping: fixtures/images not available in this environment");
+        return Ok(vec![]);
+    }
+
     let mut entries: Vec<_> = fs::read_dir("fixtures/images")?
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.path().is_file())

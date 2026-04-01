@@ -47,6 +47,10 @@ fn detect_annotate_matches_fixture_when_no_detections() -> Result<(), Box<dyn Er
     let Some(model) = ensure_model_path() else {
         return Ok(());
     };
+    if !fixtures_available() {
+        eprintln!("skipping: fixture images not available in this environment");
+        return Ok(());
+    }
     let fixture_image = fixture_path("images/test_pattern.png")?;
 
     let work_dir = tempdir()?;
@@ -91,6 +95,10 @@ fn cli_detections_match_opencv_parity_samples() -> Result<(), Box<dyn Error>> {
     let Some(model) = ensure_model_path() else {
         return Ok(());
     };
+    if !fixtures_available() {
+        eprintln!("skipping: fixture images not available in this environment");
+        return Ok(());
+    }
     let cases = [
         ("images/006.jpg", "opencv/006.json"),
         ("images/190_g.jpg", "opencv/190_g.json"),
@@ -140,6 +148,10 @@ fn cli_detections_match_opencv_parity_samples() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn fixtures_available() -> bool {
+    yunet_utils::fixture_path("images/006.jpg").is_ok()
 }
 
 fn ensure_model_path() -> Option<PathBuf> {
@@ -252,6 +264,10 @@ fn cli_json_output_matches_snapshot() -> Result<(), Box<dyn Error>> {
     let Some(model) = ensure_model_path() else {
         return Ok(());
     };
+    if !fixtures_available() {
+        eprintln!("skipping: fixture images not available in this environment");
+        return Ok(());
+    }
 
     let fixture_image = fixture_path("images/006.jpg")?;
 
