@@ -15,6 +15,9 @@ jobs:
   build:
     name: Build and Test (Windows)
     runs-on: windows-latest
+    env:
+      PKG_CONFIG_PATH: C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
+      PKG_CONFIG_ALL_STATIC: "1"
 
     steps:
     - uses: actions/checkout@v4
@@ -96,6 +99,20 @@ jobs:
 
     - name: Rust Cache
       uses: swatinem/rust-cache@v2
+
+    - name: Install pkg-config
+      shell: pwsh
+      run: |
+        choco install pkgconfiglite --no-progress -y
+
+    - name: Install dav1d (vcpkg)
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "C:\vcpkg\vcpkg.exe")) {
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          & C:\vcpkg\bootstrap-vcpkg.bat
+        }
+        & C:\vcpkg\vcpkg.exe install dav1d:x64-windows-static
 
     - name: Check
       run: cargo check --workspace
