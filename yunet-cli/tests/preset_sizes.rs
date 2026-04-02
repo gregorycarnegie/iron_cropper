@@ -9,8 +9,7 @@ macro_rules! preset_test {
     ($test_name:ident, $preset:literal, $width:expr, $height:expr, $display_name:literal) => {
         #[test]
         fn $test_name() {
-            let (model, _fixture, _temp_dir, input_path, output_dir) =
-                cli_test_setup!(load_image);
+            let (model, _fixture, _temp_dir, input_path, output_dir) = cli_test_setup!(load_image);
 
             let output = run_cli!(
                 input_path,
@@ -76,9 +75,17 @@ fn test_all_presets_succeed() {
             ["--crop", "--preset", preset]
         );
 
-        assert!(output.status.success(), "Preset '{}' should succeed", preset);
+        assert!(
+            output.status.success(),
+            "Preset '{}' should succeed",
+            preset
+        );
 
         let output_files = verify_output_files!(output_dir, "png");
-        assert!(!output_files.is_empty(), "Preset '{}' should produce output", preset);
+        assert!(
+            !output_files.is_empty(),
+            "Preset '{}' should produce output",
+            preset
+        );
     }
 }

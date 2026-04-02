@@ -77,7 +77,10 @@ fn test_enhancement_preset_professional() {
         ]
     );
 
-    assert_cli_success!(output, "CLI should succeed with professional enhancement preset");
+    assert_cli_success!(
+        output,
+        "CLI should succeed with professional enhancement preset"
+    );
     let output_files = verify_output_files!(output_dir, "png");
     assert!(!output_files.is_empty(), "Should produce enhanced output");
 }
@@ -111,7 +114,10 @@ fn test_individual_enhancement_flags() {
         ]
     );
 
-    assert_cli_success!(output, "CLI should succeed with individual enhancement flags");
+    assert_cli_success!(
+        output,
+        "CLI should succeed with individual enhancement flags"
+    );
     let output_files = verify_output_files!(output_dir, "png");
     assert!(!output_files.is_empty(), "Should produce enhanced output");
 }
