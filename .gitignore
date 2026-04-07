@@ -1,23 +1,28 @@
-/target
-/models/*
+# Rust / Cargo
+target/
+
+# Models
+models/
 !/models/README.md
-/fixtures/*
+*.onnx
+
+# Fixtures
+fixtures/
 !/fixtures/README.md
 !/fixtures/images/**
 !/fixtures/opencv/**
-/screenshots/*
-!/screenshots/.gitkeep
-!/screenshots/README.md
-!/screenshots/*.png
-!/screenshots/*.gif
-!/screenshots/*.webp
-!/screenshots/*.mp4
-*.onnx
+
+# IDEs / Editors
+.claude/
 .codex
+.idea/
+
+# Logs and Caches
 *.log
-/cache
+cache/
+
+# Misc / Local
+benchmarks/
 nul
-/benchmarks
-/tests
-/scripts
-/.idea
+scripts/
+tests/
