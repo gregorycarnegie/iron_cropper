@@ -32,9 +32,9 @@
     <!-- WixUI_Mondo: welcome → license → components → install → finish -->
     <ui:WixUI Id="WixUI_Mondo" />
 
-    <Condition Message="Choose either 'Current user PATH' or 'All users PATH', not both.">
-      NOT ((&amp;UserPathFeature=3) AND (&amp;SystemPathFeature=3))
-    </Condition>
+    <Launch
+      Condition="NOT ((&amp;UserPathFeature=3) AND (&amp;SystemPathFeature=3))"
+      Message="Choose either 'Current user PATH' or 'All users PATH', not both." />
 
     <!-- ── Install directory ───────────────────────────────────────────────── -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -122,7 +122,7 @@
       Description="Create a desktop shortcut for Face Crop Studio."
       Level="1"
       AllowAdvertise="no"
-      Absent="allow">
+      AllowAbsent="yes">
       <ComponentRef Id="DesktopShortcutComponent" />
     </Feature>
 
@@ -132,7 +132,7 @@
       Description="Adds the install directory to the current user's PATH environment variable."
       Level="2"
       AllowAdvertise="no"
-      Absent="allow">
+      AllowAbsent="yes">
       <ComponentRef Id="UserPathComponent" />
     </Feature>
 
@@ -142,7 +142,7 @@
       Description="Adds the install directory to the system PATH environment variable."
       Level="2"
       AllowAdvertise="no"
-      Absent="allow">
+      AllowAbsent="yes">
       <ComponentRef Id="SystemPathComponent" />
     </Feature>
 
