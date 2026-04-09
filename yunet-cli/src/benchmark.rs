@@ -139,6 +139,25 @@ fn duration_to_ms(duration: Duration) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{DynamicImage, GenericImageView, RgbaImage};
+    use tempfile::tempdir;
+    use yunet_core::{CpuPreprocessor, InputSize};
+
+    fn benchmark_config() -> PreprocessConfig {
+        PreprocessConfig {
+            input_size: InputSize::new(8, 8),
+            ..Default::default()
+        }
+    }
+
+    fn write_image(path: &std::path::Path) {
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            16,
+            16,
+            image::Rgba([32, 64, 96, 255]),
+        ));
+        image.save(path).unwrap();
+    }
 
     #[test]
     fn duration_to_ms_converts_correctly() {
@@ -178,5 +197,86 @@ mod tests {
         };
         let updated = summary.with_label("new");
         assert_eq!(updated.label, "new");
+    }
+
+    #[test]
+    fn load_benchmark_images_reads_all_sources() {
+        let dir = tempdir().unwrap();
+        let image_a = dir.path().join("a.png");
+        let image_b = dir.path().join("b.png");
+        write_image(&image_a);
+        write_image(&image_b);
+        let items = vec![
+            ProcessingItem {
+                source: image_a,
+                output_override: None,
+                mapping_row: None,
+            },
+            ProcessingItem {
+                source: image_b,
+                output_override: None,
+                mapping_row: None,
+            },
+        ];
+
+        let images = load_benchmark_images(&items).unwrap();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].dimensions(), (16, 16));
+        assert_eq!(images[1].dimensions(), (16, 16));
+    }
+
+    #[test]
+    fn load_benchmark_images_adds_path_context_on_error() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("missing.png");
+        let items = vec![ProcessingItem {
+            source: missing.clone(),
+            output_override: None,
+            mapping_row: None,
+        }];
+
+        let err = load_benchmark_images(&items).unwrap_err().to_string();
+        assert!(err.contains("failed to load benchmark image"));
+        assert!(err.contains("missing.png"));
+    }
+
+    #[test]
+    fn benchmark_preprocessor_records_samples_and_iterations() {
+        let images = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(16, 16, image::Rgba([1, 2, 3, 255]))),
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(16, 16, image::Rgba([4, 5, 6, 255]))),
+        ];
+        let summary =
+            benchmark_preprocessor("cpu", &CpuPreprocessor, &images, &benchmark_config(), 2)
+                .unwrap();
+
+        assert_eq!(summary.label, "cpu");
+        assert_eq!(summary.samples, 2);
+        assert_eq!(summary.iterations_per_sample, 2);
+        assert!(summary.total_ms >= 0.0);
+        assert!(summary.avg_ms >= 0.0);
+        assert!(summary.max_ms >= summary.min_ms);
+    }
+
+    #[test]
+    fn run_preprocess_benchmark_requires_inputs() {
+        let err = run_preprocess_benchmark(&[], &benchmark_config(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("requires at least one input image"));
+    }
+
+    #[test]
+    fn run_preprocess_benchmark_succeeds_without_gpu_context() {
+        let dir = tempdir().unwrap();
+        let image = dir.path().join("bench.png");
+        write_image(&image);
+        let items = vec![ProcessingItem {
+            source: image,
+            output_override: None,
+            mapping_row: None,
+        }];
+
+        run_preprocess_benchmark(&items, &benchmark_config(), None).unwrap();
     }
 }

@@ -213,16 +213,89 @@ fn parse_metadata_tags_args(entries: &[String]) -> BTreeMap<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        env,
+        fs,
+        sync::{Mutex, OnceLock},
+    };
+
     use clap::Parser;
+    use tempfile::tempdir;
 
     use super::*;
     use crate::args::DetectArgs;
+
+    fn cwd_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     // Helper: parse DetectArgs from a slice of args (prepend binary name).
     fn parse_args(args: &[&str]) -> DetectArgs {
         let mut full = vec!["yunet-cli"];
         full.extend_from_slice(args);
         DetectArgs::try_parse_from(full).expect("valid args")
+    }
+
+    #[test]
+    fn load_settings_reads_explicit_config_path() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut expected = AppSettings::default();
+        expected.crop.output_width = 777;
+        expected.save_to_path(&path).unwrap();
+
+        let loaded = load_settings(Some(&path)).unwrap();
+        assert_eq!(loaded.crop.output_width, 777);
+    }
+
+    #[test]
+    fn load_settings_returns_defaults_when_default_config_is_missing() {
+        let _lock = cwd_lock().lock().unwrap();
+        let original_dir = env::current_dir().unwrap();
+        let dir = tempdir().unwrap();
+        env::set_current_dir(dir.path()).unwrap();
+
+        let loaded = load_settings(None).unwrap();
+
+        env::set_current_dir(original_dir).unwrap();
+        assert_eq!(loaded.crop.output_width, AppSettings::default().crop.output_width);
+    }
+
+    #[test]
+    fn load_settings_reads_default_config_from_current_directory() {
+        let _lock = cwd_lock().lock().unwrap();
+        let original_dir = env::current_dir().unwrap();
+        let dir = tempdir().unwrap();
+        let default_path = dir.path().join("config").join("gui_settings.json");
+        fs::create_dir_all(default_path.parent().unwrap()).unwrap();
+
+        let mut expected = AppSettings::default();
+        expected.crop.output_height = 654;
+        expected.save_to_path(&default_path).unwrap();
+
+        env::set_current_dir(dir.path()).unwrap();
+        let loaded = load_settings(None).unwrap();
+        env::set_current_dir(original_dir).unwrap();
+
+        assert_eq!(loaded.crop.output_height, 654);
+    }
+
+    #[test]
+    fn load_settings_surfaces_context_when_default_config_is_invalid() {
+        let _lock = cwd_lock().lock().unwrap();
+        let original_dir = env::current_dir().unwrap();
+        let dir = tempdir().unwrap();
+        let default_path = dir.path().join("config").join("gui_settings.json");
+        fs::create_dir_all(default_path.parent().unwrap()).unwrap();
+        fs::write(&default_path, "{not-json").unwrap();
+
+        env::set_current_dir(dir.path()).unwrap();
+        let err = load_settings(None).unwrap_err().to_string();
+        env::set_current_dir(original_dir).unwrap();
+
+        assert!(err.contains("failed to load default settings"));
+        assert!(err.contains("gui_settings.json"));
     }
 
     // --- parse_positioning_mode ---
@@ -411,6 +484,113 @@ mod tests {
             settings.crop.quality_rules.min_quality,
             Some(yunet_utils::Quality::High)
         );
+    }
+
+    #[test]
+    fn override_applies_general_runtime_and_export_settings() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&[
+            "--input",
+            "x.jpg",
+            "--gpu-inference",
+            "--gpu-env",
+            "ignore",
+            "--telemetry",
+            "--width",
+            "320",
+            "--height",
+            "240",
+            "--resize-quality",
+            "speed",
+            "--preset",
+            "linkedin",
+            "--crop-fill-color",
+            "#112233",
+            "--output-format",
+            "JPG",
+            "--png-compression",
+            "best",
+            "--webp-quality",
+            "77",
+            "--auto-detect-format=true",
+            "--auto-select-best=true",
+            "--skip-no-high-quality=true",
+            "--quality-suffix=false",
+            "--metadata-mode",
+            "strip",
+            "--metadata-include-crop=false",
+            "--metadata-include-quality=true",
+            "--metadata-tag",
+            "owner=greg",
+        ]);
+
+        apply_cli_overrides(&mut settings, &args);
+
+        assert!(settings.gpu.inference);
+        assert!(!settings.gpu.respect_env);
+        assert!(settings.telemetry.enabled);
+        assert_eq!(settings.input.width, 320);
+        assert_eq!(settings.input.height, 240);
+        assert_eq!(settings.input.resize_quality, yunet_utils::config::ResizeQuality::Speed);
+        assert_eq!(settings.crop.preset, "linkedin");
+        assert_eq!(settings.crop.output_width, 400);
+        assert_eq!(settings.crop.output_height, 400);
+        assert_eq!(settings.crop.fill_color.red, 0x11);
+        assert_eq!(settings.crop.output_format, "jpg");
+        assert_eq!(settings.crop.png_compression, "best");
+        assert_eq!(settings.crop.webp_quality, 77);
+        assert!(settings.crop.auto_detect_format);
+        assert!(settings.crop.quality_rules.auto_select_best_face);
+        assert!(settings.crop.quality_rules.auto_skip_no_high_quality);
+        assert!(!settings.crop.quality_rules.quality_suffix);
+        assert_eq!(settings.crop.metadata.mode, MetadataMode::Strip);
+        assert!(!settings.crop.metadata.include_crop_settings);
+        assert!(settings.crop.metadata.include_quality_metrics);
+        assert_eq!(
+            settings.crop.metadata.custom_tags.get("owner").map(String::as_str),
+            Some("greg")
+        );
+    }
+
+    #[test]
+    fn override_invalid_values_leave_existing_settings_unchanged() {
+        let mut settings = AppSettings::default();
+        settings.crop.fill_color.red = 9;
+        settings.crop.metadata.mode = MetadataMode::Preserve;
+        settings.crop.quality_rules.min_quality = Some(Quality::Low);
+        let args = parse_args(&[
+            "--input",
+            "x.jpg",
+            "--crop-fill-color",
+            "not-a-color",
+            "--min-quality",
+            "bogus",
+            "--metadata-mode",
+            "bogus",
+            "--telemetry-level",
+            "   ",
+        ]);
+
+        apply_cli_overrides(&mut settings, &args);
+
+        assert_eq!(settings.crop.fill_color.red, 9);
+        assert_eq!(settings.crop.metadata.mode, MetadataMode::Preserve);
+        assert_eq!(settings.crop.quality_rules.min_quality, Some(Quality::Low));
+        assert_eq!(settings.telemetry.level, AppSettings::default().telemetry.level);
+    }
+
+    #[test]
+    fn override_custom_preset_does_not_replace_output_dimensions() {
+        let mut settings = AppSettings::default();
+        settings.crop.output_width = 321;
+        settings.crop.output_height = 654;
+        let args = parse_args(&["--input", "x.jpg", "--preset", "custom"]);
+
+        apply_cli_overrides(&mut settings, &args);
+
+        assert_eq!(settings.crop.preset, "custom");
+        assert_eq!(settings.crop.output_width, 321);
+        assert_eq!(settings.crop.output_height, 654);
     }
 
     // --- build_core_crop_settings ---

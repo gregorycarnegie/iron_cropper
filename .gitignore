@@ -26,3 +26,8 @@ benchmarks/
 nul
 scripts/
 tests/
+
+# Agents
+CLAUDE.md
+AGENTS.md
+GEMINI.md

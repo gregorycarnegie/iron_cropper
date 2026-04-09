@@ -84,3 +84,70 @@ fn parse_metadata_tags(text: &str) -> BTreeMap<String, String> {
     }
     map
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_basic_key_value_pairs() {
+        let result = parse_metadata_tags("author=Alice\ntitle=Portrait");
+        assert_eq!(result["author"], "Alice");
+        assert_eq!(result["title"], "Portrait");
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn trims_whitespace_around_key_and_value() {
+        let result = parse_metadata_tags("  author  =  Alice  ");
+        assert_eq!(result["author"], "Alice");
+    }
+
+    #[test]
+    fn skips_empty_lines() {
+        let result = parse_metadata_tags("\n\nauthor=Alice\n\n");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result["author"], "Alice");
+    }
+
+    #[test]
+    fn skips_lines_without_equals() {
+        let result = parse_metadata_tags("not_a_pair\nauthor=Alice");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result["author"], "Alice");
+    }
+
+    #[test]
+    fn skips_lines_with_empty_key() {
+        let result = parse_metadata_tags("=no_key\nauthor=Alice");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result["author"], "Alice");
+    }
+
+    #[test]
+    fn last_value_wins_for_duplicate_keys() {
+        let result = parse_metadata_tags("author=Alice\nauthor=Bob");
+        assert_eq!(result["author"], "Bob");
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn value_containing_equals_is_preserved() {
+        // Only the first '=' is the delimiter; the rest is part of the value.
+        let result = parse_metadata_tags("url=https://example.com?a=1&b=2");
+        assert_eq!(result["url"], "https://example.com?a=1&b=2");
+    }
+
+    #[test]
+    fn empty_input_returns_empty_map() {
+        assert!(parse_metadata_tags("").is_empty());
+        assert!(parse_metadata_tags("   \n  \n  ").is_empty());
+    }
+
+    #[test]
+    fn result_is_sorted_by_key() {
+        let result = parse_metadata_tags("zebra=last\nalpha=first\nmiddle=mid");
+        let keys: Vec<&str> = result.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["alpha", "middle", "zebra"]);
+    }
+}

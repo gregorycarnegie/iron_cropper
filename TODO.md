@@ -32,6 +32,7 @@
 - [x] `yunet-utils/src/gpu/buffer_pool.rs` (80%) — cover `available()` and `Debug` impl.
 - [x] `yunet-utils/src/gpu/shape_mask.rs` (67%) — cover `Rectangle` variant early return (`Ok(None)`).
 - [x] `yunet-utils/src/gpu/red_eye.rs` (33%) — cover zero-pixel image early return path.
+- [x] `yunet-cli` coverage pass (ignoring `webcam.rs`) — add direct unit and integration tests for config loading, preprocess benchmarking, mapping input handling, crop/export edge cases, and main CLI control-flow branches.
 
 This document outlines the development plan for the YuNet face detection project, broken down into phases.
 

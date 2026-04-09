@@ -316,6 +316,16 @@ mod tests {
     }
 
     #[test]
+    fn collect_images_returns_single_file_when_input_is_a_file() {
+        let dir = tempdir().unwrap();
+        let image = dir.path().join("single.jpeg");
+        write_file(&image);
+
+        let images = collect_images(&image).unwrap();
+        assert_eq!(images, vec![image]);
+    }
+
+    #[test]
     fn collect_standard_targets_errors_when_directory_has_no_images() {
         let dir = tempdir().unwrap();
         write_file(&dir.path().join("notes.txt"));
@@ -346,6 +356,27 @@ mod tests {
             .to_string();
 
         assert!(err.contains("--mapping-source-col is required"));
+    }
+
+    #[test]
+    fn collect_mapping_targets_requires_output_column() {
+        let dir = tempdir().unwrap();
+        let mapping_path = dir.path().join("mapping.csv");
+        write_mapping(&mapping_path, "source,output\nimg.jpg,out\n");
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+        ]);
+
+        let err = collect_mapping_targets(&mapping_path, &args)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("--mapping-output-col is required"));
     }
 
     #[test]
@@ -456,6 +487,82 @@ mod tests {
     }
 
     #[test]
+    fn collect_mapping_targets_supports_explicit_text_format_and_delimiter() {
+        let dir = tempdir().unwrap();
+        let mapping_dir = dir.path().join("maps");
+        let mapping_path = mapping_dir.join("mapping.txt");
+        let image = mapping_dir.join("semi.jpg");
+        write_file(&image);
+        write_mapping(&mapping_path, "source;output\nsemi.jpg;out-name\n");
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+            "--mapping-format",
+            "text",
+            "--mapping-delimiter",
+            ";",
+        ]);
+
+        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_same_existing_path(&items[0].source, &image);
+        assert_eq!(items[0].output_override, Some(PathBuf::from("out-name")));
+    }
+
+    #[test]
+    fn collect_mapping_targets_errors_when_mapping_has_no_usable_rows() {
+        let dir = tempdir().unwrap();
+        let mapping_path = dir.path().join("mapping.csv");
+        write_mapping(&mapping_path, "source,output\n");
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let err = collect_mapping_targets(&mapping_path, &args)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("no usable rows found"));
+    }
+
+    #[test]
+    fn collect_mapping_targets_errors_when_every_row_is_filtered_out() {
+        let dir = tempdir().unwrap();
+        let mapping_dir = dir.path().join("maps");
+        let mapping_path = mapping_dir.join("mapping.csv");
+        write_mapping(&mapping_path, "source,output\nmissing.jpg,out\n");
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let err = collect_mapping_targets(&mapping_path, &args)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("did not produce any usable rows"));
+    }
+
+    #[test]
     fn parse_mapping_format_token_accepts_aliases() {
         assert_eq!(
             parse_mapping_format_token("csv").unwrap(),
@@ -515,5 +622,13 @@ mod tests {
             output,
             dir.path().join("gallery").join("portrait_face3.png")
         );
+    }
+
+    #[test]
+    fn resolve_override_output_path_falls_back_to_default_name_when_override_is_sanitized_away() {
+        let dir = tempdir().unwrap();
+        let output = resolve_override_output_path(dir.path(), Path::new("../../"), "jpg", 0, false);
+
+        assert_eq!(output, dir.path().join("output.jpg"));
     }
 }

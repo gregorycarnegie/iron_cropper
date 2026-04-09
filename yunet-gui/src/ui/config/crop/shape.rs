@@ -496,4 +496,40 @@ mod tests {
             polygon_chamfer_size_max_pct(sides)
         );
     }
+
+    #[test]
+    fn polygon_corner_radius_max_increases_with_more_sides() {
+        // formula: 0.5 * cos(π/sides) — cos(π/sides) grows toward cos(0)=1 as sides → ∞
+        let r3 = polygon_corner_radius_max_pct(3);
+        let r6 = polygon_corner_radius_max_pct(6);
+        let r12 = polygon_corner_radius_max_pct(12);
+        assert!(r3 < r6, "hexagon should allow larger radius than triangle");
+        assert!(r6 < r12, "12-gon should allow larger radius than hexagon");
+    }
+
+    #[test]
+    fn polygon_chamfer_size_max_increases_with_more_sides() {
+        // formula: 0.5 * sin(π/sides) — sin(π/sides) → 0 as sides → ∞, so it DECREASES
+        let c3 = polygon_chamfer_size_max_pct(3);
+        let c6 = polygon_chamfer_size_max_pct(6);
+        let c12 = polygon_chamfer_size_max_pct(12);
+        assert!(c3 > c6, "triangle should allow larger chamfer than hexagon");
+        assert!(c6 > c12, "hexagon should allow larger chamfer than 12-gon");
+    }
+
+    #[test]
+    fn polygon_display_max_is_max_pct_scaled_by_100() {
+        for sides in [3, 4, 5, 6, 8, 12] {
+            let expected_radius = polygon_corner_radius_max_pct(sides) * 100.0;
+            let expected_chamfer = polygon_chamfer_size_max_pct(sides) * 100.0;
+            assert!(
+                (polygon_corner_radius_display_max(sides) - expected_radius).abs() < 1e-5,
+                "display_max mismatch for radius at sides={sides}"
+            );
+            assert!(
+                (polygon_chamfer_size_display_max(sides) - expected_chamfer).abs() < 1e-5,
+                "display_max mismatch for chamfer at sides={sides}"
+            );
+        }
+    }
 }

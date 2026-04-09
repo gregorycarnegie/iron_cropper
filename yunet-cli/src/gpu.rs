@@ -223,6 +223,16 @@ mod tests {
         s
     }
 
+    fn manual_runtime(status: GpuStatusIndicator) -> CliGpuRuntime {
+        CliGpuRuntime {
+            context: None,
+            pool: None,
+            status,
+            enhancer: None,
+            cropper: None,
+        }
+    }
+
     // --- log_gpu_status: smoke-test each GpuStatusMode variant ---
 
     #[test]
@@ -244,6 +254,35 @@ mod tests {
         let status = GpuStatusIndicator::fallback("no reason", None, None);
         log_gpu_status(&status, None);
         assert_eq!(status.mode, GpuStatusMode::Fallback);
+    }
+
+    #[test]
+    fn log_gpu_status_pending_does_not_panic() {
+        let status = GpuStatusIndicator::pending();
+        log_gpu_status(&status, None);
+        assert_eq!(status.mode, GpuStatusMode::Pending);
+    }
+
+    #[test]
+    fn log_gpu_status_available_without_pool_does_not_panic() {
+        let status = GpuStatusIndicator::available(
+            "UnitTest GPU",
+            "Vulkan",
+            Some("driver".to_string()),
+            Some(0x1234),
+            Some(0xabcd),
+        );
+        log_gpu_status(&status, None);
+        assert_eq!(status.mode, GpuStatusMode::Available);
+    }
+
+    #[test]
+    fn runtime_accessors_return_expected_state() {
+        let runtime = manual_runtime(GpuStatusIndicator::pending());
+        assert!(runtime.pool().is_none());
+        assert_eq!(runtime.status().mode, GpuStatusMode::Pending);
+        runtime.log_pool_state();
+        runtime.log_status();
     }
 
     // --- CliGpuRuntime methods with GPU disabled ---

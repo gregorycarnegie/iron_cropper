@@ -117,3 +117,63 @@ pub fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettin
 
     Some(base)
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn parse_args(args: &[&str]) -> DetectArgs {
+        let mut full = vec!["yunet-cli"];
+        full.extend_from_slice(args);
+        DetectArgs::try_parse_from(full).unwrap()
+    }
+
+    #[test]
+    fn build_enhancement_settings_returns_none_when_disabled() {
+        let args = parse_args(&["--input", "input.jpg"]);
+        assert!(build_enhancement_settings(&args).is_none());
+    }
+
+    #[test]
+    fn build_enhancement_settings_uses_defaults_for_unknown_preset() {
+        let args = parse_args(&[
+            "--input",
+            "input.jpg",
+            "--enhance",
+            "true",
+            "--enhancement-preset",
+            "unknown",
+        ]);
+
+        let settings = build_enhancement_settings(&args).unwrap();
+        assert_eq!(settings.contrast, EnhancementSettings::default().contrast);
+        assert_eq!(settings.unsharp_amount, EnhancementSettings::default().unsharp_amount);
+    }
+
+    #[test]
+    fn build_enhancement_settings_applies_remaining_overrides() {
+        let args = parse_args(&[
+            "--input",
+            "input.jpg",
+            "--enhance",
+            "true",
+            "--unsharp-amount",
+            "1.1",
+            "--unsharp-radius",
+            "2.5",
+            "--enhance-skin-smooth",
+            "0.75",
+            "--enhance-red-eye-removal=true",
+            "--enhance-background-blur=true",
+        ]);
+
+        let settings = build_enhancement_settings(&args).unwrap();
+        assert!((settings.unsharp_amount - 1.1).abs() < f32::EPSILON);
+        assert!((settings.unsharp_radius - 2.5).abs() < f32::EPSILON);
+        assert!((settings.skin_smooth_amount - 0.75).abs() < f32::EPSILON);
+        assert!(settings.red_eye_removal);
+        assert!(settings.background_blur);
+    }
+}

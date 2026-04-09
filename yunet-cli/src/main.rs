@@ -746,10 +746,12 @@ fn save_processed_crop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use image::{Rgba, RgbaImage};
+    use std::{fs, sync::Arc};
     use tempfile::tempdir;
-    use yunet_core::Landmark;
-    use yunet_utils::QualityFilter;
+    use yunet_core::{FillColor, InputSize, Landmark};
+    use yunet_utils::{QualityFilter, config::ResizeQuality};
 
     fn sample_image(width: u32, height: u32) -> DynamicImage {
         let mut image = RgbaImage::new(width, height);
@@ -789,6 +791,61 @@ mod tests {
         }
     }
 
+    fn solid_image(width: u32, height: u32, value: u8) -> DynamicImage {
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            width,
+            height,
+            Rgba([value, value, value, 255]),
+        ))
+    }
+
+    fn parse_args(args: &[&str]) -> DetectArgs {
+        let mut full = vec!["yunet-cli"];
+        full.extend_from_slice(args);
+        DetectArgs::try_parse_from(full).unwrap()
+    }
+
+    fn no_gpu_runtime() -> Arc<gpu::CliGpuRuntime> {
+        let mut settings = AppSettings::default();
+        settings.gpu.enabled = false;
+        Arc::new(init_cli_gpu_runtime(&settings).unwrap())
+    }
+
+    fn crop_settings_app() -> Arc<AppSettings> {
+        let mut settings = AppSettings::default();
+        settings.gpu.enabled = false;
+        settings.crop.output_width = 16;
+        settings.crop.output_height = 16;
+        settings.crop.output_format = "png".to_string();
+        settings.crop.fill_color = FillColor::default();
+        Arc::new(settings)
+    }
+
+    fn build_test_detector() -> Option<Arc<yunet_core::YuNetDetector>> {
+        let model_path = Path::new("models/face_detection_yunet_2023mar_640.onnx");
+        if !model_path.exists() {
+            return None;
+        }
+        let preprocess = PreprocessConfig {
+            input_size: InputSize::new(32, 32),
+            resize_quality: ResizeQuality::Quality,
+        };
+        let postprocess = PostprocessConfig::default();
+        let detector = build_cli_detector(
+            model_path,
+            &preprocess,
+            &postprocess,
+            no_gpu_runtime().as_ref(),
+            false,
+        )
+        .ok()?;
+        Some(Arc::new(detector))
+    }
+
+    fn write_sample_png(path: &Path) {
+        sample_image(32, 32).save(path).unwrap();
+    }
+
     #[test]
     fn detection_crop_rect_clamps_to_image_bounds() {
         let rect = detection_crop_rect(
@@ -802,6 +859,21 @@ mod tests {
             10,
         );
         assert_eq!(rect, Some((0, 2, 5, 8)));
+    }
+
+    #[test]
+    fn detection_crop_rect_returns_none_when_rounded_rect_exceeds_bounds() {
+        let rect = detection_crop_rect(
+            &BoundingBox {
+                x: 9.6,
+                y: 9.6,
+                width: 1.0,
+                height: 1.0,
+            },
+            10,
+            10,
+        );
+        assert_eq!(rect, None);
     }
 
     #[test]
@@ -859,6 +931,390 @@ mod tests {
     }
 
     #[test]
+    fn detect_image_returns_none_for_missing_input() {
+        let Some(detector) = build_test_detector() else {
+            return;
+        };
+
+        let missing = Path::new("missing-file.png");
+        assert!(detect_image(&detector, missing).is_none());
+    }
+
+    #[test]
+    fn detect_image_returns_output_for_valid_image() {
+        let Some(detector) = build_test_detector() else {
+            return;
+        };
+        let dir = tempdir().unwrap();
+        let image_path = dir.path().join("sample.png");
+        write_sample_png(&image_path);
+
+        assert!(detect_image(&detector, &image_path).is_some());
+    }
+
+    #[test]
+    fn load_source_image_handles_success_and_failure() {
+        let dir = tempdir().unwrap();
+        let valid = dir.path().join("ok.png");
+        write_sample_png(&valid);
+        let missing = dir.path().join("missing.png");
+
+        assert!(load_source_image(&valid).is_some());
+        assert!(load_source_image(&missing).is_none());
+    }
+
+    #[test]
+    fn annotate_image_if_requested_covers_none_success_and_failure() {
+        let dir = tempdir().unwrap();
+        let image_path = dir.path().join("annotate.png");
+        write_sample_png(&image_path);
+        let detections = vec![sample_detection(4.0, 4.0, 12.0, 12.0, 0.9)];
+
+        let none_dir = Arc::new(None);
+        assert_eq!(
+            annotate_image_if_requested(&image_path, &detections, &none_dir),
+            None
+        );
+
+        let annotate_dir = Arc::new(Some(dir.path().join("annotated")));
+        let success = annotate_image_if_requested(&image_path, &detections, &annotate_dir);
+        assert!(success.as_ref().is_some_and(|p| p.ends_with("annotate.png")));
+
+        let blocked_file = dir.path().join("blocked");
+        fs::write(&blocked_file, b"not a dir").unwrap();
+        let blocked_dir = Arc::new(Some(blocked_file));
+        assert_eq!(
+            annotate_image_if_requested(&image_path, &detections, &blocked_dir),
+            None
+        );
+    }
+
+    #[test]
+    fn detection_quality_returns_none_when_bbox_cannot_form_valid_crop() {
+        let image = sample_image(10, 10);
+        let bbox = BoundingBox {
+            x: 9.6,
+            y: 9.6,
+            width: 1.0,
+            height: 1.0,
+        };
+
+        assert_eq!(detection_quality(&image, &bbox), None);
+    }
+
+    #[test]
+    fn build_detection_records_preserves_detection_count() {
+        let image = sample_image(20, 20);
+        let detections = vec![
+            sample_detection(1.0, 1.0, 5.0, 5.0, 0.8),
+            sample_detection(8.0, 8.0, 5.0, 5.0, 0.9),
+        ];
+
+        let records = build_detection_records(&detections, Some(&image));
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().all(|record| record.quality.is_some()));
+    }
+
+    #[test]
+    fn generate_processed_crops_falls_back_to_cpu_when_gpu_runtime_has_no_cropper() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let core_settings = build_core_crop_settings(&settings.crop);
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.95)];
+
+        let crops = generate_processed_crops(
+            &sample_image(24, 24),
+            &detections,
+            settings.as_ref(),
+            &core_settings,
+            None,
+            runtime.as_ref(),
+        );
+
+        assert_eq!(crops.len(), 1);
+        assert_eq!(crops[0].index, 0);
+        assert_eq!(crops[0].score, 0.95);
+    }
+
+    #[test]
+    fn process_crops_returns_early_when_there_are_no_detections() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter::new(None));
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+
+        process_crops(
+            &sample_image(24, 24),
+            Path::new("input.png"),
+            &[],
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn process_crops_skips_image_when_no_high_quality_face_exists() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter {
+            min_quality: None,
+            auto_select: false,
+            fallback: None,
+            auto_skip_no_high: true,
+            suffix_enabled: false,
+        });
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
+
+        process_crops(
+            &solid_image(24, 24, 80),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(skipped.load(Ordering::Relaxed), 1);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn process_crops_ignores_face_index_zero() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter::new(None));
+        let args = parse_args(&["--input", "x.jpg", "--face-index", "0"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![
+            sample_detection(1.0, 1.0, 8.0, 8.0, 0.9),
+            sample_detection(10.0, 10.0, 8.0, 8.0, 0.95),
+        ];
+
+        process_crops(
+            &sample_image(24, 24),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn process_crops_skips_low_quality_export_when_threshold_is_high() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter {
+            min_quality: Some(Quality::High),
+            auto_select: false,
+            fallback: None,
+            auto_skip_no_high: false,
+            suffix_enabled: false,
+        });
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
+
+        process_crops(
+            &solid_image(24, 24, 64),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(skipped.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn process_crops_warns_when_requested_face_is_missing() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter::new(None));
+        let args = parse_args(&["--input", "x.jpg", "--face-index", "3"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
+
+        process_crops(
+            &sample_image(24, 24),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn process_crops_auto_selects_the_best_face() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter {
+            min_quality: None,
+            auto_select: true,
+            fallback: None,
+            auto_skip_no_high: false,
+            suffix_enabled: false,
+        });
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+
+        let mut image = RgbaImage::from_pixel(40, 20, Rgba([80, 80, 80, 255]));
+        for y in 0..20 {
+            for x in 20..40 {
+                let value = ((x + y) % 255) as u8;
+                image.put_pixel(x, y, Rgba([value, value.wrapping_add(20), value, 255]));
+            }
+        }
+        let detections = vec![
+            sample_detection(0.0, 0.0, 18.0, 18.0, 0.8),
+            sample_detection(20.0, 0.0, 18.0, 18.0, 0.9),
+        ];
+
+        process_crops(
+            &DynamicImage::ImageRgba8(image),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            None,
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 1);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn process_crops_saves_to_override_target_and_updates_counter() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter::new(None));
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
+        let override_target = PathBuf::from("nested/custom-name.jpg");
+
+        process_crops(
+            &sample_image(24, 24),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            dir.path(),
+            Some(&override_target),
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 1);
+        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert!(dir.path().join("nested").join("custom-name.png").exists());
+    }
+
+    #[test]
+    fn process_crops_handles_parent_directory_creation_errors() {
+        let settings = crop_settings_app();
+        let runtime = no_gpu_runtime();
+        let filter = Arc::new(QualityFilter::new(None));
+        let args = parse_args(&["--input", "x.jpg"]);
+        let dir = tempdir().unwrap();
+        let blocked = dir.path().join("blocked");
+        fs::write(&blocked, b"file").unwrap();
+        let saved = Arc::new(AtomicUsize::new(0));
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
+        let override_target = PathBuf::from("nested/output.png");
+
+        process_crops(
+            &sample_image(24, 24),
+            Path::new("input.png"),
+            &detections,
+            &settings,
+            &filter,
+            &None,
+            &runtime,
+            &args,
+            &blocked,
+            Some(&override_target),
+            &saved,
+            &skipped,
+        );
+
+        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
     fn build_crop_filename_applies_template_and_quality_suffix() {
         let name = build_crop_filename(
             "portrait",
@@ -891,6 +1347,22 @@ mod tests {
     }
 
     #[test]
+    fn build_crop_filename_keeps_template_extension_placeholder() {
+        let name = build_crop_filename(
+            "portrait",
+            0,
+            512,
+            640,
+            "webp",
+            Some("{original}_{index}.{ext}"),
+            None,
+            0,
+        );
+
+        assert_eq!(name, "portrait_1.webp");
+    }
+
+    #[test]
     fn normalized_output_extension_defaults_to_png() {
         assert_eq!(normalized_output_extension(""), "png");
         assert_eq!(normalized_output_extension("JPG"), "jpg");
@@ -915,5 +1387,84 @@ mod tests {
             out.file_name().and_then(|s| s.to_str()),
             Some("portrait_face1_lowq.png")
         );
+    }
+
+    #[test]
+    fn build_crop_output_path_uses_default_name_when_source_stem_is_missing() {
+        let dir = tempdir().unwrap();
+        let out = build_crop_output_path(
+            dir.path(),
+            Path::new(""),
+            0,
+            256,
+            256,
+            "png",
+            None,
+            None,
+            0,
+        );
+
+        assert_eq!(out.file_name().and_then(|s| s.to_str()), Some("image_face1.png"));
+    }
+
+    #[test]
+    fn save_processed_crop_writes_image_to_disk() {
+        let dir = tempdir().unwrap();
+        let out_path = dir.path().join("saved.png");
+        let image_path = dir.path().join("source.png");
+        write_sample_png(&image_path);
+        let crop = sample_processed_crop(0, Quality::High, 1234.0);
+        let settings = crop_settings_app();
+        let options = OutputOptions::from_crop_settings(&settings.crop);
+
+        save_processed_crop(&crop, &out_path, &image_path, settings.as_ref(), &options).unwrap();
+        assert!(out_path.exists());
+    }
+
+    #[test]
+    fn process_single_image_handles_mapping_rows_and_annotation_output() {
+        let Some(detector) = build_test_detector() else {
+            return;
+        };
+        let dir = tempdir().unwrap();
+        let image_path = dir.path().join("single.png");
+        write_sample_png(&image_path);
+        let target = input::ProcessingItem {
+            source: image_path.clone(),
+            output_override: None,
+            mapping_row: Some(7),
+        };
+        let annotate_dir = Arc::new(Some(dir.path().join("annotated")));
+        let settings = crop_settings_app();
+        let quality_filter = Arc::new(QualityFilter::new(None));
+        let runtime = no_gpu_runtime();
+        let args = parse_args(&["--input", image_path.to_str().unwrap()]);
+        let crop_output_dir = Arc::new(None);
+        let images_processed = Arc::new(AtomicUsize::new(0));
+        let faces_detected = Arc::new(AtomicUsize::new(0));
+        let crops_saved = Arc::new(AtomicUsize::new(0));
+        let crops_skipped_quality = Arc::new(AtomicUsize::new(0));
+
+        let result = process_single_image(
+            &target,
+            &detector,
+            &annotate_dir,
+            &settings,
+            &quality_filter,
+            &None,
+            &runtime,
+            &args,
+            false,
+            &crop_output_dir,
+            &images_processed,
+            &faces_detected,
+            &crops_saved,
+            &crops_skipped_quality,
+        )
+        .unwrap();
+
+        assert_eq!(images_processed.load(Ordering::Relaxed), 1);
+        assert_eq!(result.image, image_path.display().to_string());
+        assert!(result.annotated.as_ref().is_some_and(|p| p.ends_with("single.png")));
     }
 }
