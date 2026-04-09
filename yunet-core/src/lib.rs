@@ -13,6 +13,8 @@ pub mod face_cropper;
 pub mod gpu;
 /// ONNX model loading and execution.
 pub mod model;
+/// Non-maximum suppression implementation (spatial grid + naive fallback).
+mod nms;
 /// Detection post-processing (NMS, score filtering).
 pub mod postprocess;
 /// Image pre-processing (resizing, tensor conversion).

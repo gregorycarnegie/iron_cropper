@@ -24,6 +24,7 @@ cache/
 # Misc / Local
 benchmarks/
 nul
+out.json
 scripts/
 tests/
 
