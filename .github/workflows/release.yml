@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Keep these checksums in sync with ci.yml.
   YUNET_ORIGINAL_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
   YUNET_640_SHA256: d2c5a887db77802389261b13d2b9f5e1171b9d5787cb315d0add225812ff4d96
 
@@ -17,6 +18,10 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      # Evaluated once at job start; used by signing steps to skip gracefully
+      # when the certificate secret is not configured.
+      HAS_CODE_SIGN: ${{ secrets.CODE_SIGN_PFX != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,13 +39,9 @@ jobs:
         run: |
           mkdir -p models
           curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --input-shape="1,3,640,640"
-
-      - name: Retry model generation (simpler syntax)
-        if: failure()
-        shell: bash
-        run: |
-          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
+            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
+            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
 
       - name: Verify model checksums
         shell: bash
@@ -95,15 +96,22 @@ jobs:
         run: |
           choco install nsis --no-progress -y
 
-      - name: Install WiX Toolset
+      - name: Install WiX v7
         shell: pwsh
         run: |
-          choco install wixtoolset --no-progress -y
+          dotnet tool install -g wix --version 7.0.0
+          wix extension add WixToolset.UI.wixext/7.0.0
 
       - name: Install pkg-config
         shell: pwsh
         run: |
           choco install pkgconfiglite --no-progress -y
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-dav1d-x64-windows-static-${{ runner.os }}
 
       - name: Install dav1d (vcpkg)
         shell: pwsh
@@ -120,6 +128,31 @@ jobs:
           PKG_CONFIG_PATH: C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
           PKG_CONFIG_ALL_STATIC: "1"
         run: cargo build --release -p fcs-cli -p fcs-gui
+
+      - name: Sign release binaries
+        # Requires CODE_SIGN_PFX (base64-encoded PFX) and CODE_SIGN_PASSWORD
+        # to be set as repository secrets. Skipped silently if absent.
+        if: env.HAS_CODE_SIGN == 'true'
+        shell: pwsh
+        env:
+          CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
+          CODE_SIGN_PASSWORD: ${{ secrets.CODE_SIGN_PASSWORD }}
+        run: |
+          $CertPath = "$env:TEMP\codesign.pfx"
+          [IO.File]::WriteAllBytes($CertPath, [Convert]::FromBase64String($env:CODE_SIGN_PFX))
+
+          $SignTool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+                      Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          if (-not $SignTool) { throw "signtool.exe not found" }
+
+          foreach ($bin in @("target\release\fcs-cli.exe", "target\release\fcs-gui.exe")) {
+            & $SignTool sign /fd SHA256 /f $CertPath /p $env:CODE_SIGN_PASSWORD `
+              /tr http://timestamp.digicert.com /td SHA256 `
+              /d "Face Crop Studio" $bin
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $bin" }
+          }
+
+          Remove-Item $CertPath -Force
 
       - name: Package artifacts
         shell: pwsh
@@ -209,67 +242,20 @@ jobs:
           }
 
           $DistDir = Join-Path $PWD "dist\$DistName"
-          $WixDir = Join-Path $PWD "installer\windows\wix"
-          $Harvested = Join-Path $WixDir "HarvestedFiles.wxs"
-          $WixObjDir = Join-Path $WixDir "obj"
           $MsiOut = Join-Path $PWD "dist\face-crop-studio-windows-x86_64.msi"
           Write-Host "Using MSI version: $MsiVersion"
 
-          New-Item -ItemType Directory -Force -Path $WixObjDir | Out-Null
-
-          $env:Path = "C:\ProgramData\chocolatey\bin;$env:Path"
-
-          function Resolve-Tool([string]$exeName) {
-            $cmd = (Get-Command $exeName -ErrorAction SilentlyContinue).Source
-            if ($cmd) { return $cmd }
-
-            $candidates = @(
-              "C:\Program Files (x86)\WiX Toolset v3.11\bin\$exeName",
-              "C:\Program Files\WiX Toolset v3.11\bin\$exeName",
-              "C:\Program Files (x86)\WiX Toolset v3.14\bin\$exeName",
-              "C:\Program Files\WiX Toolset v3.14\bin\$exeName",
-              "C:\ProgramData\chocolatey\lib\wixtoolset\tools\$exeName",
-              "C:\ProgramData\chocolatey\lib\wixtoolset\tools\bin\$exeName"
-            )
-            foreach ($candidate in $candidates) {
-              if (Test-Path $candidate) { return $candidate }
-            }
-
-            $searchRoots = @("C:\Program Files", "C:\Program Files (x86)", "C:\ProgramData\chocolatey\lib")
-            foreach ($root in $searchRoots) {
-              if (-not (Test-Path $root)) { continue }
-              $found = Get-ChildItem -Path $root -Recurse -Filter $exeName -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($found) { return $found.FullName }
-            }
-
-            throw "$exeName not found after WiX installation"
-          }
-
-          $Heat = Resolve-Tool "heat.exe"
-          $Candle = Resolve-Tool "candle.exe"
-          $Light = Resolve-Tool "light.exe"
-
-          & $Heat dir "$DistDir" -gg -srd -sreg -dr INSTALLDIR -cg AppFiles -var var.SourceDir -out "$Harvested"
-          if ($LASTEXITCODE -ne 0) { throw "heat failed with exit code $LASTEXITCODE" }
-
-          # Heat emits components without Win64 by default, which WiX treats as 32-bit.
-          # Because we install under ProgramFiles64Folder, force all harvested components to 64-bit.
-          [xml]$harvestXml = Get-Content -Path "$Harvested"
-          $ns = New-Object System.Xml.XmlNamespaceManager($harvestXml.NameTable)
-          $ns.AddNamespace("w", "http://schemas.microsoft.com/wix/2006/wi")
-          $components = $harvestXml.SelectNodes("//w:Component", $ns)
-          foreach ($component in $components) {
-            if ($component.GetAttribute("Win64") -ne "yes") {
-              $component.SetAttribute("Win64", "yes")
-            }
-          }
-          $harvestXml.Save("$Harvested")
-
-          & $Candle -nologo -arch x64 -dSourceDir="$DistDir" -dMsiVersion="$MsiVersion" -out "$WixObjDir\" "$WixDir\Product.wxs" "$Harvested"
-          if ($LASTEXITCODE -ne 0) { throw "candle failed with exit code $LASTEXITCODE" }
-
-          & $Light -nologo -ext WixUIExtension -out "$MsiOut" "$WixObjDir\Product.wixobj" "$WixObjDir\HarvestedFiles.wixobj"
-          if ($LASTEXITCODE -ne 0) { throw "light failed with exit code $LASTEXITCODE" }
+          # WiX v7: single 'wix build' replaces heat + candle + light.
+          # -arch x64 marks all harvested components as 64-bit (no XML patching needed).
+          # <Files> in Product.wxs harvests SourceDir instead of the old heat.exe step.
+          wix build `
+            -arch x64 `
+            -d SourceDir="$DistDir" `
+            -d MsiVersion="$MsiVersion" `
+            -ext WixToolset.UI.wixext `
+            -o "$MsiOut" `
+            installer\windows\wix\Product.wxs
+          if ($LASTEXITCODE -ne 0) { throw "wix build failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path $MsiOut)) { throw "MSI missing at $MsiOut" }
 
       - name: Generate checksums

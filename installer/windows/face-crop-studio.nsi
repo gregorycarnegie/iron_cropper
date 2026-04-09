@@ -32,8 +32,11 @@ RequestExecutionLevel admin
 !include "Sections.nsh"
 !define MUI_ICON "${DIST_DIR}\app_icon.ico"
 !define MUI_UNICON "${DIST_DIR}\app_icon.ico"
+!define MUI_LICENSEPAGE_TEXT_TOP "Face Crop Studio is dual-licensed (MIT OR Apache-2.0). Review the terms below."
+!define MUI_LICENSEPAGE_CHECKBOX
 
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "${DIST_DIR}\LICENSE-MIT"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
@@ -45,6 +48,8 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "English"
 
+; ── Sections ──────────────────────────────────────────────────────────────────
+
 Section "Application Files (required)" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
@@ -54,7 +59,7 @@ Section "Application Files (required)" SecMain
 
   CreateDirectory "$SMPROGRAMS\Face Crop Studio"
   CreateShortCut "$SMPROGRAMS\Face Crop Studio\Face Crop Studio.lnk" "$INSTDIR\fcs-gui.exe" "" "$INSTDIR\fcs-gui.exe" 0
-  CreateShortCut "$SMPROGRAMS\Face Crop Studio\Uninstall Face Crop Studio.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\fcs-gui.exe" 0
+  CreateShortCut "$SMPROGRAMS\Face Crop Studio\Uninstall Face Crop Studio.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 
   WriteRegStr HKLM "Software\Face Crop Studio" "Install_Dir" "$INSTDIR"
 
@@ -73,26 +78,28 @@ Section "Desktop Shortcut" SecDesktop
 SectionEnd
 
 Section /o "Add install directory to PATH (Current user)" SecPathUser
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne ''''}};if($$parts -notcontains ''$INSTDIR''){$$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''User'')}"'
+  Call AddInstallDirToUserPath
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser" 1
   Call BroadcastEnvironmentChange
 SectionEnd
 
 Section /o "Add install directory to PATH (All users)" SecPathSystem
-  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne ''''}};if($$parts -notcontains ''$INSTDIR''){$$parts += ''$INSTDIR'';[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''Machine'')}"'
+  Call AddInstallDirToSystemPath
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem" 1
   Call BroadcastEnvironmentChange
 SectionEnd
 
 Section "Uninstall"
+  InitPluginsDir
+
   ReadRegDWORD $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathUser"
   ${If} $0 == 1
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''User'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne '''' -and $$_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''User'')"'
+    Call un.RemoveInstallDirFromUserPath
   ${EndIf}
 
   ReadRegDWORD $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "AddPathSystem"
   ${If} $1 == 1
-    nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$p=[Environment]::GetEnvironmentVariable(''Path'',''Machine'');$$parts=@();if($$p){$$parts=$$p.Split('';'')|Where-Object{$$_ -and $$_.Trim() -ne '''' -and $$_ -ne ''$INSTDIR''}};[Environment]::SetEnvironmentVariable(''Path'',($$parts -join '';''),''Machine'')"'
+    Call un.RemoveInstallDirFromSystemPath
   ${EndIf}
 
   Call un.BroadcastEnvironmentChange
@@ -102,20 +109,97 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Face Crop Studio\Uninstall Face Crop Studio.lnk"
   RMDir "$SMPROGRAMS\Face Crop Studio"
 
+  ; Delete only files this installer placed — preserves user-added files (e.g. custom models).
+  Delete "$INSTDIR\fcs-cli.exe"
+  Delete "$INSTDIR\fcs-gui.exe"
+  Delete "$INSTDIR\app_icon.ico"
+  Delete "$INSTDIR\README.md"
+  Delete "$INSTDIR\LICENSE-MIT"
+  Delete "$INSTDIR\LICENSE-APACHE"
+  Delete "$INSTDIR\models\face_detection_yunet_2023mar_640.onnx"
+  RMDir "$INSTDIR\models"
   Delete "$INSTDIR\Uninstall.exe"
-  RMDir /r "$INSTDIR"
+  ; Remove the install directory only if it is now empty.
+  RMDir "$INSTDIR"
 
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio"
   DeleteRegKey HKLM "Software\Face Crop Studio"
 SectionEnd
 
+; ── PATH helpers ──────────────────────────────────────────────────────────────
+;
+; Each function writes a small PowerShell script to $PLUGINSDIR (a per-session
+; temp dir that NSIS cleans up on exit), executes it, and returns.  Keeping the
+; logic in readable multi-line PS1 files is far easier to audit than embedding
+; escaped one-liners inside nsExec strings.
+
+Function AddInstallDirToUserPath
+  ; Append $INSTDIR to the current user PATH, skipping if already present.
+  FileOpen $R8 "$PLUGINSDIR\fcs_path.ps1" w
+  FileWrite $R8 '$$scope = "User"$\r$\n'
+  FileWrite $R8 '$$dir   = "$INSTDIR"$\r$\n'
+  FileWrite $R8 '$$cur   = [Environment]::GetEnvironmentVariable("Path", $$scope)$\r$\n'
+  FileWrite $R8 '$$parts = if ($$cur) { $$cur.Split(";") | Where-Object { $$_.Trim() -ne "" } } else { @() }$\r$\n'
+  FileWrite $R8 'if ($$parts -notcontains $$dir) {$\r$\n'
+  FileWrite $R8 '    $$parts += $$dir$\r$\n'
+  FileWrite $R8 '    [Environment]::SetEnvironmentVariable("Path", ($$parts -join ";"), $$scope)$\r$\n'
+  FileWrite $R8 '}$\r$\n'
+  FileClose $R8
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\fcs_path.ps1"'
+FunctionEnd
+
+Function AddInstallDirToSystemPath
+  ; Append $INSTDIR to the system (all-users) PATH, skipping if already present.
+  FileOpen $R8 "$PLUGINSDIR\fcs_path.ps1" w
+  FileWrite $R8 '$$scope = "Machine"$\r$\n'
+  FileWrite $R8 '$$dir   = "$INSTDIR"$\r$\n'
+  FileWrite $R8 '$$cur   = [Environment]::GetEnvironmentVariable("Path", $$scope)$\r$\n'
+  FileWrite $R8 '$$parts = if ($$cur) { $$cur.Split(";") | Where-Object { $$_.Trim() -ne "" } } else { @() }$\r$\n'
+  FileWrite $R8 'if ($$parts -notcontains $$dir) {$\r$\n'
+  FileWrite $R8 '    $$parts += $$dir$\r$\n'
+  FileWrite $R8 '    [Environment]::SetEnvironmentVariable("Path", ($$parts -join ";"), $$scope)$\r$\n'
+  FileWrite $R8 '}$\r$\n'
+  FileClose $R8
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\fcs_path.ps1"'
+FunctionEnd
+
+Function un.RemoveInstallDirFromUserPath
+  ; Remove $INSTDIR from the current user PATH, leaving other entries intact.
+  FileOpen $R8 "$PLUGINSDIR\fcs_path.ps1" w
+  FileWrite $R8 '$$scope = "User"$\r$\n'
+  FileWrite $R8 '$$dir   = "$INSTDIR"$\r$\n'
+  FileWrite $R8 '$$cur   = [Environment]::GetEnvironmentVariable("Path", $$scope)$\r$\n'
+  FileWrite $R8 '$$parts = if ($$cur) { $$cur.Split(";") | Where-Object { $$_.Trim() -ne "" -and $$_ -ne $$dir } } else { @() }$\r$\n'
+  FileWrite $R8 '[Environment]::SetEnvironmentVariable("Path", ($$parts -join ";"), $$scope)$\r$\n'
+  FileClose $R8
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\fcs_path.ps1"'
+FunctionEnd
+
+Function un.RemoveInstallDirFromSystemPath
+  ; Remove $INSTDIR from the system (all-users) PATH, leaving other entries intact.
+  FileOpen $R8 "$PLUGINSDIR\fcs_path.ps1" w
+  FileWrite $R8 '$$scope = "Machine"$\r$\n'
+  FileWrite $R8 '$$dir   = "$INSTDIR"$\r$\n'
+  FileWrite $R8 '$$cur   = [Environment]::GetEnvironmentVariable("Path", $$scope)$\r$\n'
+  FileWrite $R8 '$$parts = if ($$cur) { $$cur.Split(";") | Where-Object { $$_.Trim() -ne "" -and $$_ -ne $$dir } } else { @() }$\r$\n'
+  FileWrite $R8 '[Environment]::SetEnvironmentVariable("Path", ($$parts -join ";"), $$scope)$\r$\n'
+  FileClose $R8
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\fcs_path.ps1"'
+FunctionEnd
+
+; ── Utility functions ─────────────────────────────────────────────────────────
+
 Function BroadcastEnvironmentChange
+  ; Notify running processes that the environment has changed (makes PATH
+  ; visible in new terminals without requiring a logoff/reboot).
   System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
 FunctionEnd
 
 Function un.BroadcastEnvironmentChange
   System::Call 'USER32::SendMessageTimeout(p ${HWND_BROADCAST}, i ${WM_SETTINGCHANGE}, p 0, t "Environment", i 0, i 5000, *p .r0)'
 FunctionEnd
+
+; ── Mutual exclusion: prevent user and system PATH from both being selected ───
 
 Function .onSelChange
   SectionGetFlags ${SecPathUser} $0

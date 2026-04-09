@@ -2,6 +2,21 @@
 
 ## Project TODO List: YuNet Face Detection
 
+### CI / Installer Quality
+
+- [x] **CI**: Consolidate model-gen fallback — remove the redundant `Retry Model Gen` step; put a single clean fallback in the download step (both ci.yml and release.yml).
+- [x] **CI**: Remove leftover dev comments from ci.yml lines 40–44.
+- [x] **CI**: Add vcpkg caching (`actions/cache`) so vcpkg isn't cloned and built from scratch every run.
+- [x] **CI**: Deduplicate hardcoded SHA256s — added sync comments in both files (true deduplication requires a reusable workflow refactor).
+- [x] **CI**: Remove duplicate `PKG_CONFIG_PATH` assignment in ci.yml (was set at job `env:` level and again in a separate step).
+- [x] **CI**: Add code signing for release binaries and installers (skips gracefully if `CODE_SIGN_PFX` secret is absent).
+- [x] **NSIS**: Fix uninstall shortcut icon — was pointing to `fcs-gui.exe`, now correctly points to `Uninstall.exe`.
+- [x] **NSIS**: Extract inline PowerShell PATH one-liners — replaced with readable multi-line PS1 scripts written to `$PLUGINSDIR` at runtime.
+- [x] **NSIS**: Add a license page (`MUI_PAGE_LICENSE`) to the installer (uses `LICENSE-MIT` from dist dir).
+- [x] **NSIS**: Guard uninstall `RMDir /r` — now deletes only known installed files; `RMDir` without `/r` leaves user-placed files intact.
+- [x] **WiX**: `EULA.rtf` already existed at `installer/windows/wix/EULA.rtf` — no change needed.
+- [x] **WiX**: Migrated from WiX 3.x (`heat`/`candle`/`light`) to WiX v7 (`dotnet tool install -g wix` + `wix build`). `<Files>` element replaces `heat.exe` harvesting; `-arch x64` replaces manual Win64 XML patching.
+
 ### Release Maintenance
 
 - [x] Align GitHub CI branch triggers with `master` for the `1.0.5-rc2` release path.

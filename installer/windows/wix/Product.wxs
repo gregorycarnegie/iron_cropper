@@ -1,95 +1,117 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product
-    Id="*"
+<!--
+  WiX v7 source file.
+  Build with: wix build -arch x64 -d SourceDir=<dist_dir> -d MsiVersion=<x.y.z>
+                        -ext WixToolset.UI.wixext -o <output.msi> Product.wxs
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!--
+    In WiX v7 the old <Product> + <Package> pair collapsed into a single <Package>.
+    Platform is no longer an attribute — pass -arch x64 on the CLI instead.
+  -->
+  <Package
     Name="Face Crop Studio"
     Language="1033"
     Version="$(var.MsiVersion)"
     Manufacturer="Face Crop Studio"
-    UpgradeCode="9CEB8A9D-9DCD-4DFA-B928-6A5ADFC65A9E">
-
-    <Package
-      InstallerVersion="500"
-      Compressed="yes"
-      InstallScope="perMachine"
-      Platform="x64" />
+    UpgradeCode="9CEB8A9D-9DCD-4DFA-B928-6A5ADFC65A9E"
+    InstallerVersion="500"
+    Compressed="yes"
+    Scope="perMachine">
 
     <MajorUpgrade
       DowngradeErrorMessage="A newer version of Face Crop Studio is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
     <Icon Id="AppIcon.ico" SourceFile="$(var.SourceDir)\app_icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
-    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)EULA.rtf" />
-    <UIRef Id="WixUI_Mondo" />
+    <WixVariable Id="WixUILicenseRtf" Value="EULA.rtf" />
+    <!-- WixUI_Mondo: welcome → license → components → install → finish -->
+    <ui:WixUI Id="WixUI_Mondo" />
+
     <Condition Message="Choose either 'Current user PATH' or 'All users PATH', not both.">
       NOT ((&amp;UserPathFeature=3) AND (&amp;SystemPathFeature=3))
     </Condition>
 
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLDIR" Name="Face Crop Studio">
-          <Component Id="UserPathComponent" Guid="{A5C6DE9B-B61B-4FC9-A8E6-68BFA9B18B33}">
-            <Environment
-              Id="UserPathEnv"
-              Name="PATH"
-              Action="set"
-              Part="last"
-              System="no"
-              Value="[INSTALLDIR]" />
-            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasUserPathEntry" Type="integer" Value="1" KeyPath="yes" />
-          </Component>
+    <!-- ── Install directory ───────────────────────────────────────────────── -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLDIR" Name="Face Crop Studio">
 
-          <Component Id="SystemPathComponent" Guid="{B8E50542-D193-46B1-A23E-72B1C7C0B19F}">
-            <Environment
-              Id="SystemPathEnv"
-              Name="PATH"
-              Action="set"
-              Part="last"
-              System="yes"
-              Value="[INSTALLDIR]" />
-            <RegistryValue Root="HKLM" Key="Software\Face Crop Studio" Name="HasSystemPathEntry" Type="integer" Value="1" KeyPath="yes" />
-          </Component>
-        </Directory>
+        <Component Id="UserPathComponent" Guid="{A5C6DE9B-B61B-4FC9-A8E6-68BFA9B18B33}">
+          <Environment
+            Id="UserPathEnv"
+            Name="PATH"
+            Action="set"
+            Part="last"
+            System="no"
+            Value="[INSTALLDIR]" />
+          <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasUserPathEntry" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+
+        <Component Id="SystemPathComponent" Guid="{B8E50542-D193-46B1-A23E-72B1C7C0B19F}">
+          <Environment
+            Id="SystemPathEnv"
+            Name="PATH"
+            Action="set"
+            Part="last"
+            System="yes"
+            Value="[INSTALLDIR]" />
+          <RegistryValue Root="HKLM" Key="Software\Face Crop Studio" Name="HasSystemPathEntry" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+
       </Directory>
+    </StandardDirectory>
 
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="Face Crop Studio">
-          <Component Id="StartMenuShortcutComponent" Guid="{2DE86506-43F4-413D-A506-8900CFC96D1F}">
-            <Shortcut
-              Id="StartMenuGuiShortcut"
-              Name="Face Crop Studio"
-              Description="Launch Face Crop Studio"
-              Target="[INSTALLDIR]fcs-gui.exe"
-              WorkingDirectory="INSTALLDIR"
-              Icon="AppIcon.ico" />
-            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
-          </Component>
+    <!-- ── Start menu ─────────────────────────────────────────────────────── -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Face Crop Studio">
 
-          <Component Id="StartMenuFolderCleanupComponent" Guid="{EFD6EC07-10AB-4D1C-A10C-3CDDC13EA793}">
-            <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
-            <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuFolderCleanup" Type="integer" Value="1" KeyPath="yes" />
-          </Component>
-        </Directory>
-      </Directory>
-
-      <Directory Id="DesktopFolder">
-        <Component Id="DesktopShortcutComponent" Guid="{9B2D602E-D0A9-4E1D-A996-6E507A12A1AE}">
+        <Component Id="StartMenuShortcutComponent" Guid="{2DE86506-43F4-413D-A506-8900CFC96D1F}">
           <Shortcut
-            Id="DesktopGuiShortcut"
+            Id="StartMenuGuiShortcut"
             Name="Face Crop Studio"
             Description="Launch Face Crop Studio"
             Target="[INSTALLDIR]fcs-gui.exe"
             WorkingDirectory="INSTALLDIR"
             Icon="AppIcon.ico" />
-          <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasDesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+          <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
         </Component>
-      </Directory>
-    </Directory>
 
+        <Component Id="StartMenuFolderCleanupComponent" Guid="{EFD6EC07-10AB-4D1C-A10C-3CDDC13EA793}">
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasStartMenuFolderCleanup" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+
+      </Directory>
+    </StandardDirectory>
+
+    <!-- ── Desktop ────────────────────────────────────────────────────────── -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcutComponent" Guid="{9B2D602E-D0A9-4E1D-A996-6E507A12A1AE}">
+        <Shortcut
+          Id="DesktopGuiShortcut"
+          Name="Face Crop Studio"
+          Description="Launch Face Crop Studio"
+          Target="[INSTALLDIR]fcs-gui.exe"
+          WorkingDirectory="INSTALLDIR"
+          Icon="AppIcon.ico" />
+        <RegistryValue Root="HKCU" Key="Software\Face Crop Studio" Name="HasDesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- ── Features ───────────────────────────────────────────────────────── -->
+
+    <!--
+      MainFeature: harvests all files from SourceDir into INSTALLDIR.
+      In WiX v7, <Files> replaces the old heat.exe + HarvestedFiles.wxs approach.
+      Components are auto-generated per-file; the -arch x64 CLI flag ensures they
+      are marked 64-bit (no manual Win64 XML patching required).
+    -->
     <Feature Id="MainFeature" Title="Face Crop Studio" Level="1">
-      <ComponentGroupRef Id="AppFiles" />
+      <Files Directory="INSTALLDIR" Include="$(var.SourceDir)\**" />
       <ComponentRef Id="StartMenuShortcutComponent" />
       <ComponentRef Id="StartMenuFolderCleanupComponent" />
     </Feature>
@@ -123,5 +145,6 @@
       Absent="allow">
       <ComponentRef Id="SystemPathComponent" />
     </Feature>
-  </Product>
+
+  </Package>
 </Wix>

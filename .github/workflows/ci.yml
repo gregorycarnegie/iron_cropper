@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Keep these checksums in sync with release.yml.
   YUNET_ORIGINAL_SHA256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
   YUNET_640_SHA256: d2c5a887db77802389261b13d2b9f5e1171b9d5787cb315d0add225812ff4d96
 
@@ -35,20 +36,9 @@ jobs:
       run: |
         mkdir -p models
         curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-        # Generate 640x640 model using onnxsim to fix input shape
-        onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" || onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --input-shape="1,3,640,640"
-      # Note: trying both newer and older flags/syntax if possible or just rely on standard.
-      # Actually, onnxsim syntax is: onnxsim input output [input_shapes]
-      # Input shapes can be: input_name:1,3,640,640
-      # If I don't know the name, I'll rely on onnxsim inferring it if single input.
-      # The command `onnxsim input output --overwrite-input-shape 1,3,640,640` is safer if supported.
-
-    - name: Retry Model Gen (Simpler)
-      if: failure()
-      shell: bash
-      run: |
-        # Fallback if the previous complex command failed due to syntax
-        onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+        onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
+          || onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
+          || onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
 
     - name: Verify model checksums
       shell: bash
@@ -106,6 +96,12 @@ jobs:
         choco install pkgconfiglite --no-progress -y
         echo "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: C:\vcpkg\installed
+        key: vcpkg-dav1d-x64-windows-static-${{ runner.os }}
+
     - name: Install dav1d (vcpkg)
       shell: pwsh
       run: |
@@ -114,11 +110,6 @@ jobs:
           & C:\vcpkg\bootstrap-vcpkg.bat
         }
         & C:\vcpkg\vcpkg.exe install dav1d:x64-windows-static
-
-    - name: Set PKG_CONFIG_PATH for dav1d
-      shell: pwsh
-      run: |
-        echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows-static\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Check
       run: cargo check --workspace
