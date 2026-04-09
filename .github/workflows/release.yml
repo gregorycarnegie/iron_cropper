@@ -100,7 +100,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install -g wix --version 7.0.0
-          wix extension add WixToolset.UI.wixext/7.0.0
+          wix -acceptEula wix7 extension add WixToolset.UI.wixext/7.0.0
 
       - name: Install pkg-config
         shell: pwsh
@@ -249,6 +249,7 @@ jobs:
           # -arch x64 marks all harvested components as 64-bit (no XML patching needed).
           # <Files> in Product.wxs harvests SourceDir instead of the old heat.exe step.
           wix build `
+            -acceptEula wix7 `
             -arch x64 `
             -d SourceDir="$DistDir" `
             -d MsiVersion="$MsiVersion" `
