@@ -38,8 +38,8 @@ Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
 
 Confirm executables launch:
 
-- `yunet-cli.exe --help`
-- `yunet-gui.exe`
+- `fcs-cli.exe --help`
+- `fcs-gui.exe`
 
 ## 4) Publish final v1.0.0
 

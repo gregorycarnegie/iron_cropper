@@ -13,32 +13,32 @@
 
 ### Coverage Follow-up
 
-- [x] Add direct unit tests for CSV/SQLite mapping ingestion, selector handling, and SQL query validation in `yunet-utils/src/mapping.rs`.
-- [x] Add direct unit tests for CLI input collection and mapping target resolution in `yunet-cli/src/input.rs`.
-- [x] Add direct unit tests for shared export and metadata helpers in `yunet-utils/src/output.rs`.
-- [x] Add direct unit tests for GUI export path sanitization and batch log formatting helpers in `yunet-gui/src/core/export.rs`.
+- [x] Add direct unit tests for CSV/SQLite mapping ingestion, selector handling, and SQL query validation in `fcs-utils/src/mapping.rs`.
+- [x] Add direct unit tests for CLI input collection and mapping target resolution in `fcs-cli/src/input.rs`.
+- [x] Add direct unit tests for shared export and metadata helpers in `fcs-utils/src/output.rs`.
+- [x] Add direct unit tests for GUI export path sanitization and batch log formatting helpers in `fcs-gui/src/core/export.rs`.
 - [x] Add direct unit tests for CLI color parsing, GUI quality helpers, and core postprocess edge cases.
 
-### Coverage Follow-up #2 (yunet-utils gaps identified from coverage snapshot)
+### Coverage Follow-up #2 (fcs-utils gaps identified from coverage snapshot)
 
-- [x] `yunet-utils/src/color.rs` (80%) — cover 3-char/4-char/8-char hex parsing, `0x` prefix, `RgbaColor::to_hsv`/`from_hsv`, and blue-dominant HSV branch.
-- [x] `yunet-utils/src/config.rs` (75%) — cover `DetectionSettings::sanitize`, `InputDimensions::sanitize`, `CropSettings::sanitize`, `MetadataMode::from_str`, `ResizeQuality::from_str` error, `ResizeQuality::as_label`, `BatchLogFormat` Display, and `GpuSettings→GpuContextOptions` From impls.
-- [x] `yunet-utils/src/fixtures.rs` (58%) — cover `fixtures_dir()` via `YUNET_FIXTURE_ROOT` env var, `load_fixture_bytes`, and `load_fixture_json`.
-- [x] `yunet-utils/src/image_utils.rs` (75%) — cover `dynamic_to_bgr_chw`, `load_image` error path, and `resize_image` Triangle (non-fast) path.
-- [x] `yunet-utils/src/gpu/mod.rs` (49%) — cover `pack_rgba_pixels`/`unpack_rgba_pixels` roundtrip, all `GpuStatusIndicator` constructors, `GpuStatusMode::as_str`, `GpuAvailability::is_available`/`context`, and `GpuContextPool` acquire/try_acquire/capacity/available (GPU-gated).
-- [x] `yunet-utils/src/gpu/bilateral_filter.rs` (50%) — cover `smooth()` zero-amount early return.
-- [x] `yunet-utils/src/gpu/gaussian_blur.rs` (71%) — cover `blur()` zero-radius early return, `clear_cache`, `memory_usage` (GPU-gated).
-- [x] `yunet-utils/src/gpu/background_blur.rs` (25%) — cover `clear_cache` and `memory_usage` (GPU-gated).
-- [x] `yunet-utils/src/gpu/buffer_pool.rs` (80%) — cover `available()` and `Debug` impl.
-- [x] `yunet-utils/src/gpu/shape_mask.rs` (67%) — cover `Rectangle` variant early return (`Ok(None)`).
-- [x] `yunet-utils/src/gpu/red_eye.rs` (33%) — cover zero-pixel image early return path.
-- [x] `yunet-cli` coverage pass (ignoring `webcam.rs`) — add direct unit and integration tests for config loading, preprocess benchmarking, mapping input handling, crop/export edge cases, and main CLI control-flow branches.
+- [x] `fcs-utils/src/color.rs` (80%) — cover 3-char/4-char/8-char hex parsing, `0x` prefix, `RgbaColor::to_hsv`/`from_hsv`, and blue-dominant HSV branch.
+- [x] `fcs-utils/src/config.rs` (75%) — cover `DetectionSettings::sanitize`, `InputDimensions::sanitize`, `CropSettings::sanitize`, `MetadataMode::from_str`, `ResizeQuality::from_str` error, `ResizeQuality::as_label`, `BatchLogFormat` Display, and `GpuSettings→GpuContextOptions` From impls.
+- [x] `fcs-utils/src/fixtures.rs` (58%) — cover `fixtures_dir()` via `YUNET_FIXTURE_ROOT` env var, `load_fixture_bytes`, and `load_fixture_json`.
+- [x] `fcs-utils/src/image_utils.rs` (75%) — cover `dynamic_to_bgr_chw`, `load_image` error path, and `resize_image` Triangle (non-fast) path.
+- [x] `fcs-utils/src/gpu/mod.rs` (49%) — cover `pack_rgba_pixels`/`unpack_rgba_pixels` roundtrip, all `GpuStatusIndicator` constructors, `GpuStatusMode::as_str`, `GpuAvailability::is_available`/`context`, and `GpuContextPool` acquire/try_acquire/capacity/available (GPU-gated).
+- [x] `fcs-utils/src/gpu/bilateral_filter.rs` (50%) — cover `smooth()` zero-amount early return.
+- [x] `fcs-utils/src/gpu/gaussian_blur.rs` (71%) — cover `blur()` zero-radius early return, `clear_cache`, `memory_usage` (GPU-gated).
+- [x] `fcs-utils/src/gpu/background_blur.rs` (25%) — cover `clear_cache` and `memory_usage` (GPU-gated).
+- [x] `fcs-utils/src/gpu/buffer_pool.rs` (80%) — cover `available()` and `Debug` impl.
+- [x] `fcs-utils/src/gpu/shape_mask.rs` (67%) — cover `Rectangle` variant early return (`Ok(None)`).
+- [x] `fcs-utils/src/gpu/red_eye.rs` (33%) — cover zero-pixel image early return path.
+- [x] `fcs-cli` coverage pass (ignoring `webcam.rs`) — add direct unit and integration tests for config loading, preprocess benchmarking, mapping input handling, crop/export edge cases, and main CLI control-flow branches.
 
 This document outlines the development plan for the YuNet face detection project, broken down into phases.
 
 ### Phase 0: Workspace Bootstrap
 
-- [x] **Workspace layout**: Create `yunet-core`, `yunet-gui`, `yunet-cli`, and `yunet-utils` crates and wire them through the root `Cargo.toml`.
+- [x] **Workspace layout**: Create `fcs-core`, `fcs-gui`, `fcs-cli`, and `fcs-utils` crates and wire them through the root `Cargo.toml`.
 - [x] **Dependencies**: Add baseline crates (`tract-onnx`, `image`, `ndarray`, `rayon`, `egui`, `eframe`, `clap`, `serde`, `serde_json`, `log`) with pinned versions.
 - [x] **Models**: Download `face_detection_yunet_2023mar.onnx`, place it under `models/`, and document version plus SHA256 in `models/README.md`.
 - [x] **Scaffolding**: Stub out crate-level skeletons (`lib.rs`, `main.rs`, module folders) and ensure `cargo check --workspace` passes.
@@ -46,16 +46,16 @@ This document outlines the development plan for the YuNet face detection project
 
 ### Phase 1: Core Logic & Utilities
 
-- [x] **`yunet-core`**: Implement core face detection logic.
+- [x] **`fcs-core`**: Implement core face detection logic.
   - [x] Pre-processing of input images.
   - [x] ONNX model inference.
   - [x] Post-processing (NMS, score thresholding).
   - [x] Validate output parsing against OpenCV YuNet sample outputs.
-- [x] **`yunet-utils`**: Develop shared utilities.
+- [x] **`fcs-utils`**: Develop shared utilities.
   - [x] Fixture loading for tests.
   - [x] Image and data conversion helpers.
   - [x] Shared configuration loader (`serde` structs for thresholds, input size).
-- [x] **Testing**: Add unit tests for `yunet-core`.
+- [x] **Testing**: Add unit tests for `fcs-core`.
   - [x] Test pre-processing logic.
   - [x] Test post-processing logic against known outputs.
   - [x] Add golden-dataset regression test comparing to OpenCV baselines.
@@ -64,7 +64,7 @@ This document outlines the development plan for the YuNet face detection project
 
 ### Phase 2: Command-Line Interface (CLI)
 
-- [x] **`yunet-cli`**: Build the command-line application.
+- [x] **`fcs-cli`**: Build the command-line application.
   - [x] Implement the `detect` command.
   - [x] Add arguments for input path, score threshold, NMS threshold, etc.
   - [x] Handle output features.
@@ -80,13 +80,13 @@ This document outlines the development plan for the YuNet face detection project
 
 ### Phase 3: Graphical User Interface (GUI)
 
-- [x] **`yunet-gui`**: Build the desktop application with `egui`/`eframe`.
+- [x] **`fcs-gui`**: Build the desktop application with `egui`/`eframe`.
   - [x] Implement file selection for input images.
   - [x] Create UI controls for model parameters (thresholds, etc.).
   - [x] Display the output image with bounding boxes overlaid.
   - [x] Offload heavy inference tasks to a background thread (`rayon`) to keep the UI responsive.
   - [x] Persist user preferences (last model, thresholds) between sessions.
-- [x] **Styling**: Centralize `egui` styling in `yunet-gui/src/theme.rs`.
+- [x] **Styling**: Centralize `egui` styling in `fcs-gui/src/theme.rs`.
 - [x] **Testing**: Add smoke tests for the GUI application.
   - [x] Test application startup and basic interaction.
   - [x] Test settings serialization.
@@ -96,9 +96,9 @@ This document outlines the development plan for the YuNet face detection project
 
 ## FACE CROPPING APPLICATION TRANSFORMATION
 
-### Phase 4: Core Cropping Logic (`yunet-core`)
+### Phase 4: Core Cropping Logic (`fcs-core`)
 
-- [x] **Crop calculation module** (`yunet-core/src/cropper.rs`)
+- [x] **Crop calculation module** (`fcs-core/src/cropper.rs`)
   - [x] Define `CropSettings` struct with output dimensions, face height %, positioning mode, offsets
   - [x] Implement `PositioningMode` enum: `Center`, `RuleOfThirds`, `Custom`
   - [x] Implement `calculate_crop_region()` function using scale-based approach
@@ -108,7 +108,7 @@ This document outlines the development plan for the YuNet face detection project
     - [x] Clamp crop region to image boundaries
   - [x] Unit tests for crop calculations with edge cases (faces near boundaries, various aspect ratios)
 
-- [x] **Size presets** (`yunet-core/src/presets.rs`)
+- [x] **Size presets** (`fcs-core/src/presets.rs`)
   - [x] Define `CropPreset` struct (name, width, height, description)
   - [x] Implement standard presets:
     - [x] LinkedIn (400×400)
@@ -119,7 +119,7 @@ This document outlines the development plan for the YuNet face detection project
     - [x] Headshot (600×800)
     - [x] Custom (user-defined)
 
-- [x] **Face cropper implementation** (`yunet-core/src/face_cropper.rs`)
+- [x] **Face cropper implementation** (`fcs-core/src/face_cropper.rs`)
   - [x] Implement `crop_face()` method combining detection + crop calculation
   - [x] Extract and resize face region using `image` crate
   - [x] Handle aspect ratio preservation and quality resampling
@@ -129,22 +129,22 @@ This document outlines the development plan for the YuNet face detection project
 #### Phase 4 — implemented summary
 
 - Implemented modules:
-  - `yunet-core/src/cropper.rs` — crop calculation, `CropSettings`, `PositioningMode`, `calculate_crop_region()`.
-  - `yunet-core/src/presets.rs` — `CropPreset`, `standard_presets()` and `preset_by_name()`.
-  - `yunet-core/src/face_cropper.rs` — `crop_face_from_image()` which extracts and resizes crops using the `image` crate.
+  - `fcs-core/src/cropper.rs` — crop calculation, `CropSettings`, `PositioningMode`, `calculate_crop_region()`.
+  - `fcs-core/src/presets.rs` — `CropPreset`, `standard_presets()` and `preset_by_name()`.
+  - `fcs-core/src/face_cropper.rs` — `crop_face_from_image()` which extracts and resizes crops using the `image` crate.
 
 - Verification performed:
   - `cargo check --workspace` — passed.
-  - `cargo test --manifest-path yunet-core/Cargo.toml` — all `yunet-core` unit tests passed (including cropper/presets/face_cropper tests).
+  - `cargo test --manifest-path fcs-core/Cargo.toml` — all `fcs-core` unit tests passed (including cropper/presets/face_cropper tests).
 
 - Notes & next steps for Phase 4:
   - Add integration tests that use real fixture images in `fixtures/` to validate end-to-end cropping behavior.
-  - Wire CLI options (`--crop`, `--preset`, `--face-height-pct`, `--positioning-mode`) in `yunet-cli` (Phase 6 work).
-  - Implement quality checks and enhancement hooks in `yunet-utils` (Phase 5) so CLI can skip low-quality crops.
+  - Wire CLI options (`--crop`, `--preset`, `--face-height-pct`, `--positioning-mode`) in `fcs-cli` (Phase 6 work).
+  - Implement quality checks and enhancement hooks in `fcs-utils` (Phase 5) so CLI can skip low-quality crops.
 
-### Phase 5: Image Quality & Enhancement (`yunet-utils`)
+### Phase 5: Image Quality & Enhancement (`fcs-utils`)
 
-- [x] **Quality analysis module** (`yunet-utils/src/quality.rs`)
+- [x] **Quality analysis module** (`fcs-utils/src/quality.rs`)
   - [x] Implement Laplacian variance calculation for blur detection
     - [x] Convert to grayscale
     - [x] Apply 3×3 Laplacian kernel
@@ -153,7 +153,7 @@ This document outlines the development plan for the YuNet face detection project
   - [x] Add quality score to detection output (per-detection `quality_score` / `quality` fields)
   - [x] Add `QualityFilter` settings (minimum quality threshold) and helper `should_skip`
 
-- [x] **Image enhancement pipeline** (`yunet-utils/src/enhance.rs`)
+- [x] **Image enhancement pipeline** (`fcs-utils/src/enhance.rs`)
   - [x] Auto color correction (histogram equalization)
   - [x] Exposure adjustment (-2 to +2 stops)
   - [x] Contrast adjustment (0.5 to 2.0x multiplier)
@@ -171,7 +171,7 @@ This document outlines the development plan for the YuNet face detection project
 
 ### Phase 6: CLI Face Cropping Features
 
-- [x] **Extend CLI arguments** (`yunet-cli/src/main.rs`)
+- [x] **Extend CLI arguments** (`fcs-cli/src/main.rs`)
   - [x] Add `--crop` flag to enable cropping mode
   - [x] Add `--output-width` and `--output-height` (or `--preset`)
   - [x] Add `--face-height-pct` (default 70%)
@@ -191,7 +191,7 @@ This document outlines the development plan for the YuNet face detection project
 - [x] **Batch cropping features**
   - [x] Add `--output-dir` for batch output location
   - [x] Add `--naming-template` with variables: `{original}`, `{index}`, `{timestamp}`, `{width}`, `{height}`, `{ext}`
-    - Implemented: CLI flag in `yunet-cli/src/main.rs` and test `yunet-cli/tests/naming_template.rs` added. Timestamp uses UNIX epoch seconds.
+    - Implemented: CLI flag in `fcs-cli/src/main.rs` and test `fcs-cli/tests/naming_template.rs` added. Timestamp uses UNIX epoch seconds.
   - [x] Add `--face-index` to select specific face when multiple detected (default: all)
   - [x] Add `--skip-low-quality` flag to auto-skip blurry faces (maps to `min_quality=medium`)
   - [x] Progress reporting with face count and quality stats
@@ -214,7 +214,7 @@ This document outlines the development plan for the YuNet face detection project
 
 ### Phase 7: GUI Face Cropping Interface
 
-- [x] **Crop settings panel** (integrated into `yunet-gui/src/main.rs`)
+- [x] **Crop settings panel** (integrated into `fcs-gui/src/main.rs`)
   - [x] Output size controls (width/height spinners for custom preset)
   - [x] Preset size dropdown (LinkedIn, Passport, Instagram, ID Card, Avatar, Headshot, Custom)
   - [x] Face height percentage slider (10-100%)
@@ -222,7 +222,7 @@ This document outlines the development plan for the YuNet face detection project
   - [x] Vertical/horizontal offset sliders (custom mode only)
   - [x] Live preview showing crop region overlay on original image (green rectangles with 3px stroke, 4px rounded corners)
 
-- [x] **Enhancement controls panel** (integrated into `yunet-gui/src/main.rs`)
+- [x] **Enhancement controls panel** (integrated into `fcs-gui/src/main.rs`)
   - [x] Enable enhancements checkbox
   - [x] Auto color correction checkbox
   - [x] Exposure slider (-2 to +2 stops)
@@ -269,10 +269,10 @@ This document outlines the development plan for the YuNet face detection project
 
 #### Phase 7 — Implementation Summary
 
-Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
+Implemented complete GUI face cropping workflow in `fcs-gui/src/main.rs`:
 
 - Step 1: Crop Settings Panel
-  - Added `CropSettings` and `EnhanceSettings` to `yunet-utils/src/config.rs`
+  - Added `CropSettings` and `EnhanceSettings` to `fcs-utils/src/config.rs`
   - Integrated crop preset dropdown, dimension controls, face height slider, positioning mode selector
   - Conditional UI (custom dimensions/offsets only shown when relevant)
 
@@ -288,7 +288,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - HashSet-based selection tracking
 
 - Step 4: Enhancement Controls
-  - Full enhancement pipeline integration from `yunet-utils/enhance.rs`
+  - Full enhancement pipeline integration from `fcs-utils/enhance.rs`
   - Four presets: None, Natural, Vivid, Professional
   - Individual controls: exposure, brightness, contrast, saturation, sharpness, auto-color
   - Reset to defaults button
@@ -308,7 +308,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - Summary statistics (files processed, faces exported)
 
 - Verification:
-  - `cargo check -p yunet-gui` — passes with no warnings
+  - `cargo check -p fcs-gui` — passes with no warnings
   - All imports resolved correctly
   - Settings persistence working (JSON serialization)
   - Quality analysis integrated
@@ -316,7 +316,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 ### Phase 8: Advanced Features
 
-- [x] **Output format support** (`yunet-utils/src/output.rs`)
+- [x] **Output format support** (`fcs-utils/src/output.rs`)
   - [x] PNG encoder with compression level control
   - [x] JPEG encoder with quality control (1-100)
   - [x] WebP encoder (if available via `image` crate)
@@ -366,7 +366,7 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
   - [x] Performance benchmarks for crop + enhancement pipeline
 
 - [x] **Documentation**
-  - [x] Document crop calculation algorithm in `yunet-core/src/cropper.rs`
+  - [x] Document crop calculation algorithm in `fcs-core/src/cropper.rs`
   - [x] Add examples showing each positioning mode
   - [x] Document quality scoring methodology
   - [x] Create user guide for GUI crop features
@@ -380,8 +380,8 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 - [x] **Configuration**: Share threshold/input-size config structs between CLI and GUI.
 - [x] **Documentation**: Add `///` doc comments to all public functions and modules.
 - [x] **Linting & Formatting**: Run `cargo clippy` and `cargo fmt` across the workspace to ensure code quality.
-- [x] **Performance**: Profile and optimize the inference pipeline in `yunet-core`.
-- [x] **Telemetry**: Add optional timing/logging hooks in `yunet-utils` for inference tracing.
+- [x] **Performance**: Profile and optimize the inference pipeline in `fcs-core`.
+- [x] **Telemetry**: Add optional timing/logging hooks in `fcs-utils` for inference tracing.
 - [x] **Parity validation**: Compare detections against OpenCV YuNet on a shared dataset.
   - [x] Evaluate IoU overlap, detection recall/precision, and score deltas.
   - [x] Document discrepancies and adjust preprocessing/postprocessing until parity is within tolerance.
@@ -394,13 +394,13 @@ Implemented complete GUI face cropping workflow in `yunet-gui/src/main.rs`:
 
 Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, inference: 444ms, postprocessing: 0.05ms):
 
-- [x] **Preprocessing optimizations** (`yunet-utils/src/image_utils.rs`)
+- [x] **Preprocessing optimizations** (`fcs-utils/src/image_utils.rs`)
   - [x] Optimize `rgb_to_bgr_chw()` function (currently line 45-74)
     - [x] Replace nested `flat_map` iterators with row-by-row processing for better cache locality
     - [x] Pre-allocate full buffer instead of collecting per-channel intermediates
     - [x] Use `par_chunks_exact_mut()` for parallel row processing
     - [x] Target: reduce from ~102ms to 30-50ms (2-4x speedup)
-  - [x] Optimize image resize filter (`yunet-core/src/preprocess.rs` line 109)
+  - [x] Optimize image resize filter (`fcs-core/src/preprocess.rs` line 109)
     - [x] Replace `FilterType::Triangle` with `FilterType::Nearest` for batch processing (configurable via `InputDimensions.resize_quality`)
     - [x] Add config option for quality vs speed trade-off
     - [x] Target: additional 20-40ms savings
@@ -408,7 +408,7 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Evaluate `fast_image_resize` crate as alternative to `image` crate resizing (used for `ResizeQuality::Speed`)
     - [x] Benchmark performance improvement on typical inputs (~65-150ms vs 140-240ms per preprocess run depending on source)
 
-- [x] **ONNX inference optimizations** (`yunet-core/src/model.rs`)
+- [x] **ONNX inference optimizations** (`fcs-core/src/model.rs`)
   - [x] Remove tensor clone (line 58)
     - [x] Investigate if tract accepts borrowed tensors via `run(&[input])`
     - [x] Replace `input.clone().into()` with zero-copy alternative
@@ -422,7 +422,7 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
     - [x] Test hardware acceleration (DirectML on Windows, CoreML on macOS, NNAPI on Android)
     - [x] Compare inference latency and memory usage
 
-- [x] **Post-processing optimizations** (`yunet-core/src/postprocess.rs`)
+- [x] **Post-processing optimizations** (`fcs-core/src/postprocess.rs`)
   - [x] Implement spatial grid-based NMS (9.12x speedup for N=5000)
   - [x] Fallback to naive implementation for small N to minimize overhead
 
@@ -462,20 +462,20 @@ Based on telemetry analysis showing ~548ms per image (preprocessing: 102ms, infe
 Leverage GPU compute for massive performance gains in image processing operations:
 
 - [x] **WGPU infrastructure setup**
-  - [x] Add `wgpu = "27.0.1"` and `pollster = "0.4.0"` dependencies to yunet-utils
-  - [x] Create `yunet-utils/src/gpu/mod.rs` module with GPU context management
+  - [x] Add `wgpu = "27.0.1"` and `pollster = "0.4.0"` dependencies to fcs-utils
+  - [x] Create `fcs-utils/src/gpu/mod.rs` module with GPU context management
   - [x] Implement GPU device initialization with fallback to CPU
   - [x] Add async GPU context pooling for CLI batch operations
   - [x] Share GPU context with egui in GUI application (already uses wgpu internally)
   - [x] Handle GPU init errors gracefully (missing drivers, old hardware)
 
 - [x] **Phase 12.1: GPU preprocessing** (HIGHEST ROI - ~95ms savings)
-  - [x] Create `yunet-utils/src/gpu/preprocess.wgsl` compute shader
+  - [x] Create `fcs-utils/src/gpu/preprocess.wgsl` compute shader
     - [x] Implement RGB→BGR channel swap kernel
     - [x] Implement HWC→CHW memory layout transpose
     - [x] Add image resize via texture sampling (bilinear/trilinear)
     - [x] Single-pass combined resize+convert+transpose operation
-  - [x] Implement `WgpuPreprocessor` in `yunet-core/src/preprocess.rs`
+  - [x] Implement `WgpuPreprocessor` in `fcs-core/src/preprocess.rs`
     - [x] Upload source image to GPU texture
     - [x] Execute compute shader dispatch
     - [x] Download CHW tensor result
@@ -495,7 +495,7 @@ Leverage GPU compute for massive performance gains in image processing operation
 
 - [x] **Micro-optimizations**
   - [x] Audit math hotspots for fused multiply-add opportunities (`conv2d_cpu`, batch-norm CPU reference, YuNet tensor fusion, enhancement filters) and replace `a * b + c` forms with `mul_add` where it improves precision/perf.
-  - [x] Evaluate `reorder_hw_major` (`yunet-core/src/gpu/runtime.rs`) for Rayon-based parallelism — kept serial because tensors are small and integer indexing offers no fused helper; only revisit if profiling flags it as a bottleneck.
+  - [x] Evaluate `reorder_hw_major` (`fcs-core/src/gpu/runtime.rs`) for Rayon-based parallelism — kept serial because tensors are small and integer indexing offers no fused helper; only revisit if profiling flags it as a bottleneck.
 
 - [x] **Phase 12.2: GPU enhancement pipeline** (~50-180ms savings)
   - [x] Create WGSL compute shaders for each filter
@@ -507,20 +507,20 @@ Leverage GPU compute for massive performance gains in image processing operation
     - [x] `background_blur.wgsl` - elliptical mask + selective blur
     - [x] `red_eye_removal.wgsl` - red dominance detection + color replacement
     - [x] `shape_mask.wgsl` - GPU crop masking
-  - [x] Implement `WgpuEnhancer` in `yunet-utils/src/enhance.rs`
+  - [x] Implement `WgpuEnhancer` in `fcs-utils/src/enhance.rs`
     - [x] Pipeline state management (reuse bind groups)
     - [x] CPU fallback for all operations when GPU fails
-    - [x] Integrated in both CLI (`yunet-cli/src/main.rs:370,382`) and GUI (`yunet-gui/src/core/cache.rs:41,122,202`)
+    - [x] Integrated in both CLI (`fcs-cli/src/main.rs:370,382`) and GUI (`fcs-gui/src/core/cache.rs:41,122,202`)
   - [x] GPU enhancement fully operational with automatic CPU fallback
   - Note: Further optimization to keep textures on GPU between operations would be Phase 13.4+ work
 
 - [x] **Phase 12.3: GPU-accelerated ONNX inference** (~300ms savings)
   - [x] **Option C: Custom WGPU YuNet implementation** (Future work)
     - [x] Implement Conv2D, BatchNorm, ReLU, Sigmoid as compute shaders
-      - `yunet-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `yunet-core/src/gpu/*.wgsl`
+      - `fcs-core/src/gpu/ops.rs` now houses the reusable pipelines with WGSL kernels in `fcs-core/src/gpu/*.wgsl`
     - [x] Keep YuNet backbone/neck/head on-GPU and expose runtime toggles in CLI (`--gpu-inference`) and GUI settings
     - [x] Add automated accuracy gating (run CPU vs GPU parity suite in CI and surface diffs)
-      - `cargo test -p yunet-core gpu_inference_matches_cpu_baseline -- --nocapture` now exercises `yunet-core/tests/gpu_cpu_parity.rs` across representative fixtures, comparing scores/bboxes/landmarks and surfacing max deltas.
+      - `cargo test -p fcs-core gpu_inference_matches_cpu_baseline -- --nocapture` now exercises `fcs-core/tests/gpu_cpu_parity.rs` across representative fixtures, comparing scores/bboxes/landmarks and surfacing max deltas.
     - [x] Port YuNet architecture to WGSL
     - [x] Validate outputs against ONNX reference
     - [x] Most flexibility but significant development effort
@@ -534,7 +534,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] **Target: 3-10x speedup for images with multiple faces**
 
 - [x] **GPU memory management**
-  - [x] Implement texture/buffer pooling to avoid repeated allocations (`GpuBufferPool` in `yunet-utils/src/gpu`)
+  - [x] Implement texture/buffer pooling to avoid repeated allocations (`GpuBufferPool` in `fcs-utils/src/gpu`)
   - [x] Add memory usage monitoring and limits (GUI status bar + manual OOM trigger)
   - [x] Handle out-of-memory scenarios gracefully (implemented manual cache clearing)
   - [x] Optimize CPU→GPU transfer patterns (use staging buffers)

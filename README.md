@@ -13,10 +13,10 @@ Face Crop Studio is a Rust workspace that wraps the YuNet face detector with det
 
 ## Crates
 
-- **`yunet-core`** – Loads the YuNet ONNX model with `tract-onnx`, handles preprocessing/postprocessing, and implements the crop calculation logic. Includes GPU-accelerated preprocessing and custom GPU YuNet inference via WGSL compute shaders (see `ARCHITECTURE.md` for details).
-- **`yunet-utils`** – Shared helpers: configuration structs, Laplacian-variance quality scoring, enhancement pipeline (CPU and GPU paths with 7 WGSL compute shaders), mapping system for CSV/Excel/Parquet/SQLite, and output encoders with metadata support.
-- **`yunet-cli`** – Command-line frontend aimed at batch processing and automation with optional GPU acceleration (auto-detected, with fallback to CPU). Features GPU context pooling for efficient batch operations. Example invocations are documented in `docs/cli_recipes.md`.
-- **`yunet-gui`** – eframe/egui desktop experience with live preview, crop adjustments, enhancements, history/undo, and batch export. Shares GPU context with eframe's wgpu backend for efficient rendering and compute. A user guide lives in `docs/gui_crop_guide.md`.
+- **`fcs-core`** – Loads the YuNet ONNX model with `tract-onnx`, handles preprocessing/postprocessing, and implements the crop calculation logic. Includes GPU-accelerated preprocessing and custom GPU YuNet inference via WGSL compute shaders (see `ARCHITECTURE.md` for details).
+- **`fcs-utils`** – Shared helpers: configuration structs, Laplacian-variance quality scoring, enhancement pipeline (CPU and GPU paths with 7 WGSL compute shaders), mapping system for CSV/Excel/Parquet/SQLite, and output encoders with metadata support.
+- **`fcs-cli`** – Command-line frontend aimed at batch processing and automation with optional GPU acceleration (auto-detected, with fallback to CPU). Features GPU context pooling for efficient batch operations. Example invocations are documented in `docs/cli_recipes.md`.
+- **`fcs-gui`** – eframe/egui desktop experience with live preview, crop adjustments, enhancements, history/undo, and batch export. Shares GPU context with eframe's wgpu backend for efficient rendering and compute. A user guide lives in `docs/gui_crop_guide.md`.
 
 ## Crop Features Overview
 
@@ -78,8 +78,8 @@ Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
 3. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
 4. If you downloaded the zip, extract it to a folder of your choice.
 5. Run:
-   - `yunet-gui.exe` for the desktop app
-   - `yunet-cli.exe --help` for CLI usage
+   - `fcs-gui.exe` for the desktop app
+   - `fcs-cli.exe --help` for CLI usage
 
 The release package includes `models/face_detection_yunet_2023mar_640.onnx` by default, so detection works out-of-the-box without manually selecting a model path.
 
@@ -106,12 +106,12 @@ Release screenshots/GIF asset plan lives in `screenshots/README.md`.
 
 - `cargo check --workspace` – Fast type checking across all crates.
 - `cargo test --workspace --all-features` – Run the full test suite (requires the YuNet 640×640 ONNX model under `models/`).
-- `cargo run -p yunet-cli -- --help` – View CLI options.
-- `cargo run -p yunet-cli -- --benchmark-preprocess` – Benchmark GPU vs CPU preprocessing performance.
-- `cargo run -p yunet-cli -- --input fixtures/ --gpu` – Run with explicit GPU acceleration.
-- `cargo run -p yunet-cli -- --input fixtures/ --no-gpu` – Run with CPU-only mode.
-- `cargo run -p yunet-gui` – Launch the GUI with default settings (auto-detects GPU).
-- `cargo bench -p yunet-core crop_enhance` – Measure the crop + enhancement micro-benchmark.
+- `cargo run -p fcs-cli -- --help` – View CLI options.
+- `cargo run -p fcs-cli -- --benchmark-preprocess` – Benchmark GPU vs CPU preprocessing performance.
+- `cargo run -p fcs-cli -- --input fixtures/ --gpu` – Run with explicit GPU acceleration.
+- `cargo run -p fcs-cli -- --input fixtures/ --no-gpu` – Run with CPU-only mode.
+- `cargo run -p fcs-gui` – Launch the GUI with default settings (auto-detects GPU).
+- `cargo bench -p fcs-core crop_enhance` – Measure the crop + enhancement micro-benchmark.
 - `cargo fmt --all && cargo clippy --workspace -- -D warnings` – Formatting and linting hygiene.
 
 ## Configuration

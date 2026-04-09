@@ -4,7 +4,7 @@ The desktop app bundles a full crop workflow on top of YuNet detection so you ca
 
 ## Quick Start
 
-1. Launch the GUI with `cargo run -p yunet-gui` (or run the packaged binary once released).
+1. Launch the GUI with `cargo run -p fcs-gui` (or run the packaged binary once released).
 2. Click **Open image…** to select a portrait photo, or simply drag an image from your desktop (or paste one from the clipboard) to load it instantly. YuNet will run automatically as soon as the model has been configured.
 3. Detected faces appear in the **Detected Faces** list. Click a thumbnail or the accompanying **Select** button to include a face in the export set. Hold *Shift* and use the number keys (1‑6) to jump between the built-in crop presets.
 4. Hit **Export selected faces** (or press *Enter*) to run the crop, optional enhancements, and save pipeline.
@@ -26,7 +26,7 @@ The desktop app bundles a full crop workflow on top of YuNet detection so you ca
 
 ## Enhancement Pipeline
 
-When **Enable enhancements** is ticked, the crop output is routed through the pure-Rust enhancement pipeline from `yunet-utils`:
+When **Enable enhancements** is ticked, the crop output is routed through the pure-Rust enhancement pipeline from `fcs-utils`:
 
 - Presets (Natural/Vivid/Professional) reconfigure the sliders to sensible defaults. Manual adjustments are always allowed—preset selection simply provides a starting point.
 - Controls cover exposure, brightness, contrast, saturation, sharpness, skin smoothing, red-eye removal, and portrait-style background blur.
@@ -46,4 +46,4 @@ When **Enable enhancements** is ticked, the crop output is routed through the pu
 - Drop a CSV/XLSX/Parquet/SQLite mapping file (or paste its path) to auto-populate the Mapping Import panel so you can combine spreadsheet data with batch exports immediately.
 - Start the batch export from the footer once rules are configured. Progress updates stream live in the status bar.
 
-By combining these surfaces you can rapidly iterate on crop framing, dial in enhancement presets, and export the most flattering results without leaving the app. For deeper technical details see `ARCHITECTURE.md` and the inline documentation in `yunet-core/src/cropper.rs`.
+By combining these surfaces you can rapidly iterate on crop framing, dial in enhancement presets, and export the most flattering results without leaving the app. For deeper technical details see `ARCHITECTURE.md` and the inline documentation in `fcs-core/src/cropper.rs`.

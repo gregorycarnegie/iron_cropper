@@ -1,11 +1,11 @@
 # CLI Recipes
 
-The `yunet-cli` crate exposes a flexible command-line tool for running YuNet detection, cropping, quality filtering, and enhancement workflows. This document captures a handful of common invocations you can adapt to your projects.
+The `fcs-cli` crate exposes a flexible command-line tool for running YuNet detection, cropping, quality filtering, and enhancement workflows. This document captures a handful of common invocations you can adapt to your projects.
 
 ## Basic Detection
 
 ```bash
-cargo run -p yunet-cli -- --input fixtures/images/006.jpg --model models/face_detection_yunet_2023mar_640.onnx
+cargo run -p fcs-cli -- --input fixtures/images/006.jpg --model models/face_detection_yunet_2023mar_640.onnx
 ```
 
 Prints a summary of detections to stdout. Add `--json detections.json` to capture structured output for downstream tooling.
@@ -13,7 +13,7 @@ Prints a summary of detections to stdout. Add `--json detections.json` to captur
 ## Crop a Single Portrait
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input portraits/alex.png \
   --model models/face_detection_yunet_2023mar_640.onnx \
   --crop \
@@ -26,7 +26,7 @@ The `--crop` flag enables the crop pipeline, respecting the selected preset. Res
 ## Enforce Minimum Quality
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input portraits/*.jpg \
   --crop \
   --output-dir crops/ \
@@ -39,7 +39,7 @@ Only exports faces classified as `High` quality and appends `_highq` to filename
 ## Apply Enhancements
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input portraits/group_photo.jpg \
   --crop \
   --output-dir crops/ \
@@ -54,7 +54,7 @@ Starts with the `vivid` preset and overrides the saturation and brightness slide
 ## Pad Crops With Custom Color
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input portraits/outdoor.png \
   --crop \
   --output-dir crops/ \
@@ -66,7 +66,7 @@ cargo run -p yunet-cli -- \
 ## Batch Pipeline with Metadata
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input portraits/ \
   --model models/face_detection_yunet_2023mar_640.onnx \
   --crop \
@@ -82,7 +82,7 @@ Processes every supported image in the directory tree, exporting crops with rich
 ## Export Selected Face Index
 
 ```bash
-cargo run -p yunet-cli -- \
+cargo run -p fcs-cli -- \
   --input composites/family.png \
   --crop \
   --output-dir solo/ \
@@ -91,4 +91,4 @@ cargo run -p yunet-cli -- \
 
 Saves only the second detected face (1-based indexing) from the source image—useful when you want a consistent subject from group photos.
 
-Refer to `cargo run -p yunet-cli -- --help` for a full list of flags, and combine them with the recipes above to build repeatable pipelines.
+Refer to `cargo run -p fcs-cli -- --help` for a full list of flags, and combine them with the recipes above to build repeatable pipelines.

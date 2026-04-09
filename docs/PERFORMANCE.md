@@ -4,14 +4,14 @@
 
 ### Complete Pipeline Breakdown (Release Build, 640x640)
 
-| Stage | Time | % of Total | Status |
-|-------|------|------------|--------|
-| **Model Loading** | 0.11-0.29s | 14-22% | ✅ Cached (happens once) |
-| **Preprocessing** | 0.27s | 33.7% | ✅ Optimized with rayon |
-| **Model Inference** | 0.42s | 52.0% | ⚠️ Main bottleneck |
-| **Postprocessing** | <0.001s | 0.1% | ✅ Already optimized |
-| **TOTAL (first run)** | **0.81s** | **100%** | |
-| **TOTAL (cached)** | **0.70s** | **100%** | |
+| Stage                 | Time       | % of Total | Status                  |
+|-----------------------|------------|------------|-------------------------|
+| **Model Loading**     | 0.11-0.29s | 14-22%     | ✅ Cached (happens once) |
+| **Preprocessing**     | 0.27s      | 33.7%      | ✅ Optimized with rayon  |
+| **Model Inference**   | 0.42s      | 52.0%      | ⚠️ Main bottleneck      |
+| **Postprocessing**    | <0.001s    | 0.1%       | ✅ Already optimized     |
+| **TOTAL (first run)** | **0.81s**  | **100%**   |                         |
+| **TOTAL (cached)**    | **0.70s**  | **100%**   |                         |
 
 ### Model Loading Details
 
@@ -28,47 +28,47 @@
 
 ### 1. Parallel RGB→BGR Channel Conversion
 
-- **Location**: `yunet-utils/src/image_utils.rs:40-71`
+- **Location**: `fcs-utils/src/image_utils.rs:40-71`
 - **Method**: Process 3 color channels (Blue, Green, Red) in parallel using rayon
 - **Impact**: Better multi-core CPU utilization
 - **Note**: Shows ~6-8% overhead for small images due to thread coordination, but scales well for larger images or batch processing
 
 ### 2. Parallel Model Output Decoding
 
-- **Location**: `yunet-core/src/model.rs:147-252`
+- **Location**: `fcs-core/src/model.rs:147-252`
 - **Method**: Process each stride (8, 16, 32) in parallel when decoding YuNet outputs
 - **Impact**: 3x parallel processing of detection grid strides
 - **Benefit**: Significant speedup in post-model-inference phase
 
 ### 3. Parallel CLI Batch Processing
 
-- **Location**: `yunet-cli/src/main.rs:123-176`
+- **Location**: `fcs-cli/src/main.rs:123-176`
 - **Method**: Process multiple images in parallel using rayon's `par_iter`
 - **Impact**: Near-linear speedup when processing directories with multiple images
 - **Implementation**: `Arc<Mutex<Detector>>` for thread-safe shared model access
 
 ### 4. Improved Tensor Creation
 
-- **Location**: `yunet-core/src/preprocess.rs:98-103`
+- **Location**: `fcs-core/src/preprocess.rs:98-103`
 - **Method**: Use `into_raw_vec_and_offset()` instead of deprecated `into_raw_vec()`
 - **Impact**: Cleaner code with validation, minor performance improvement
 
 ### 5. Detection Result Caching
 
-- **Location**: `yunet-gui/src/main.rs` (already implemented)
+- **Location**: `fcs-gui/src/main.rs` (already implemented)
 - **Method**: Cache detection results per image + settings combination
 - **Impact**: Instant results when switching back to previously processed images
 
 ### 6. Conditional Resize Bypass
 
-- **Location**: `yunet-core/src/preprocess.rs:86-108`
+- **Location**: `fcs-core/src/preprocess.rs:86-108`
 - **Method**: Skip the costly resampling step and borrow the existing RGB buffer when the source image already matches the configured input size.
 - **Impact**: Avoids redundant resizing work for 640Ã—640 assets, shaving ~15-20ms per image in telemetry runs and reducing CPU usage in batch jobs.
 - **Implementation**: Uses `Cow<RgbImage>` to borrow in-memory RGB data when possible, falling back to a single owned resize when dimensions differ.
 
 ### 7. Enhancement Pipeline LUT + SIMD Passes (Phase 11)
 
-- **Location**: `yunet-utils/src/enhance.rs`
+- **Location**: `fcs-utils/src/enhance.rs`
 - **Method**: Reuse lookup tables for exposure/brightness/contrast tweaks and process saturation four pixels at a time with `wide::f32x4`, keeping scalar tail handling for leftovers.
 - **Benchmark command**: `cargo bench crop_and_enhance_pipeline`
 - **Result**: Criterion median improved from **895 ms → 798 ms** (−10.9%, p < 0.05), demonstrating the SIMD/LUT path outperforms the original scalar loops.
@@ -79,38 +79,38 @@
 
 ### Created Files
 
-- `yunet-core/benches/preprocessing.rs` - Criterion benchmarks for preprocessing
-- `yunet-core/examples/benchmark_model_load.rs` - Model loading benchmarks
-- `yunet-core/examples/profile_pipeline.rs` - Complete pipeline profiling
+- `fcs-core/benches/preprocessing.rs` - Criterion benchmarks for preprocessing
+- `fcs-core/examples/benchmark_model_load.rs` - Model loading benchmarks
+- `fcs-core/examples/profile_pipeline.rs` - Complete pipeline profiling
 
 ### Running Benchmarks
 
 ```bash
 # CPU vs GPU preprocessing benchmarks (criterion)
-cargo bench -p yunet-core --bench preprocessing
+cargo bench -p fcs-core --bench preprocessing
 
 # Lightweight CLI benchmark over your current --input set
-cargo run -p yunet-cli -- --input fixtures/images --benchmark-preprocess
+cargo run -p fcs-cli -- --input fixtures/images --benchmark-preprocess
 
 # Model loading profile
-cargo run --release --example benchmark_model_load -p yunet-core
+cargo run --release --example benchmark_model_load -p fcs-core
 
 # Full pipeline profile
-cargo run --release --example profile_pipeline -p yunet-core
+cargo run --release --example profile_pipeline -p fcs-core
 ```
 
 The CLI benchmark flag prints JSON summaries for both CPU and GPU (when available), making it easy to capture telemetry in CI dashboards.
 
 ### Sample Results (Windows + GTX 1080 Ti, Vulkan backend)
 
-| Scenario | Median Time |
-| --- | --- |
-| `preprocess_dynamic_image` CPU (quality) | ~162 ms |
-| `preprocess_dynamic_image` GPU (quality) | **~51 ms** |
-| `preprocess_image` CPU (quality) | ~244 ms |
-| `preprocess_image` GPU (quality) | **~126 ms** |
-| CLI `--benchmark-preprocess` CPU avg | 43.99 ms per image |
-| CLI `--benchmark-preprocess` GPU avg | 2.43 s per image* |
+| Scenario                                 | Median Time        |
+|------------------------------------------|--------------------|
+| `preprocess_dynamic_image` CPU (quality) | ~162 ms            |
+| `preprocess_dynamic_image` GPU (quality) | **~51 ms**         |
+| `preprocess_image` CPU (quality)         | ~244 ms            |
+| `preprocess_image` GPU (quality)         | **~126 ms**        |
+| CLI `--benchmark-preprocess` CPU avg     | 43.99 ms per image |
+| CLI `--benchmark-preprocess` GPU avg     | 2.43 s per image*  |
 
 \*The CLI GPU path still serializes uploads/downloads per image; the current pooling work removes allocation overhead, but we’ll keep iterating to reduce the remaining map/poll latency.
 
@@ -315,7 +315,7 @@ ort = { version = "2.0", features = ["cuda"] }  # or "tensorrt", "directml"
 
 **Attempted**: Parallelize the inner `row`/`col` loops within each stride using rayon's `par_iter()`
 
-**Location**: `yunet-core/src/model.rs:202-239`
+**Location**: `fcs-core/src/model.rs:202-239`
 
 **Results**:
 
@@ -388,20 +388,20 @@ Current performance of **~0.7s per image** (after initial load) is competitive f
 
 ### Core optimizations
 
-- `yunet-utils/src/image_utils.rs` - Parallel channel conversion
-- `yunet-core/src/model.rs` - Parallel stride processing
-- `yunet-core/src/preprocess.rs` - Improved tensor creation
-- `yunet-cli/src/main.rs` - Parallel batch processing
+- `fcs-utils/src/image_utils.rs` - Parallel channel conversion
+- `fcs-core/src/model.rs` - Parallel stride processing
+- `fcs-core/src/preprocess.rs` - Improved tensor creation
+- `fcs-cli/src/main.rs` - Parallel batch processing
 
 ### Infrastructure
 
 - `Cargo.toml` - Added criterion 0.7.0
-- `yunet-utils/Cargo.toml` - Added rayon
-- `yunet-cli/Cargo.toml` - Added rayon
-- `yunet-core/Cargo.toml` - Added criterion benchmarks
-- `yunet-core/benches/preprocessing.rs` - Benchmark suite
-- `yunet-core/examples/benchmark_model_load.rs` - Model loading profiler
-- `yunet-core/examples/profile_pipeline.rs` - Pipeline profiler
+- `fcs-utils/Cargo.toml` - Added rayon
+- `fcs-cli/Cargo.toml` - Added rayon
+- `fcs-core/Cargo.toml` - Added criterion benchmarks
+- `fcs-core/benches/preprocessing.rs` - Benchmark suite
+- `fcs-core/examples/benchmark_model_load.rs` - Model loading profiler
+- `fcs-core/examples/profile_pipeline.rs` - Pipeline profiler
 
 ### Documentation
 

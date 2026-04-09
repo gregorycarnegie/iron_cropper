@@ -2,5 +2,5 @@
 target-dir = "target"
 
 [env]
-RUST_LOG = { value = "info,yunet_core=debug,yunet_gui=debug", force = false }
+RUST_LOG = { value = "info,fcs_core=debug,fcs_gui=debug", force = false }
 RUST_BACKTRACE = { value = "1", force = false }

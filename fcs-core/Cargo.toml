@@ -1,0 +1,42 @@
+[package]
+name = "fcs-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+description = "YuNet model loading, preprocessing, and postprocessing."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true
+rayon.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tract-onnx.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+fcs-utils = { path = "../fcs-utils" }
+prost.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "preprocessing"
+harness = false
+
+[[bench]]
+name = "inference_pipeline"
+harness = false
+
+[[bench]]
+name = "crop_enhance"
+harness = false
+
+[[bench]]
+name = "conv2d_benchmark"
+harness = false

@@ -119,7 +119,7 @@ jobs:
           RUSTFLAGS: -C target-feature=+crt-static
           PKG_CONFIG_PATH: C:\vcpkg\installed\x64-windows-static\lib\pkgconfig
           PKG_CONFIG_ALL_STATIC: "1"
-        run: cargo build --release -p yunet-cli -p yunet-gui
+        run: cargo build --release -p fcs-cli -p fcs-gui
 
       - name: Package artifacts
         shell: pwsh
@@ -129,9 +129,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
           New-Item -ItemType Directory -Force -Path "$DistDir/models" | Out-Null
 
-          Copy-Item target/release/yunet-cli.exe "$DistDir/yunet-cli.exe"
-          Copy-Item target/release/yunet-gui.exe "$DistDir/yunet-gui.exe"
-          Copy-Item yunet-gui/assets/app_icon.ico "$DistDir/app_icon.ico"
+          Copy-Item target/release/fcs-cli.exe "$DistDir/fcs-cli.exe"
+          Copy-Item target/release/fcs-gui.exe "$DistDir/fcs-gui.exe"
+          Copy-Item fcs-gui/assets/app_icon.ico "$DistDir/app_icon.ico"
           Copy-Item models/face_detection_yunet_2023mar_640.onnx "$DistDir/models/face_detection_yunet_2023mar_640.onnx"
           if (Test-Path README.md) {
             Copy-Item README.md "$DistDir/README.md"
@@ -167,7 +167,7 @@ jobs:
 
           $DistDir = Join-Path $PWD "dist\$DistName"
           $OutFile = Join-Path $PWD "dist\face-crop-studio-windows-x86_64-setup.exe"
-          $Script = Join-Path $PWD "installer\windows\iron_cropper.nsi"
+          $Script = Join-Path $PWD "installer\windows\face-crop-studio.nsi"
           $env:Path = "C:\ProgramData\chocolatey\bin;$env:Path"
 
           $Makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source

@@ -2102,6 +2102,107 @@ dependencies = [
 ]
 
 [[package]]
+name = "fcs-cli"
+version = "1.0.5-rc3"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "clap",
+ "fcs-core",
+ "fcs-utils",
+ "image",
+ "imageproc",
+ "log",
+ "predicates",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "walkdir",
+ "winresource",
+]
+
+[[package]]
+name = "fcs-core"
+version = "1.0.5-rc3"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "criterion",
+ "fcs-utils",
+ "image",
+ "log",
+ "prost",
+ "rayon",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tract-onnx",
+ "wgpu",
+]
+
+[[package]]
+name = "fcs-gui"
+version = "1.0.5-rc3"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "fcs-core",
+ "fcs-utils",
+ "ico",
+ "image",
+ "imageproc",
+ "log",
+ "lru",
+ "rayon",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "winresource",
+]
+
+[[package]]
+name = "fcs-utils"
+version = "1.0.5-rc3"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "base64",
+ "bytemuck",
+ "calamine",
+ "crc32fast",
+ "criterion",
+ "csv",
+ "env_logger",
+ "fast_image_resize",
+ "image",
+ "imgref",
+ "log",
+ "metal 0.33.0",
+ "ndarray 0.17.2",
+ "nokhwa",
+ "parquet",
+ "pollster",
+ "ravif",
+ "rayon",
+ "rgb",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tiny-skia 0.12.0",
+ "wgpu",
+ "wide 1.2.0",
+ "windows",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7450,107 +7551,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "synstructure",
-]
-
-[[package]]
-name = "yunet-cli"
-version = "1.0.5-rc3"
-dependencies = [
- "anyhow",
- "assert_cmd",
- "clap",
- "image",
- "imageproc",
- "log",
- "predicates",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "walkdir",
- "winresource",
- "yunet-core",
- "yunet-utils",
-]
-
-[[package]]
-name = "yunet-core"
-version = "1.0.5-rc3"
-dependencies = [
- "anyhow",
- "bytemuck",
- "criterion",
- "image",
- "log",
- "prost",
- "rayon",
- "serde",
- "tempfile",
- "thiserror 2.0.18",
- "tract-onnx",
- "wgpu",
- "yunet-utils",
-]
-
-[[package]]
-name = "yunet-gui"
-version = "1.0.5-rc3"
-dependencies = [
- "anyhow",
- "arboard",
- "eframe",
- "egui",
- "egui_extras",
- "ico",
- "image",
- "imageproc",
- "log",
- "lru",
- "rayon",
- "rfd",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "winresource",
- "yunet-core",
- "yunet-utils",
-]
-
-[[package]]
-name = "yunet-utils"
-version = "1.0.5-rc3"
-dependencies = [
- "anyhow",
- "async-channel",
- "base64",
- "bytemuck",
- "calamine",
- "crc32fast",
- "criterion",
- "csv",
- "env_logger",
- "fast_image_resize",
- "image",
- "imgref",
- "log",
- "metal 0.33.0",
- "ndarray 0.17.2",
- "nokhwa",
- "parquet",
- "pollster",
- "ravif",
- "rayon",
- "rgb",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tiny-skia 0.12.0",
- "wgpu",
- "wide 1.2.0",
- "windows",
 ]
 
 [[package]]

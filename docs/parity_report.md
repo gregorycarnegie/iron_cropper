@@ -3,7 +3,7 @@
 Generated with:
 
 ```bash
-cargo run --release -p yunet-core --example parity_report
+cargo run --release -p fcs-core --example parity_report
 ```
 
 Results (IoU threshold = 0.5):

@@ -9,12 +9,12 @@ This document tracks performance optimizations implemented in the YuNet face det
 From telemetry logs:
 
 ```text
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_gui::load_image completed in 34.09ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_core::onnx_inference completed in 82.52ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_core::postprocess completed in 26.70µs
-[2025-11-29T07:11:51Z TRACE yunet::telemetry] yunet_core::run_preprocessed completed in 84.10ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_core::detect_image completed in 107.23ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] yunet_gui::detect_image completed in 107.85ms
+[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_gui::load_image completed in 34.09ms
+[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::onnx_inference completed in 82.52ms
+[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::postprocess completed in 26.70µs
+[2025-11-29T07:11:51Z TRACE yunet::telemetry] fcs_core::run_preprocessed completed in 84.10ms
+[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::detect_image completed in 107.23ms
+[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_gui::detect_image completed in 107.85ms
 ```
 
 **Breakdown:**
@@ -54,10 +54,10 @@ image = { version = "0.25.9", default-features = false, features = [
 
 **Files Modified:**
 
-- `yunet-gui/src/types.rs` - Added `image_cache: HashMap<PathBuf, Arc<DynamicImage>>` field
-- `yunet-gui/src/main.rs` - Initialize cache in app creation
-- `yunet-gui/src/core/cache.rs` - Added `get_or_load_cached_image()` helper
-- `yunet-gui/src/app_impl.rs` - Pass cache to crop preview requests
+- `fcs-gui/src/types.rs` - Added `image_cache: HashMap<PathBuf, Arc<DynamicImage>>` field
+- `fcs-gui/src/main.rs` - Initialize cache in app creation
+- `fcs-gui/src/core/cache.rs` - Added `get_or_load_cached_image()` helper
+- `fcs-gui/src/app_impl.rs` - Pass cache to crop preview requests
 
 **Implementation:**
 
@@ -104,11 +104,11 @@ pub fn get_or_load_cached_image(
 
 ## Implementation Status
 
-| Optimization | Status | Files Changed | Est. Improvement |
-|-------------|--------|---------------|------------------|
-| Image crate rayon feature | ✅ Complete | Cargo.toml | 2-4ms (first load) |
-| App-level image caching | ✅ Complete | 4 files | 34ms (cached access) |
-| Tract rayon integration | ✅ Already active | None | Baseline |
+| Optimization              | Status           | Files Changed | Est. Improvement     |
+|---------------------------|------------------|---------------|----------------------|
+| Image crate rayon feature | ✅ Complete       | Cargo.toml    | 2-4ms (first load)   |
+| App-level image caching   | ✅ Complete       | 4 files       | 34ms (cached access) |
+| Tract rayon integration   | ✅ Already active | None          | Baseline             |
 
 ---
 
@@ -124,9 +124,9 @@ export RUST_LOG=yunet::telemetry=debug
 
 Key timing guards to monitor:
 
-- `yunet_gui::load_image` - Should improve slightly with rayon
-- `yunet_core::onnx_inference` - Monitor for any regressions
-- `yunet_core::detect_image` - Overall detection time
+- `fcs_gui::load_image` - Should improve slightly with rayon
+- `fcs_core::onnx_inference` - Monitor for any regressions
+- `fcs_core::detect_image` - Overall detection time
 
 ### Benchmark Commands
 
@@ -187,7 +187,7 @@ cargo bench --bench inference_pipeline -- --baseline before_opt
 
 **Files Modified:**
 
-- `yunet-utils/src/image_utils.rs` - Thread-local buffer pool implementation
+- `fcs-utils/src/image_utils.rs` - Thread-local buffer pool implementation
 
 **Implementation:**
 
@@ -236,8 +236,8 @@ pub fn rgb_to_bgr_chw(image: &RgbImage) -> Array3<f32> {
 
 **Files Modified:**
 
-- `yunet-gui/src/core/detection.rs` - Builds GPU preprocessor when available
-- `yunet-core/src/detector.rs` - Already supports custom preprocessors via `with_preprocessor()`
+- `fcs-gui/src/core/detection.rs` - Builds GPU preprocessor when available
+- `fcs-core/src/detector.rs` - Already supports custom preprocessors via `with_preprocessor()`
 
 **Implementation:**
 The GUI detector builder already implements automatic GPU preprocessing when GPU is enabled:
@@ -280,9 +280,9 @@ GPU preprocessing is controlled via GUI settings:
 
 ### Phase 2 Status
 
-| Optimization | Status | Est. Improvement |
-|-------------|--------|------------------|
-| Buffer pooling | ✅ Implemented | 2-5ms |
+| Optimization      | Status        | Est. Improvement             |
+|-------------------|---------------|------------------------------|
+| Buffer pooling    | ✅ Implemented | 2-5ms                        |
 | GPU preprocessing | ✅ Implemented | 20-25ms (when GPU available) |
 
 **Total Phase 2 Savings:** 22-30ms (when GPU enabled)

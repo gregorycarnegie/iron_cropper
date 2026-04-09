@@ -1,5 +1,5 @@
 [workspace]
-members = ["yunet-core", "yunet-utils", "yunet-cli", "yunet-gui"]
+members = ["fcs-core", "fcs-utils", "fcs-cli", "fcs-gui"]
 resolver = "2"
 
 [workspace.package]

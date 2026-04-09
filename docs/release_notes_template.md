@@ -4,7 +4,7 @@
 
 - Version: `vX.Y.Z`
 - Date: `YYYY-MM-DD`
-- Scope: Windows release binaries (`yunet-cli.exe`, `yunet-gui.exe`)
+- Scope: Windows release binaries (`fcs-cli.exe`, `fcs-gui.exe`)
 
 ## Highlights
 
@@ -59,4 +59,3 @@
 ## Contributors
 
 - @username
-

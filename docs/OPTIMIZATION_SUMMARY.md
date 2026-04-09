@@ -11,9 +11,9 @@ This document summarizes the performance optimizations implemented across Phase 
 From telemetry (CPU-only mode):
 
 ```text
-yunet_gui::load_image:       34.09ms (31.6%)
-yunet_core::onnx_inference:  82.52ms (76.5%)
-yunet_core::postprocess:      0.03ms (0.02%)
+fcs_gui::load_image:       34.09ms (31.6%)
+fcs_core::onnx_inference:  82.52ms (76.5%)
+fcs_core::postprocess:      0.03ms (0.02%)
 ─────────────────────────────────────────
 Total:                      107.85ms
 ```
@@ -24,18 +24,18 @@ Total:                      107.85ms
 
 ### Phase 1: Quick Wins ✅
 
-| # | Optimization | Files Changed | Impact |
-|---|-------------|---------------|--------|
-| 1 | Enable `rayon` feature in image crate | `Cargo.toml` | 2-4ms |
-| 2 | App-level image caching for GUI | 4 files | 34ms (cached access) |
-| 3 | Verified tract uses rayon (already active) | None | Baseline |
+| # | Optimization                               | Files Changed | Impact               |
+|---|--------------------------------------------|---------------|----------------------|
+| 1 | Enable `rayon` feature in image crate      | `Cargo.toml`  | 2-4ms                |
+| 2 | App-level image caching for GUI            | 4 files       | 34ms (cached access) |
+| 3 | Verified tract uses rayon (already active) | None          | Baseline             |
 
 ### Phase 2: Medium Effort ✅
 
-| # | Optimization | Files Changed | Impact |
-|---|-------------|---------------|--------|
-| 1 | Thread-local buffer pooling | `yunet-utils/src/image_utils.rs` | 2-5ms |
-| 2 | GPU preprocessing integration | `yunet-gui/src/core/detection.rs` | 20-25ms (GPU) |
+| # | Optimization                  | Files Changed                   | Impact        |
+|---|-------------------------------|---------------------------------|---------------|
+| 1 | Thread-local buffer pooling   | `fcs-utils/src/image_utils.rs`  | 2-5ms         |
+| 2 | GPU preprocessing integration | `fcs-gui/src/core/detection.rs` | 20-25ms (GPU) |
 
 ---
 
@@ -188,15 +188,15 @@ fn maybe_build_gpu_preprocessor(settings: &AppSettings) -> (...) {
 ### Phase 1
 
 1. `Cargo.toml` - Added rayon feature
-2. `yunet-gui/src/types.rs` - Added image_cache field
-3. `yunet-gui/src/main.rs` - Initialize cache
-4. `yunet-gui/src/core/cache.rs` - Cache helper functions
-5. `yunet-gui/src/app_impl.rs` - Pass cache to requests
+2. `fcs-gui/src/types.rs` - Added image_cache field
+3. `fcs-gui/src/main.rs` - Initialize cache
+4. `fcs-gui/src/core/cache.rs` - Cache helper functions
+5. `fcs-gui/src/app_impl.rs` - Pass cache to requests
 
 ### Phase 2
 
-1. `yunet-utils/src/image_utils.rs` - Buffer pooling implementation
-2. `yunet-gui/src/core/detection.rs` - GPU preprocessor integration (already present, verified)
+1. `fcs-utils/src/image_utils.rs` - Buffer pooling implementation
+2. `fcs-gui/src/core/detection.rs` - GPU preprocessor integration (already present, verified)
 
 ---
 
@@ -246,7 +246,7 @@ No configuration needed! All Phase 1 and Phase 2 (buffer pooling) optimizations 
 Check telemetry output:
 
 ```bash
-RUST_LOG=yunet::telemetry=debug cargo run -p yunet-gui
+RUST_LOG=yunet::telemetry=debug cargo run -p fcs-gui
 ```
 
 Look for:
@@ -271,7 +271,7 @@ Look for:
 cargo build --release
 
 # Run with telemetry
-RUST_LOG=yunet::telemetry=debug ./target/release/yunet-gui
+RUST_LOG=yunet::telemetry=debug ./target/release/fcs-gui
 
 # Run benchmarks (requires model)
 cargo bench --bench inference_pipeline
