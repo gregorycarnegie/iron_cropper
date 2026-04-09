@@ -28,7 +28,7 @@
     <Icon Id="AppIcon.ico" SourceFile="$(var.SourceDir)\app_icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
 
-    <WixVariable Id="WixUILicenseRtf" Value="EULA.rtf" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)EULA.rtf" />
     <!-- WixUI_Mondo: welcome → license → components → install → finish -->
     <ui:WixUI Id="WixUI_Mondo" />
 
