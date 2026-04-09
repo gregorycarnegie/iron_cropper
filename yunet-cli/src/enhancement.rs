@@ -149,7 +149,10 @@ mod tests {
 
         let settings = build_enhancement_settings(&args).unwrap();
         assert_eq!(settings.contrast, EnhancementSettings::default().contrast);
-        assert_eq!(settings.unsharp_amount, EnhancementSettings::default().unsharp_amount);
+        assert_eq!(
+            settings.unsharp_amount,
+            EnhancementSettings::default().unsharp_amount
+        );
     }
 
     #[test]

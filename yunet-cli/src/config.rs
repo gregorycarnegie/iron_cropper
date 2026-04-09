@@ -214,8 +214,7 @@ fn parse_metadata_tags_args(entries: &[String]) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
     use std::{
-        env,
-        fs,
+        env, fs,
         sync::{Mutex, OnceLock},
     };
 
@@ -259,7 +258,10 @@ mod tests {
         let loaded = load_settings(None).unwrap();
 
         env::set_current_dir(original_dir).unwrap();
-        assert_eq!(loaded.crop.output_width, AppSettings::default().crop.output_width);
+        assert_eq!(
+            loaded.crop.output_width,
+            AppSettings::default().crop.output_width
+        );
     }
 
     #[test]
@@ -531,7 +533,10 @@ mod tests {
         assert!(settings.telemetry.enabled);
         assert_eq!(settings.input.width, 320);
         assert_eq!(settings.input.height, 240);
-        assert_eq!(settings.input.resize_quality, yunet_utils::config::ResizeQuality::Speed);
+        assert_eq!(
+            settings.input.resize_quality,
+            yunet_utils::config::ResizeQuality::Speed
+        );
         assert_eq!(settings.crop.preset, "linkedin");
         assert_eq!(settings.crop.output_width, 400);
         assert_eq!(settings.crop.output_height, 400);
@@ -547,7 +552,12 @@ mod tests {
         assert!(!settings.crop.metadata.include_crop_settings);
         assert!(settings.crop.metadata.include_quality_metrics);
         assert_eq!(
-            settings.crop.metadata.custom_tags.get("owner").map(String::as_str),
+            settings
+                .crop
+                .metadata
+                .custom_tags
+                .get("owner")
+                .map(String::as_str),
             Some("greg")
         );
     }
@@ -576,7 +586,10 @@ mod tests {
         assert_eq!(settings.crop.fill_color.red, 9);
         assert_eq!(settings.crop.metadata.mode, MetadataMode::Preserve);
         assert_eq!(settings.crop.quality_rules.min_quality, Some(Quality::Low));
-        assert_eq!(settings.telemetry.level, AppSettings::default().telemetry.level);
+        assert_eq!(
+            settings.telemetry.level,
+            AppSettings::default().telemetry.level
+        );
     }
 
     #[test]

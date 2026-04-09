@@ -978,7 +978,11 @@ mod tests {
 
         let annotate_dir = Arc::new(Some(dir.path().join("annotated")));
         let success = annotate_image_if_requested(&image_path, &detections, &annotate_dir);
-        assert!(success.as_ref().is_some_and(|p| p.ends_with("annotate.png")));
+        assert!(
+            success
+                .as_ref()
+                .is_some_and(|p| p.ends_with("annotate.png"))
+        );
 
         let blocked_file = dir.path().join("blocked");
         fs::write(&blocked_file, b"not a dir").unwrap();
@@ -1392,19 +1396,13 @@ mod tests {
     #[test]
     fn build_crop_output_path_uses_default_name_when_source_stem_is_missing() {
         let dir = tempdir().unwrap();
-        let out = build_crop_output_path(
-            dir.path(),
-            Path::new(""),
-            0,
-            256,
-            256,
-            "png",
-            None,
-            None,
-            0,
-        );
+        let out =
+            build_crop_output_path(dir.path(), Path::new(""), 0, 256, 256, "png", None, None, 0);
 
-        assert_eq!(out.file_name().and_then(|s| s.to_str()), Some("image_face1.png"));
+        assert_eq!(
+            out.file_name().and_then(|s| s.to_str()),
+            Some("image_face1.png")
+        );
     }
 
     #[test]
@@ -1465,6 +1463,11 @@ mod tests {
 
         assert_eq!(images_processed.load(Ordering::Relaxed), 1);
         assert_eq!(result.image, image_path.display().to_string());
-        assert!(result.annotated.as_ref().is_some_and(|p| p.ends_with("single.png")));
+        assert!(
+            result
+                .annotated
+                .as_ref()
+                .is_some_and(|p| p.ends_with("single.png"))
+        );
     }
 }
