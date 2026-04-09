@@ -210,3 +210,196 @@ fn parse_metadata_tags_args(entries: &[String]) -> BTreeMap<String, String> {
     }
     map
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+    use crate::args::DetectArgs;
+
+    // Helper: parse DetectArgs from a slice of args (prepend binary name).
+    fn parse_args(args: &[&str]) -> DetectArgs {
+        let mut full = vec!["yunet-cli"];
+        full.extend_from_slice(args);
+        DetectArgs::try_parse_from(full).expect("valid args")
+    }
+
+    // --- parse_positioning_mode ---
+
+    #[test]
+    fn positioning_mode_center_variants() {
+        assert!(matches!(parse_positioning_mode("center"), PositioningMode::Center));
+        assert!(matches!(parse_positioning_mode("unknown"), PositioningMode::Center));
+        assert!(matches!(parse_positioning_mode(""), PositioningMode::Center));
+    }
+
+    #[test]
+    fn positioning_mode_rule_of_thirds_variants() {
+        assert!(matches!(
+            parse_positioning_mode("rule_of_thirds"),
+            PositioningMode::RuleOfThirds
+        ));
+        assert!(matches!(
+            parse_positioning_mode("rule-of-thirds"),
+            PositioningMode::RuleOfThirds
+        ));
+        assert!(matches!(
+            parse_positioning_mode("ruleofthirds"),
+            PositioningMode::RuleOfThirds
+        ));
+    }
+
+    #[test]
+    fn positioning_mode_custom() {
+        assert!(matches!(parse_positioning_mode("custom"), PositioningMode::Custom));
+    }
+
+    // --- parse_metadata_tags_args ---
+
+    #[test]
+    fn metadata_tags_parses_valid_entries() {
+        let entries = vec!["author=Alice".to_string(), "project=YuNet".to_string()];
+        let map = parse_metadata_tags_args(&entries);
+        assert_eq!(map.get("author").map(String::as_str), Some("Alice"));
+        assert_eq!(map.get("project").map(String::as_str), Some("YuNet"));
+    }
+
+    #[test]
+    fn metadata_tags_trims_whitespace() {
+        let entries = vec![" key = value with spaces ".to_string()];
+        let map = parse_metadata_tags_args(&entries);
+        assert_eq!(map.get("key").map(String::as_str), Some("value with spaces"));
+    }
+
+    #[test]
+    fn metadata_tags_skips_empty_key() {
+        let entries = vec!["=value".to_string()];
+        let map = parse_metadata_tags_args(&entries);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn metadata_tags_skips_no_equals() {
+        let entries = vec!["noequals".to_string()];
+        let map = parse_metadata_tags_args(&entries);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn metadata_tags_empty_input() {
+        let map = parse_metadata_tags_args(&[]);
+        assert!(map.is_empty());
+    }
+
+    // --- apply_cli_overrides ---
+
+    #[test]
+    fn override_gpu_flags() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&["--input", "x.jpg", "--gpu"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert!(settings.gpu.enabled);
+    }
+
+    #[test]
+    fn override_no_gpu_disables_inference() {
+        let mut settings = AppSettings::default();
+        settings.gpu.enabled = true;
+        settings.gpu.inference = true;
+        let args = parse_args(&["--input", "x.jpg", "--no-gpu"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert!(!settings.gpu.enabled);
+        assert!(!settings.gpu.inference);
+    }
+
+    #[test]
+    fn override_telemetry_level_off_disables_telemetry() {
+        let mut settings = AppSettings::default();
+        settings.telemetry.enabled = true;
+        let args = parse_args(&["--input", "x.jpg", "--telemetry-level", "off"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert!(!settings.telemetry.enabled);
+        assert_eq!(settings.telemetry.level, "off");
+    }
+
+    #[test]
+    fn override_telemetry_level_info() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&["--input", "x.jpg", "--telemetry-level", "info"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert_eq!(settings.telemetry.level, "info");
+    }
+
+    #[test]
+    fn override_detection_thresholds() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&[
+            "--input", "x.jpg",
+            "--score-threshold", "0.5",
+            "--nms-threshold", "0.4",
+            "--top-k", "100",
+        ]);
+        apply_cli_overrides(&mut settings, &args);
+        assert!((settings.detection.score_threshold - 0.5).abs() < f32::EPSILON);
+        assert!((settings.detection.nms_threshold - 0.4).abs() < f32::EPSILON);
+        assert_eq!(settings.detection.top_k, 100);
+    }
+
+    #[test]
+    fn override_output_width_height_sets_preset_custom() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&["--input", "x.jpg", "--output-width", "300", "--output-height", "400"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert_eq!(settings.crop.output_width, 300);
+        assert_eq!(settings.crop.output_height, 400);
+        assert_eq!(settings.crop.preset, "custom");
+    }
+
+    #[test]
+    fn override_skip_low_quality_true_sets_medium() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&["--input", "x.jpg", "--skip-low-quality=true"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert_eq!(settings.crop.quality_rules.min_quality, Some(yunet_utils::Quality::Medium));
+    }
+
+    #[test]
+    fn override_skip_low_quality_false_clears_min_quality() {
+        let mut settings = AppSettings::default();
+        settings.crop.quality_rules.min_quality = Some(yunet_utils::Quality::Medium);
+        let args = parse_args(&["--input", "x.jpg", "--skip-low-quality=false"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert!(settings.crop.quality_rules.min_quality.is_none());
+    }
+
+    #[test]
+    fn override_min_quality_high() {
+        let mut settings = AppSettings::default();
+        let args = parse_args(&["--input", "x.jpg", "--min-quality", "high"]);
+        apply_cli_overrides(&mut settings, &args);
+        assert_eq!(settings.crop.quality_rules.min_quality, Some(yunet_utils::Quality::High));
+    }
+
+    // --- build_core_crop_settings ---
+
+    #[test]
+    fn build_core_crop_settings_center() {
+        let mut cfg = yunet_utils::config::CropSettings::default();
+        cfg.output_width = 200;
+        cfg.output_height = 300;
+        cfg.positioning_mode = "center".to_string();
+        let core = build_core_crop_settings(&cfg);
+        assert_eq!(core.output_width, 200);
+        assert_eq!(core.output_height, 300);
+        assert!(matches!(core.positioning_mode, PositioningMode::Center));
+    }
+
+    #[test]
+    fn build_core_crop_settings_rule_of_thirds() {
+        let mut cfg = yunet_utils::config::CropSettings::default();
+        cfg.positioning_mode = "rule-of-thirds".to_string();
+        let core = build_core_crop_settings(&cfg);
+        assert!(matches!(core.positioning_mode, PositioningMode::RuleOfThirds));
+    }
+}

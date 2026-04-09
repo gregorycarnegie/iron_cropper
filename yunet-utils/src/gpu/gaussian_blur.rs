@@ -259,3 +259,58 @@ fn gaussian(distance: f32, sigma: f32) -> f32 {
     let two_sigma_sq = 2.0 * sigma * sigma;
     (-distance * distance / two_sigma_sq).exp()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+    use image::RgbaImage;
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn build_kernel_sums_to_one() {
+        for radius in [1u32, 3, 5, 12] {
+            let weights = build_kernel(radius);
+            let kernel_size = (radius * 2 + 1) as usize;
+            let sum: f32 = weights[..kernel_size].iter().sum();
+            assert!(
+                (sum - 1.0).abs() < 1e-5,
+                "kernel radius {radius} sum = {sum}, expected ~1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn blur_zero_radius_returns_original() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping gaussian_blur zero-radius test: no GPU");
+            return;
+        };
+        let blurrer = GpuGaussianBlur::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, image::Rgba([50, 100, 150, 255])));
+        let result = blurrer.blur(&image, 0.0).expect("blur");
+        assert_eq!(result.to_rgba8().as_raw(), image.to_rgba8().as_raw());
+    }
+
+    #[test]
+    fn clear_cache_and_memory_usage() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping gaussian_blur cache test: no GPU");
+            return;
+        };
+        let blurrer = GpuGaussianBlur::new(ctx).expect("init");
+        // Run a blur to populate the pool
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255])));
+        blurrer.blur(&image, 1.0).expect("blur");
+        // clear_cache should not panic
+        blurrer.clear_cache();
+        // memory_usage is u64, no specific value required
+        let _ = blurrer.memory_usage();
+    }
+}

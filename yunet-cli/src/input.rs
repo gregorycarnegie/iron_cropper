@@ -15,7 +15,7 @@ use yunet_utils::{
 
 use crate::args::DetectArgs;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProcessingItem {
     pub source: PathBuf,
     pub output_override: Option<PathBuf>,
@@ -233,8 +233,7 @@ pub fn resolve_override_output_path(
         base_name
     };
     let mut final_path = parent;
-    final_path.push(final_base);
-    final_path.set_extension(cleaned_ext);
+    final_path.push(format!("{final_base}.{cleaned_ext}"));
     final_path
 }
 
@@ -245,4 +244,276 @@ fn sanitize_override_path(p: &Path) -> PathBuf {
     p.components()
         .filter(|c| matches!(c, Component::Normal(_)))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_file(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent directories");
+        }
+        fs::write(path, b"fixture").expect("write test file");
+    }
+
+    fn write_mapping(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create mapping directory");
+        }
+        fs::write(path, contents).expect("write mapping file");
+    }
+
+    fn parse_detect_args<I, T>(args: I) -> DetectArgs
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        DetectArgs::parse_from(args)
+    }
+
+    fn assert_same_existing_path(actual: &Path, expected: &Path) {
+        assert_eq!(
+            actual.canonicalize().expect("canonicalize actual path"),
+            expected.canonicalize().expect("canonicalize expected path")
+        );
+    }
+
+    #[test]
+    fn collect_images_returns_supported_files_in_sorted_order() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        let nested = root.join("nested");
+
+        write_file(&root.join("b.JPG"));
+        write_file(&root.join("a.png"));
+        write_file(&nested.join("c.webp"));
+        write_file(&nested.join("ignore.txt"));
+
+        let images = collect_images(root).unwrap();
+
+        assert_eq!(
+            images,
+            vec![
+                root.join("a.png"),
+                root.join("b.JPG"),
+                nested.join("c.webp"),
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_images_errors_for_missing_path() {
+        let dir = tempdir().unwrap();
+        let err = collect_images(&dir.path().join("missing"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("input path is neither file nor directory"));
+    }
+
+    #[test]
+    fn collect_standard_targets_errors_when_directory_has_no_images() {
+        let dir = tempdir().unwrap();
+        write_file(&dir.path().join("notes.txt"));
+
+        let err = collect_standard_targets(dir.path())
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("no images found"));
+    }
+
+    #[test]
+    fn collect_mapping_targets_requires_source_and_output_columns() {
+        let dir = tempdir().unwrap();
+        let mapping_path = dir.path().join("mapping.csv");
+        write_mapping(&mapping_path, "source,output\nimg.jpg,out\n");
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let err = collect_mapping_targets(&mapping_path, &args)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("--mapping-source-col is required"));
+    }
+
+    #[test]
+    fn collect_mapping_targets_loads_relative_sources_from_mapping_directory() {
+        let dir = tempdir().unwrap();
+        let mapping_dir = dir.path().join("maps");
+        let mapping_path = mapping_dir.join("mapping.csv");
+        let image_a = mapping_dir.join("images").join("a.jpg");
+        let image_b = mapping_dir.join("b.png");
+        write_file(&image_a);
+        write_file(&image_b);
+        write_mapping(
+            &mapping_path,
+            "source,output\nimages/a.jpg,nested/out-a\nb.png,out-b\n",
+        );
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_same_existing_path(&items[0].source, &image_a);
+        assert_eq!(
+            items[0].output_override,
+            Some(PathBuf::from("nested/out-a"))
+        );
+        assert_eq!(items[0].mapping_row, Some(1));
+        assert_same_existing_path(&items[1].source, &image_b);
+        assert_eq!(items[1].output_override, Some(PathBuf::from("out-b")));
+        assert_eq!(items[1].mapping_row, Some(2));
+    }
+
+    #[test]
+    fn collect_mapping_targets_skips_absolute_and_missing_source_paths() {
+        let dir = tempdir().unwrap();
+        let mapping_dir = dir.path().join("maps");
+        let mapping_path = mapping_dir.join("mapping.csv");
+        let valid_image = mapping_dir.join("valid.jpg");
+        let missing_image = mapping_dir.join("missing.jpg");
+        write_file(&valid_image);
+
+        let absolute = dir.path().join("absolute.jpg");
+        write_mapping(
+            &mapping_path,
+            &format!(
+                "source,output\n{},abs-out\nmissing.jpg,missing-out\nvalid.jpg,valid-out\n",
+                absolute.display()
+            ),
+        );
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_same_existing_path(&items[0].source, &valid_image);
+        assert_eq!(items[0].output_override, Some(PathBuf::from("valid-out")));
+        assert_eq!(items[0].mapping_row, Some(3));
+        assert!(!missing_image.exists());
+    }
+
+    #[test]
+    fn collect_mapping_targets_skips_parent_directory_escapes() {
+        let dir = tempdir().unwrap();
+        let mapping_dir = dir.path().join("maps");
+        let mapping_path = mapping_dir.join("mapping.csv");
+        let outside = dir.path().join("outside.jpg");
+        let inside = mapping_dir.join("inside.jpg");
+        write_file(&outside);
+        write_file(&inside);
+        write_mapping(
+            &mapping_path,
+            "source,output\n../outside.jpg,escaped\ninside.jpg,inside-out\n",
+        );
+
+        let args = parse_detect_args([
+            "yunet-cli",
+            "--mapping-file",
+            mapping_path.to_str().unwrap(),
+            "--mapping-source-col",
+            "source",
+            "--mapping-output-col",
+            "output",
+        ]);
+
+        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_same_existing_path(&items[0].source, &inside);
+        assert_eq!(items[0].output_override, Some(PathBuf::from("inside-out")));
+        assert_eq!(items[0].mapping_row, Some(2));
+    }
+
+    #[test]
+    fn parse_mapping_format_token_accepts_aliases() {
+        assert_eq!(
+            parse_mapping_format_token("csv").unwrap(),
+            MappingFormat::Csv
+        );
+        assert_eq!(
+            parse_mapping_format_token("delimited").unwrap(),
+            MappingFormat::Csv
+        );
+        assert_eq!(
+            parse_mapping_format_token("xlsx").unwrap(),
+            MappingFormat::Excel
+        );
+        assert_eq!(
+            parse_mapping_format_token("pq").unwrap(),
+            MappingFormat::Parquet
+        );
+        assert_eq!(
+            parse_mapping_format_token("db").unwrap(),
+            MappingFormat::Sqlite
+        );
+        assert!(parse_mapping_format_token("toml").is_err());
+    }
+
+    #[test]
+    fn resolve_override_output_path_sanitizes_traversal_and_preserves_extension() {
+        let dir = tempdir().unwrap();
+        let output = resolve_override_output_path(
+            dir.path(),
+            Path::new("../nested/folder/custom.name.png"),
+            ".webp",
+            0,
+            false,
+        );
+
+        assert_eq!(
+            output,
+            dir.path()
+                .join("nested")
+                .join("folder")
+                .join("custom.name.webp")
+        );
+    }
+
+    #[test]
+    fn resolve_override_output_path_appends_face_suffix_for_multi_face_exports() {
+        let dir = tempdir().unwrap();
+        let output = resolve_override_output_path(
+            dir.path(),
+            Path::new("gallery/portrait.jpg"),
+            "png",
+            2,
+            true,
+        );
+
+        assert_eq!(
+            output,
+            dir.path().join("gallery").join("portrait_face3.png")
+        );
+    }
 }

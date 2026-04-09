@@ -314,3 +314,18 @@ impl GpuEnvMode {
         matches!(self, GpuEnvMode::Auto)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gpu_env_mode_auto_respects_env() {
+        assert!(GpuEnvMode::Auto.respects_env());
+    }
+
+    #[test]
+    fn gpu_env_mode_ignore_does_not_respect_env() {
+        assert!(!GpuEnvMode::Ignore.respects_env());
+    }
+}

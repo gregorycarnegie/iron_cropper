@@ -38,3 +38,16 @@ pub use preprocess::{
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_returns_non_empty_string() {
+        let v = version();
+        assert!(!v.is_empty(), "version should not be empty");
+        // Should look like semver: start with a digit
+        assert!(v.chars().next().is_some_and(|c| c.is_ascii_digit()));
+    }
+}

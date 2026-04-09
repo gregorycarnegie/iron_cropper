@@ -226,6 +226,56 @@ macro_rules! gpu_uniforms {
 
 #[cfg(test)]
 mod tests {
+    use wgpu::{BindingType, BufferBindingType, ShaderStages};
+
+    #[test]
+    fn storage_buffer_entry_read_only_sets_correct_fields() {
+        let entry = storage_buffer_entry!(0, read_only);
+        assert_eq!(entry.binding, 0);
+        assert_eq!(entry.visibility, ShaderStages::COMPUTE);
+        assert_eq!(
+            entry.ty,
+            BindingType::Buffer {
+                ty: BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            }
+        );
+        assert!(entry.count.is_none());
+    }
+
+    #[test]
+    fn storage_buffer_entry_read_write_sets_correct_fields() {
+        let entry = storage_buffer_entry!(3, read_write);
+        assert_eq!(entry.binding, 3);
+        assert_eq!(entry.visibility, ShaderStages::COMPUTE);
+        assert_eq!(
+            entry.ty,
+            BindingType::Buffer {
+                ty: BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            }
+        );
+        assert!(entry.count.is_none());
+    }
+
+    #[test]
+    fn uniform_buffer_entry_sets_correct_fields() {
+        let entry = uniform_buffer_entry!(2);
+        assert_eq!(entry.binding, 2);
+        assert_eq!(entry.visibility, ShaderStages::COMPUTE);
+        assert_eq!(
+            entry.ty,
+            BindingType::Buffer {
+                ty: BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            }
+        );
+        assert!(entry.count.is_none());
+    }
+
     #[test]
     fn test_uniform_padding_calculation() {
         // Test 3 fields (12 bytes) -> needs 1 padding field (4 bytes) to reach 16

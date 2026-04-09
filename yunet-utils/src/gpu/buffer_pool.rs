@@ -227,6 +227,38 @@ mod tests {
     }
 
     #[test]
+    fn debug_impl_does_not_panic() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping buffer_pool debug test: no GPU");
+            return;
+        };
+        let pool = GpuBufferPool::new(ctx, None);
+        let debug_str = format!("{pool:?}");
+        assert!(debug_str.contains("GpuBufferPool"));
+    }
+
+    #[test]
+    fn available_tracks_recycled_buffers() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping buffer_pool available test: no GPU");
+            return;
+        };
+        let pool = GpuBufferPool::new(ctx, None);
+        assert_eq!(pool.available(), 0);
+
+        let buf = pool
+            .acquire(256, wgpu::BufferUsages::STORAGE, None)
+            .expect("alloc");
+        assert_eq!(pool.available(), 0);
+
+        pool.recycle(buf, 256, wgpu::BufferUsages::STORAGE);
+        assert_eq!(pool.available(), 1);
+
+        pool.clear();
+        assert_eq!(pool.available(), 0);
+    }
+
+    #[test]
     fn test_memory_limit_enforcement() {
         let Some(ctx) = test_context() else {
             eprintln!("Skipping GPU memory test: no GPU");

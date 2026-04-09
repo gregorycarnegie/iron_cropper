@@ -717,6 +717,7 @@ pub enum GpuPoolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::num::NonZeroUsize;
 
     #[test]
     fn disabled_options_skip_gpu_setup() {
@@ -725,5 +726,118 @@ mod tests {
             GpuAvailability::Disabled { .. } => {}
             other => panic!("expected GPU to be disabled, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn pack_unpack_rgba_roundtrip() {
+        let original: Vec<u8> = vec![0xFF, 0x80, 0x40, 0xCC, 0x00, 0x01, 0x02, 0xFF];
+        let packed = pack_rgba_pixels(&original);
+        assert_eq!(packed.len(), 2);
+        let unpacked = unpack_rgba_pixels(&packed);
+        assert_eq!(unpacked, original);
+    }
+
+    #[test]
+    fn pack_rgba_preserves_channel_order() {
+        // Single pixel: R=1, G=2, B=3, A=4
+        let bytes = vec![1u8, 2, 3, 4];
+        let packed = pack_rgba_pixels(&bytes);
+        assert_eq!(packed.len(), 1);
+        // Little-endian: R | G<<8 | B<<16 | A<<24
+        let expected = 1u32 | (2 << 8) | (3 << 16) | (4 << 24);
+        assert_eq!(packed[0], expected);
+    }
+
+    #[test]
+    fn gpu_status_mode_as_str() {
+        assert_eq!(GpuStatusMode::Pending.as_str(), "pending");
+        assert_eq!(GpuStatusMode::Available.as_str(), "available");
+        assert_eq!(GpuStatusMode::Disabled.as_str(), "disabled");
+        assert_eq!(GpuStatusMode::Fallback.as_str(), "fallback");
+        assert_eq!(GpuStatusMode::Error.as_str(), "error");
+    }
+
+    #[test]
+    fn gpu_status_indicator_constructors() {
+        let pending = GpuStatusIndicator::pending();
+        assert_eq!(pending.mode, GpuStatusMode::Pending);
+        assert!(pending.adapter_name.is_none());
+
+        let avail = GpuStatusIndicator::available("RTX 4090", "Vulkan", None, Some(0x10DE), Some(0x2684));
+        assert_eq!(avail.mode, GpuStatusMode::Available);
+        assert!(avail.summary.contains("RTX 4090"));
+        assert_eq!(avail.adapter_name.as_deref(), Some("RTX 4090"));
+        assert_eq!(avail.vendor_id, Some(0x10DE));
+
+        let disabled = GpuStatusIndicator::disabled("user flag");
+        assert_eq!(disabled.mode, GpuStatusMode::Disabled);
+        assert_eq!(disabled.detail.as_deref(), Some("user flag"));
+
+        let fallback = GpuStatusIndicator::fallback("oom", Some("Intel".into()), Some("DX12".into()));
+        assert_eq!(fallback.mode, GpuStatusMode::Fallback);
+        assert_eq!(fallback.adapter_name.as_deref(), Some("Intel"));
+
+        let error = GpuStatusIndicator::error("driver crash");
+        assert_eq!(error.mode, GpuStatusMode::Error);
+        assert_eq!(error.detail.as_deref(), Some("driver crash"));
+    }
+
+    #[test]
+    fn gpu_availability_helpers() {
+        let disabled = GpuAvailability::Disabled { reason: "test".to_string() };
+        assert!(!disabled.is_available());
+        assert!(disabled.context().is_none());
+
+        let err = GpuAvailability::Unavailable {
+            error: GpuInitError::Disabled,
+        };
+        assert!(!err.is_available());
+        assert!(err.context().is_none());
+    }
+
+    #[test]
+    fn gpu_context_pool_acquire_and_release() {
+        let ctx = match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => ctx,
+            _ => {
+                eprintln!("Skipping GpuContextPool test: no GPU");
+                return;
+            }
+        };
+
+        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(2).unwrap())
+            .expect("pool creation");
+
+        assert_eq!(pool.capacity(), 2);
+        assert_eq!(pool.available(), 2);
+
+        let guard1 = pool.acquire().expect("acquire 1");
+        assert_eq!(pool.available(), 1);
+
+        let guard2 = pool.acquire().expect("acquire 2");
+        assert_eq!(pool.available(), 0);
+
+        // try_acquire on empty pool returns None
+        assert!(pool.try_acquire().expect("try_acquire ok").is_none());
+
+        drop(guard1);
+        assert_eq!(pool.available(), 1);
+        drop(guard2);
+        assert_eq!(pool.available(), 2);
+    }
+
+    #[test]
+    fn gpu_context_guard_deref() {
+        let ctx = match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => ctx,
+            _ => {
+                eprintln!("Skipping GpuContextGuard test: no GPU");
+                return;
+            }
+        };
+        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(1).unwrap()).unwrap();
+        let guard = pool.acquire().unwrap();
+        // Deref should give us access to GpuContext methods
+        let _ = guard.adapter_info();
     }
 }

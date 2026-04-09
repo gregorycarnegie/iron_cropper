@@ -135,3 +135,48 @@ fn avg_duration_ms(samples: &[Duration]) -> f64 {
 fn duration_to_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1_000.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duration_to_ms_converts_correctly() {
+        assert!((duration_to_ms(Duration::from_millis(1)) - 1.0).abs() < 1e-9);
+        assert!((duration_to_ms(Duration::from_secs(1)) - 1000.0).abs() < 1e-9);
+        assert_eq!(duration_to_ms(Duration::ZERO), 0.0);
+    }
+
+    #[test]
+    fn avg_duration_ms_returns_zero_for_empty_slice() {
+        assert_eq!(avg_duration_ms(&[]), 0.0);
+    }
+
+    #[test]
+    fn avg_duration_ms_returns_correct_average() {
+        let samples = [Duration::from_millis(10), Duration::from_millis(20)];
+        assert!((avg_duration_ms(&samples) - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sum_durations_ms_returns_correct_sum() {
+        let samples = [Duration::from_millis(5), Duration::from_millis(10)];
+        assert!((sum_durations_ms(&samples) - 15.0).abs() < 1e-9);
+        assert_eq!(sum_durations_ms(&[]), 0.0);
+    }
+
+    #[test]
+    fn preprocess_benchmark_summary_with_label_replaces_label() {
+        let summary = PreprocessBenchmarkSummary {
+            label: "old".to_string(),
+            samples: 1,
+            iterations_per_sample: 1,
+            total_ms: 1.0,
+            avg_ms: 1.0,
+            min_ms: 1.0,
+            max_ms: 1.0,
+        };
+        let updated = summary.with_label("new");
+        assert_eq!(updated.label, "new");
+    }
+}

@@ -500,6 +500,360 @@ mod tests {
         assert_eq!(config_from_ref.nms_threshold, settings.nms_threshold);
         assert_eq!(config_from_ref.top_k, settings.top_k);
     }
+
+    fn detection_with_score(score: f32, bbox: BoundingBox) -> Detection {
+        Detection {
+            bbox,
+            landmarks: [Landmark::new(0.0, 0.0); 5],
+            score,
+        }
+    }
+
+    #[test]
+    fn bounding_box_area_and_iou_handle_overlap_and_degenerate_boxes() {
+        let a = BoundingBox {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let b = BoundingBox {
+            x: 5.0,
+            y: 5.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let degenerate = BoundingBox {
+            x: 0.0,
+            y: 0.0,
+            width: -5.0,
+            height: 2.0,
+        };
+
+        assert_eq!(a.area(), 100.0);
+        assert_eq!(degenerate.area(), 0.0);
+        assert!((a.iou(&b) - (25.0 / 175.0)).abs() < 1e-6);
+        assert_eq!(a.iou(&degenerate), 0.0);
+    }
+
+    #[test]
+    fn apply_postprocess_rejects_invalid_tensor_shape_and_type() {
+        let wrong_shape = Tensor::from_shape(&[15], &[0.0f32; 15]).unwrap();
+        let err = apply_postprocess(&wrong_shape, 1.0, 1.0, &PostprocessConfig::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("YuNet output must have shape"));
+
+        let wrong_type = Tensor::from_shape(&[1, 15], &[1i32; 15]).unwrap();
+        let err = apply_postprocess(&wrong_type, 1.0, 1.0, &PostprocessConfig::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("YuNet output is not f32"));
+    }
+
+    #[test]
+    fn sort_by_score_desc_honors_top_k_and_zero_as_unlimited() {
+        let mut detections = vec![
+            detection_with_score(
+                0.1,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+            detection_with_score(
+                0.9,
+                BoundingBox {
+                    x: 2.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+            detection_with_score(
+                0.5,
+                BoundingBox {
+                    x: 4.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+        ];
+
+        sort_by_score_desc(&mut detections, 2);
+        assert_eq!(detections.len(), 2);
+        assert!((detections[0].score - 0.9).abs() < f32::EPSILON);
+        assert!((detections[1].score - 0.5).abs() < f32::EPSILON);
+
+        let mut detections = vec![
+            detection_with_score(
+                0.1,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+            detection_with_score(
+                0.9,
+                BoundingBox {
+                    x: 2.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+            detection_with_score(
+                0.5,
+                BoundingBox {
+                    x: 4.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+        ];
+        sort_by_score_desc(&mut detections, 0);
+        assert_eq!(detections.len(), 3);
+        assert!((detections[0].score - 0.9).abs() < f32::EPSILON);
+        assert!((detections[1].score - 0.5).abs() < f32::EPSILON);
+        assert!((detections[2].score - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn apply_nms_in_place_uses_large_grid_path_for_large_inputs() {
+        let mut detections: Vec<_> = (0..200)
+            .map(|i| {
+                detection_with_score(
+                    1.0 - i as f32 * 0.001,
+                    BoundingBox {
+                        x: i as f32 * 20.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                )
+            })
+            .collect();
+        detections.push(detection_with_score(
+            0.0,
+            BoundingBox {
+                x: 1.0,
+                y: 1.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        ));
+
+        sort_by_score_desc(&mut detections, 0);
+        apply_nms_in_place(&mut detections, 0.3);
+
+        assert_eq!(detections.len(), 200);
+        assert!((detections[0].score - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn apply_nms_in_place_handles_zero_and_one_items() {
+        let mut empty: Vec<Detection> = vec![];
+        apply_nms_in_place(&mut empty, 0.3);
+        assert_eq!(empty.len(), 0);
+
+        let single = detection_with_score(
+            0.9,
+            BoundingBox {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        );
+        let mut one = vec![single];
+        apply_nms_in_place(&mut one, 0.3);
+        assert_eq!(one.len(), 1);
+    }
+
+    #[test]
+    fn apply_nms_naive_handles_zero_and_one_items() {
+        let mut empty: Vec<Detection> = vec![];
+        apply_nms_naive(&mut empty, 0.3);
+        assert_eq!(empty.len(), 0);
+
+        let mut one = vec![detection_with_score(
+            0.9,
+            BoundingBox {
+                x: 0.0,
+                y: 0.0,
+                width: 5.0,
+                height: 5.0,
+            },
+        )];
+        apply_nms_naive(&mut one, 0.3);
+        assert_eq!(one.len(), 1);
+    }
+
+    #[test]
+    fn apply_postprocess_filters_non_finite_scores() {
+        // Rows with NaN/Inf scores should be dropped regardless of threshold.
+        let tensor = tensor_from_rows(&[
+            [
+                0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                f32::NAN,
+            ],
+            [
+                0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                f32::INFINITY,
+            ],
+            [
+                0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.95,
+            ],
+        ]);
+        let detections = apply_postprocess(
+            &tensor,
+            1.0,
+            1.0,
+            &PostprocessConfig {
+                score_threshold: 0.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(detections.len(), 1);
+        assert!((detections[0].score - 0.95).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn apply_postprocess_drops_zero_area_boxes() {
+        let tensor = tensor_from_rows(&[
+            // zero width
+            [
+                0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.95,
+            ],
+            // zero height
+            [
+                0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.95,
+            ],
+            // valid box
+            [
+                1.0, 1.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.9,
+            ],
+        ]);
+        let detections = apply_postprocess(
+            &tensor,
+            1.0,
+            1.0,
+            &PostprocessConfig {
+                score_threshold: 0.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(detections.len(), 1);
+        assert!((detections[0].bbox.x - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn apply_nms_in_place_degenerate_scene_falls_back_to_naive() {
+        // All boxes at the same point → zero scene extent, triggers naive fallback.
+        let mut detections: Vec<_> = (0..5)
+            .map(|i| {
+                detection_with_score(
+                    0.9 - i as f32 * 0.1,
+                    BoundingBox {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    },
+                )
+            })
+            .collect();
+        // Should not panic.
+        apply_nms_in_place(&mut detections, 0.3);
+    }
+
+    #[test]
+    fn iou_returns_zero_when_union_underflows_to_zero() {
+        // Both boxes have positive but subnormal dimensions: area() underflows to 0.0 in f32,
+        // so union = 0 + 0 - 0 = 0 → covers the `union > 0` else branch.
+        let tiny = f32::MIN_POSITIVE;
+        let a = BoundingBox {
+            x: 0.0,
+            y: 0.0,
+            width: tiny,
+            height: tiny,
+        };
+        let b = BoundingBox {
+            x: 0.0,
+            y: 0.0,
+            width: tiny,
+            height: tiny,
+        };
+        assert_eq!(a.iou(&b), 0.0);
+    }
+
+    #[test]
+    fn grid_nms_degenerate_scene_falls_back_to_naive_for_large_input() {
+        // 200+ items all with width=0 and height=0 → scene extent is zero → degenerate path.
+        let mut detections: Vec<_> = (0..201)
+            .map(|i| {
+                detection_with_score(
+                    1.0 - i as f32 * 0.004,
+                    BoundingBox {
+                        x: 0.0,
+                        y: i as f32 * 10.0,
+                        width: 0.0,
+                        height: 0.0,
+                    },
+                )
+            })
+            .collect();
+        // Should not panic and should survive (all non-overlapping zero-area boxes).
+        apply_nms_in_place(&mut detections, 0.3);
+        assert_eq!(detections.len(), 201);
+    }
+
+    #[test]
+    fn grid_nms_compaction_swap_fires_when_suppressed_item_in_middle() {
+        // Build 201 detections so the grid path is used (len >= 200).
+        // Detection at index 1 overlaps detection at index 0 and is suppressed.
+        // When compacting, detection at index 2 ends up at keep=1 → swap fires (line 342).
+        let mut detections = Vec::with_capacity(201);
+
+        // Index 0: highest score, box at x=0
+        detections.push(detection_with_score(
+            1.0,
+            BoundingBox { x: 0.0, y: 0.0, width: 50.0, height: 50.0 },
+        ));
+        // Index 1: overlaps index 0 heavily (will be suppressed)
+        detections.push(detection_with_score(
+            0.999,
+            BoundingBox { x: 5.0, y: 5.0, width: 50.0, height: 50.0 },
+        ));
+        // Indices 2..200: non-overlapping boxes spread across the scene
+        for i in 2..201 {
+            detections.push(detection_with_score(
+                1.0 - i as f32 * 0.004,
+                BoundingBox {
+                    x: i as f32 * 200.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ));
+        }
+
+        // Already sorted by score descending; NMS threshold low enough to suppress index 1.
+        apply_nms_in_place(&mut detections, 0.3);
+
+        // Index 1 was suppressed, all others survive.
+        assert_eq!(detections.len(), 200);
+        // Highest-score detection still first.
+        assert!((detections[0].score - 1.0).abs() < f32::EPSILON);
+    }
 }
 
 #[cfg(test)]

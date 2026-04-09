@@ -102,6 +102,23 @@ mod tests {
     }
 
     #[test]
+    fn preset_by_name_returns_none_for_unknown() {
+        assert!(preset_by_name("NotAPreset").is_none());
+        assert!(preset_by_name("").is_none());
+        assert!(preset_by_name("@@@").is_none());
+    }
+
+    #[test]
+    fn normalize_name_strips_spaces_and_symbols() {
+        // "linked in" → "linkedin" should match "LinkedIn" → "linkedin"
+        let p = preset_by_name("linked in").expect("should match LinkedIn via normalize");
+        assert_eq!(p.name, "LinkedIn");
+        // Hyphens are stripped too
+        let p2 = preset_by_name("linked-in").expect("should match LinkedIn with hyphen");
+        assert_eq!(p2.name, "LinkedIn");
+    }
+
+    #[test]
     fn all_presets_have_expected_structure() {
         let presets = standard_presets();
         assert!(!presets.is_empty());

@@ -110,3 +110,202 @@ pub fn remove_detection(
     }
     *selected_faces = new_selection;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DetectionOrigin, DetectionWithQuality};
+    use image::{DynamicImage, Rgba, RgbaImage};
+    use std::collections::HashSet;
+    use yunet_core::{BoundingBox, Detection, Landmark};
+    use yunet_utils::quality::Quality;
+
+    fn sample_detection(
+        bbox: BoundingBox,
+        quality: Quality,
+        quality_score: f64,
+    ) -> DetectionWithQuality {
+        DetectionWithQuality {
+            detection: Detection {
+                bbox,
+                landmarks: [Landmark::new(10.0, 10.0); 5],
+                score: 0.95,
+            },
+            quality_score,
+            quality,
+            thumbnail: None,
+            current_bbox: bbox,
+            original_bbox: bbox,
+            origin: DetectionOrigin::Detector,
+        }
+    }
+
+    #[test]
+    fn apply_quality_rules_to_preview_returns_false_for_empty_or_low_quality_sets() {
+        let mut selected_faces = HashSet::from([99usize]);
+        assert!(!apply_quality_rules_to_preview(
+            &[],
+            &mut selected_faces,
+            false,
+            false
+        ));
+        assert!(selected_faces.is_empty());
+
+        let detections = vec![
+            sample_detection(
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::Medium,
+                12.0,
+            ),
+            sample_detection(
+                BoundingBox {
+                    x: 20.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::Low,
+                5.0,
+            ),
+        ];
+
+        assert!(!apply_quality_rules_to_preview(
+            &detections,
+            &mut selected_faces,
+            true,
+            false
+        ));
+        assert!(selected_faces.is_empty());
+    }
+
+    #[test]
+    fn apply_quality_rules_to_preview_can_select_all_or_best_face() {
+        let detections = vec![
+            sample_detection(
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::Medium,
+                50.0,
+            ),
+            sample_detection(
+                BoundingBox {
+                    x: 20.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::High,
+                10.0,
+            ),
+            sample_detection(
+                BoundingBox {
+                    x: 40.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::High,
+                20.0,
+            ),
+        ];
+
+        let mut selected_faces = HashSet::new();
+        assert!(apply_quality_rules_to_preview(
+            &detections,
+            &mut selected_faces,
+            false,
+            false
+        ));
+        assert_eq!(selected_faces, HashSet::from([0usize, 1usize, 2usize]));
+
+        assert!(apply_quality_rules_to_preview(
+            &detections,
+            &mut selected_faces,
+            false,
+            true
+        ));
+        assert_eq!(selected_faces, HashSet::from([2usize]));
+    }
+
+    #[test]
+    fn refresh_detection_thumbnail_at_clamps_bbox_and_updates_texture_sequence() {
+        let ctx = EguiContext::default();
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(32, 24, Rgba([1, 2, 3, 255])));
+        let mut detections = vec![sample_detection(
+            BoundingBox {
+                x: -10.0,
+                y: -5.0,
+                width: 100.0,
+                height: 100.0,
+            },
+            Quality::High,
+            100.0,
+        )];
+        let mut texture_seq = 7u64;
+
+        refresh_detection_thumbnail_at(&ctx, &mut detections, 0, &image, &mut texture_seq);
+
+        assert!(detections[0].thumbnail.is_some());
+        assert_eq!(texture_seq, 8);
+
+        refresh_detection_thumbnail_at(&ctx, &mut detections, 99, &image, &mut texture_seq);
+        assert_eq!(texture_seq, 8);
+    }
+
+    #[test]
+    fn reset_and_remove_detection_update_state_consistently() {
+        let bbox = BoundingBox {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let mut detections = vec![
+            sample_detection(bbox, Quality::Low, 1.0),
+            sample_detection(
+                BoundingBox {
+                    x: 20.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::Medium,
+                2.0,
+            ),
+            sample_detection(
+                BoundingBox {
+                    x: 40.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                Quality::High,
+                3.0,
+            ),
+        ];
+        detections[1].current_bbox = BoundingBox {
+            x: 25.0,
+            y: 5.0,
+            width: 8.0,
+            height: 8.0,
+        };
+
+        reset_detection_bbox(&mut detections, 1);
+        assert_eq!(detections[1].current_bbox, detections[1].original_bbox);
+
+        let mut selected_faces = HashSet::from([0usize, 2usize]);
+        remove_detection(&mut detections, &mut selected_faces, 1);
+
+        assert_eq!(detections.len(), 2);
+        assert_eq!(selected_faces, HashSet::from([0usize, 1usize]));
+    }
+}

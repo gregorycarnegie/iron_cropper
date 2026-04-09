@@ -150,3 +150,121 @@ fn parse_percentage_value(token: &str) -> Result<f32, String> {
         Ok(value.clamp(0.0, 1.0))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_fill_color_spec_accepts_hex_and_comma_separated_rgb() {
+        assert_eq!(
+            parse_fill_color_spec("#112233").unwrap(),
+            RgbaColor::opaque(0x11, 0x22, 0x33)
+        );
+        assert_eq!(
+            parse_fill_color_spec("0x44556677").unwrap(),
+            RgbaColor {
+                red: 0x44,
+                green: 0x55,
+                blue: 0x66,
+                alpha: 0x77,
+            }
+        );
+        assert_eq!(
+            parse_fill_color_spec(" 1, 2, 3 ").unwrap(),
+            RgbaColor::opaque(1, 2, 3)
+        );
+    }
+
+    #[test]
+    fn parse_fill_color_spec_accepts_rgb_function_with_multiple_alpha_formats() {
+        assert_eq!(
+            parse_fill_color_spec("rgb(10, 20, 30)").unwrap(),
+            RgbaColor::opaque(10, 20, 30)
+        );
+        assert_eq!(
+            parse_fill_color_spec("RGB(10, 20, 30, 0.5)").unwrap(),
+            RgbaColor {
+                red: 10,
+                green: 20,
+                blue: 30,
+                alpha: 128,
+            }
+        );
+        assert_eq!(
+            parse_fill_color_spec("rgb(10, 20, 30, 50%)").unwrap(),
+            RgbaColor {
+                red: 10,
+                green: 20,
+                blue: 30,
+                alpha: 128,
+            }
+        );
+        assert_eq!(
+            parse_fill_color_spec("rgb(10, 20, 30, 128)").unwrap(),
+            RgbaColor {
+                red: 10,
+                green: 20,
+                blue: 30,
+                alpha: 128,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_fill_color_spec_accepts_hsv_function() {
+        assert_eq!(
+            parse_fill_color_spec("hsv(0deg, 100%, 100%)").unwrap(),
+            RgbaColor::opaque(255, 0, 0)
+        );
+        assert_eq!(
+            parse_fill_color_spec("HSV(240°, 100, 100)").unwrap(),
+            RgbaColor::opaque(0, 0, 255)
+        );
+    }
+
+    #[test]
+    fn parse_fill_color_spec_rejects_empty_or_invalid_inputs() {
+        assert_eq!(
+            parse_fill_color_spec("   ").unwrap_err(),
+            "fill color value is empty"
+        );
+        assert!(parse_fill_color_spec("rgb(10, 20)").is_err());
+        assert!(parse_fill_color_spec("rgb(300, 20, 30)").is_err());
+        assert!(parse_fill_color_spec("hsv(120, 50)").is_err());
+        assert!(parse_fill_color_spec("not-a-color").is_err());
+    }
+
+    #[test]
+    fn parse_fill_color_spec_hsv_plain_hue_number() {
+        // parse_hue_value: no deg/° suffix — plain f32
+        let result = parse_fill_color_spec("hsv(0, 100%, 100%)").unwrap();
+        assert_eq!(result, RgbaColor::opaque(255, 0, 0));
+    }
+
+    #[test]
+    fn parse_fill_color_spec_hsv_fractional_percentage() {
+        // parse_percentage_value: value ≤ 1.0 — treated as a direct fraction
+        let result = parse_fill_color_spec("hsv(0, 1.0, 1.0)").unwrap();
+        assert_eq!(result, RgbaColor::opaque(255, 0, 0));
+    }
+
+    #[test]
+    fn parse_fill_color_spec_empty_fn_args_returns_error() {
+        // parse_fn_args: empty parens → args.is_empty() → None → falls to final error
+        assert!(parse_fill_color_spec("rgb()").is_err());
+        assert!(parse_fill_color_spec("hsv()").is_err());
+    }
+
+    #[test]
+    fn parse_fill_color_spec_bad_alpha_value_returns_error() {
+        assert!(parse_fill_color_spec("rgb(10, 20, 30, notanumber)").is_err());
+        assert!(parse_fill_color_spec("rgb(10, 20, 30, 50notpct)").is_err());
+    }
+
+    #[test]
+    fn parse_fill_color_spec_comma_separated_too_few_parts_returns_error() {
+        // Comma path with < 3 parts falls through to the final unrecognized-format error
+        assert!(parse_fill_color_spec("10, 20").is_err());
+    }
+}

@@ -5,6 +5,8 @@ use std::fs;
 #[macro_use]
 mod common;
 
+use common::copy_fixture_to;
+
 macro_rules! preset_test {
     ($test_name:ident, $preset:literal, $width:expr, $height:expr, $display_name:literal) => {
         #[test]
@@ -63,10 +65,7 @@ fn test_all_presets_succeed() {
         let output_dir = temp_dir.path().join("output");
         fs::create_dir_all(&output_dir).expect("create output dir");
 
-        image::open(&fixture)
-            .expect("load fixture")
-            .save(&input_path)
-            .expect("save input");
+        copy_fixture_to(&fixture, &input_path).expect("copy input");
 
         let output = run_cli!(
             input_path,

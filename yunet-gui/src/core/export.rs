@@ -10,6 +10,7 @@ use image::DynamicImage;
 use log::{info, warn};
 use rayon::prelude::*;
 use rfd::FileDialog;
+use serde::Serialize;
 use std::{
     cmp::Ordering,
     io::Write,
@@ -31,6 +32,15 @@ struct FaceCandidate {
     quality: Quality,
     quality_score: f64,
     score: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct BatchLogRow {
+    index: usize,
+    path: String,
+    error: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    faces_detected: Option<usize>,
 }
 
 fn composite_export_background(image: DynamicImage, fill: yunet_core::FillColor) -> DynamicImage {
@@ -342,8 +352,7 @@ fn resolve_mapping_override_path(
         base_name
     };
     let mut final_path = parent;
-    final_path.push(final_base);
-    final_path.set_extension(cleaned_ext);
+    final_path.push(format!("{final_base}.{cleaned_ext}"));
     final_path
 }
 
@@ -354,6 +363,78 @@ fn sanitize_override_path(p: &Path) -> PathBuf {
     p.components()
         .filter(|c| matches!(c, Component::Normal(_)))
         .collect()
+}
+
+fn build_batch_log_rows(
+    tasks: &[(usize, PathBuf, Option<PathBuf>)],
+    results: &[(usize, BatchFileStatus)],
+) -> Vec<BatchLogRow> {
+    results
+        .iter()
+        .filter_map(|(idx, status)| {
+            let file_path = tasks
+                .get(*idx)
+                .map(|(_, p, _)| p.display().to_string())
+                .unwrap_or_default();
+
+            match status {
+                BatchFileStatus::Failed { error } => Some(BatchLogRow {
+                    index: *idx,
+                    path: file_path,
+                    error: error.clone(),
+                    faces_detected: None,
+                }),
+                BatchFileStatus::Completed {
+                    faces_detected,
+                    faces_exported: 0,
+                } => Some(BatchLogRow {
+                    index: *idx,
+                    path: file_path,
+                    error: if *faces_detected == 0 {
+                        "No faces detected".to_string()
+                    } else {
+                        "Faces detected but skipped (quality checks)".to_string()
+                    },
+                    faces_detected: Some(*faces_detected),
+                }),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+fn format_batch_log_json(rows: &[BatchLogRow]) -> std::io::Result<Vec<u8>> {
+    serde_json::to_string_pretty(rows)
+        .map(|s| s.into_bytes())
+        .map_err(std::io::Error::other)
+}
+
+fn escape_csv_field(s: &str) -> String {
+    if s.contains(',') || s.contains('"') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn format_batch_log_csv(rows: &[BatchLogRow]) -> std::io::Result<Vec<u8>> {
+    let mut wtr = Vec::new();
+    writeln!(&mut wtr, "index,path,error,faces_detected")?;
+    for row in rows {
+        let faces_count = row
+            .faces_detected
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+        writeln!(
+            &mut wtr,
+            "{},{},{},{}",
+            row.index,
+            escape_csv_field(&row.path),
+            escape_csv_field(&row.error),
+            faces_count
+        )?;
+    }
+    Ok(wtr)
 }
 
 /// Maximum number of images processed concurrently in a batch to prevent OOM.
@@ -608,17 +689,9 @@ pub fn start_batch_export(app: &mut YuNetApp) {
             .collect();
         let failed = failed_items.len();
 
-        // Include "failed" items OR items where 0 faces were exported (no detection or filtered out)
-        let logged_items: Vec<_> = results
-            .iter()
-            .filter(|(_, s)| match s {
-                BatchFileStatus::Failed { .. } => true,
-                BatchFileStatus::Completed { faces_exported, .. } => *faces_exported == 0,
-                _ => false,
-            })
-            .collect();
+        let log_rows = build_batch_log_rows(&tasks, &results);
 
-        if config.batch_logging.enabled && !logged_items.is_empty() {
+        if config.batch_logging.enabled && !log_rows.is_empty() {
             let log_filename = match config.batch_logging.format {
                 BatchLogFormat::Json => "batch_failures.json",
                 BatchLogFormat::Csv => "batch_failures.csv",
@@ -626,89 +699,8 @@ pub fn start_batch_export(app: &mut YuNetApp) {
             let path = config.output_dir.join(log_filename);
 
             let write_result = match config.batch_logging.format {
-                BatchLogFormat::Json => serde_json::to_string_pretty(
-                    &logged_items
-                        .iter()
-                        .map(|(idx, status)| {
-                            let file_path = tasks
-                                .get(*idx)
-                                .map(|(_, p, _)| p.display().to_string())
-                                .unwrap_or_default();
-                            let error_msg = match status {
-                                BatchFileStatus::Failed { error } => error.clone(),
-                                BatchFileStatus::Completed {
-                                    faces_detected,
-                                    faces_exported: 0,
-                                } => {
-                                    if *faces_detected == 0 {
-                                        "No faces detected".to_string()
-                                    } else {
-                                        "Faces detected but skipped (quality checks)".to_string()
-                                    }
-                                }
-                                _ => "Unknown error".to_string(),
-                            };
-
-                            let mut json_obj = serde_json::json!({
-                                "index": idx,
-                                "path": file_path,
-                                "error": error_msg
-                            });
-
-                            if let BatchFileStatus::Completed { faces_detected, .. } = status {
-                                json_obj["faces_detected"] = serde_json::json!(faces_detected);
-                            }
-
-                            json_obj
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .map(|s| s.into_bytes())
-                .map_err(std::io::Error::other),
-                BatchLogFormat::Csv => (|| -> std::io::Result<Vec<u8>> {
-                    let mut wtr = Vec::new();
-                    writeln!(&mut wtr, "index,path,error,faces_detected")?;
-                    for (idx, status) in logged_items {
-                        let file_path = tasks
-                            .get(*idx)
-                            .map(|(_, p, _)| p.display().to_string())
-                            .unwrap_or_default();
-                        let (error_msg, faces_count) = match status {
-                            BatchFileStatus::Failed { error } => (error.clone(), "N/A".to_string()),
-                            BatchFileStatus::Completed {
-                                faces_detected,
-                                faces_exported: 0,
-                            } => {
-                                let msg = if *faces_detected == 0 {
-                                    "No faces detected"
-                                } else {
-                                    "Faces detected but skipped (quality checks)"
-                                };
-                                (msg.to_string(), faces_detected.to_string())
-                            }
-                            _ => ("Unknown error".to_string(), "N/A".to_string()),
-                        };
-
-                        // CSV escaping helper
-                        let escape_csv = |s: &str| -> String {
-                            if s.contains(',') || s.contains('"') {
-                                format!("\"{}\"", s.replace('"', "\"\""))
-                            } else {
-                                s.to_string()
-                            }
-                        };
-
-                        let clean_path = escape_csv(&file_path);
-                        let clean_err = escape_csv(&error_msg);
-
-                        writeln!(
-                            &mut wtr,
-                            "{},{},{},{}",
-                            idx, clean_path, clean_err, faces_count
-                        )?;
-                    }
-                    Ok(wtr)
-                })(),
+                BatchLogFormat::Json => format_batch_log_json(&log_rows),
+                BatchLogFormat::Csv => format_batch_log_csv(&log_rows),
             };
 
             match write_result {
@@ -731,8 +723,10 @@ pub fn start_batch_export(app: &mut YuNetApp) {
 
 #[cfg(test)]
 mod tests {
-    use super::composite_export_background;
+    use super::*;
     use image::{DynamicImage, Rgba, RgbaImage};
+    use serde_json::Value;
+    use std::path::PathBuf;
     use yunet_core::FillColor;
 
     #[test]
@@ -760,5 +754,147 @@ mod tests {
         let pixel = composited.get_pixel(0, 0);
 
         assert_eq!(*pixel, Rgba([50, 75, 100, 128]));
+    }
+
+    #[test]
+    fn resolve_mapping_override_path_sanitizes_absolute_and_parent_components() {
+        let output = resolve_mapping_override_path(
+            Path::new("/exports"),
+            Path::new("/tmp/../nested/custom.name.jpg"),
+            ".png",
+            0,
+            false,
+        );
+
+        assert_eq!(
+            output,
+            PathBuf::from("/exports")
+                .join("tmp")
+                .join("nested")
+                .join("custom.name.png")
+        );
+    }
+
+    #[test]
+    fn resolve_mapping_override_path_appends_face_suffix_for_multi_face_exports() {
+        let output = resolve_mapping_override_path(
+            Path::new("/exports"),
+            Path::new("gallery/portrait.jpg"),
+            "webp",
+            2,
+            true,
+        );
+
+        assert_eq!(
+            output,
+            PathBuf::from("/exports")
+                .join("gallery")
+                .join("portrait_face3.webp")
+        );
+    }
+
+    #[test]
+    fn build_batch_log_rows_includes_failed_and_zero_export_statuses() {
+        let tasks = vec![
+            (0, PathBuf::from("a.jpg"), None),
+            (1, PathBuf::from("b.jpg"), None),
+            (2, PathBuf::from("c.jpg"), None),
+            (3, PathBuf::from("d.jpg"), None),
+        ];
+        let results = vec![
+            (
+                0,
+                BatchFileStatus::Completed {
+                    faces_detected: 2,
+                    faces_exported: 2,
+                },
+            ),
+            (
+                1,
+                BatchFileStatus::Failed {
+                    error: "disk full".to_string(),
+                },
+            ),
+            (
+                2,
+                BatchFileStatus::Completed {
+                    faces_detected: 0,
+                    faces_exported: 0,
+                },
+            ),
+            (
+                3,
+                BatchFileStatus::Completed {
+                    faces_detected: 3,
+                    faces_exported: 0,
+                },
+            ),
+        ];
+
+        let rows = build_batch_log_rows(&tasks, &results);
+
+        assert_eq!(
+            rows,
+            vec![
+                BatchLogRow {
+                    index: 1,
+                    path: "b.jpg".to_string(),
+                    error: "disk full".to_string(),
+                    faces_detected: None,
+                },
+                BatchLogRow {
+                    index: 2,
+                    path: "c.jpg".to_string(),
+                    error: "No faces detected".to_string(),
+                    faces_detected: Some(0),
+                },
+                BatchLogRow {
+                    index: 3,
+                    path: "d.jpg".to_string(),
+                    error: "Faces detected but skipped (quality checks)".to_string(),
+                    faces_detected: Some(3),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn format_batch_log_json_omits_faces_detected_for_failures() {
+        let rows = vec![
+            BatchLogRow {
+                index: 1,
+                path: "b.jpg".to_string(),
+                error: "disk full".to_string(),
+                faces_detected: None,
+            },
+            BatchLogRow {
+                index: 2,
+                path: "c.jpg".to_string(),
+                error: "No faces detected".to_string(),
+                faces_detected: Some(0),
+            },
+        ];
+
+        let bytes = format_batch_log_json(&rows).unwrap();
+        let parsed: Value = serde_json::from_slice(&bytes).unwrap();
+        let items = parsed.as_array().unwrap();
+
+        assert!(items[0].get("faces_detected").is_none());
+        assert_eq!(items[1]["faces_detected"].as_u64(), Some(0));
+    }
+
+    #[test]
+    fn format_batch_log_csv_escapes_commas_and_quotes() {
+        let rows = vec![BatchLogRow {
+            index: 7,
+            path: r#"folder,"quoted",name.jpg"#.to_string(),
+            error: r#"failed, reason "oops""#.to_string(),
+            faces_detected: Some(2),
+        }];
+
+        let csv = String::from_utf8(format_batch_log_csv(&rows).unwrap()).unwrap();
+
+        assert!(csv.starts_with("index,path,error,faces_detected\n"));
+        assert!(csv.contains(r#"7,"folder,""quoted"",name.jpg","failed, reason ""oops""",2"#));
     }
 }

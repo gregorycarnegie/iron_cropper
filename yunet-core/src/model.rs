@@ -330,6 +330,81 @@ mod tests {
             "Unexpected error message: {message}"
         );
     }
+
+    // --- align_to ---
+
+    #[test]
+    fn align_to_already_aligned_is_unchanged() {
+        assert_eq!(align_to(32, 32), 32);
+        assert_eq!(align_to(64, 32), 64);
+        assert_eq!(align_to(640, 32), 640);
+    }
+
+    #[test]
+    fn align_to_rounds_up_to_next_multiple() {
+        assert_eq!(align_to(1, 32), 32);
+        assert_eq!(align_to(33, 32), 64);
+        assert_eq!(align_to(31, 32), 32);
+    }
+
+    // --- decode_yunet_outputs ---
+
+    fn mock_outputs(input_size: InputSize) -> Vec<Tensor> {
+        let input_w = align_to(input_size.width as usize, 32);
+        let input_h = align_to(input_size.height as usize, 32);
+        let mut cls_t = Vec::new();
+        let mut obj_t = Vec::new();
+        let mut bbox_t = Vec::new();
+        let mut kps_t = Vec::new();
+
+        for &stride in STRIDES.iter() {
+            let cols = input_w / stride;
+            let rows = input_h / stride;
+            let n = rows * cols;
+            cls_t.push(Tensor::from_shape(&[n], &vec![0.9f32; n]).unwrap());
+            obj_t.push(Tensor::from_shape(&[n], &vec![0.8f32; n]).unwrap());
+            bbox_t.push(Tensor::from_shape(&[n, 4], &vec![0.0f32; n * 4]).unwrap());
+            kps_t.push(Tensor::from_shape(&[n, 10], &vec![0.0f32; n * 10]).unwrap());
+        }
+
+        cls_t.into_iter()
+            .chain(obj_t)
+            .chain(bbox_t)
+            .chain(kps_t)
+            .collect()
+    }
+
+    #[test]
+    fn decode_yunet_outputs_produces_n_by_15_tensor() {
+        let size = InputSize { width: 128, height: 128 };
+        let outputs = mock_outputs(size);
+        let result = decode_yunet_outputs(&outputs, size).expect("decode should succeed");
+        assert_eq!(result.shape().len(), 2);
+        assert_eq!(result.shape()[1], OUTPUT_COLS);
+        // Verify scores are in [0, 1]
+        let data = result.as_slice::<f32>().unwrap();
+        for score in data.iter().skip(14).step_by(OUTPUT_COLS) {
+            assert!(*score >= 0.0 && *score <= 1.0, "score out of range: {score}");
+        }
+    }
+
+    #[test]
+    fn decode_yunet_outputs_errors_for_wrong_tensor_count() {
+        let size = InputSize { width: 128, height: 128 };
+        assert!(decode_yunet_outputs(&[], size).is_err());
+        // Partial count also errors
+        let outputs = mock_outputs(size);
+        assert!(decode_yunet_outputs(&outputs[..3], size).is_err());
+    }
+
+    #[test]
+    fn decode_yunet_outputs_cell_count_matches_grid_dimensions() {
+        let size = InputSize { width: 64, height: 64 };
+        let outputs = mock_outputs(size);
+        let result = decode_yunet_outputs(&outputs, size).unwrap();
+        // stride 8 → 8×8=64 cells, stride 16 → 4×4=16, stride 32 → 2×2=4 → total 84 rows
+        assert_eq!(result.shape()[0], 84);
+    }
 }
 
 #[cfg(test)]

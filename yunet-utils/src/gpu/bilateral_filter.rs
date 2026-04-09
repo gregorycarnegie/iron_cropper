@@ -157,3 +157,29 @@ impl GpuBilateralFilter {
         Ok(DynamicImage::ImageRgba8(image))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+    use image::RgbaImage;
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn smooth_zero_amount_returns_clone() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping bilateral_filter test: no GPU");
+            return;
+        };
+        let filter = GpuBilateralFilter::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, image::Rgba([100, 150, 200, 255])));
+        let result = filter.smooth(&image, 0.0, 3.0, 50.0).expect("smooth");
+        assert_eq!(result.to_rgba8().as_raw(), image.to_rgba8().as_raw());
+    }
+}

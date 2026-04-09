@@ -604,6 +604,106 @@ mod tests {
     }
 
     #[test]
+    fn detection_settings_sanitize_clamps_and_fixes_nan() {
+        let mut s = DetectionSettings {
+            score_threshold: f32::NAN,
+            nms_threshold: 1.5,
+            top_k: 1,
+        };
+        s.sanitize();
+        assert!(s.score_threshold.is_finite());
+        assert_eq!(s.score_threshold, DEFAULT_SCORE_THRESHOLD);
+        assert_eq!(s.nms_threshold, 1.0);
+
+        let mut s2 = DetectionSettings {
+            score_threshold: -0.1,
+            nms_threshold: f32::INFINITY,
+            top_k: 1,
+        };
+        s2.sanitize();
+        assert_eq!(s2.score_threshold, 0.0);
+        assert_eq!(s2.nms_threshold, DEFAULT_NMS_THRESHOLD);
+    }
+
+    #[test]
+    fn input_dimensions_sanitize_replaces_zeros() {
+        let mut d = InputDimensions { width: 0, height: 0, resize_quality: ResizeQuality::Quality };
+        d.sanitize();
+        assert_eq!(d.width, DEFAULT_INPUT_WIDTH);
+        assert_eq!(d.height, DEFAULT_INPUT_HEIGHT);
+
+        // Non-zero dimensions should be left untouched
+        let mut d2 = InputDimensions { width: 320, height: 240, resize_quality: ResizeQuality::Speed };
+        d2.sanitize();
+        assert_eq!(d2.width, 320);
+        assert_eq!(d2.height, 240);
+    }
+
+    #[test]
+    fn crop_settings_sanitize_clamps_values() {
+        let mut c = CropSettings {
+            face_height_pct: 200.0,
+            vertical_offset: 5.0,
+            horizontal_offset: -5.0,
+            output_width: 0,
+            output_height: 0,
+            vignette_softness: 2.0,
+            vignette_intensity: -1.0,
+            ..CropSettings::default()
+        };
+        c.sanitize();
+        assert_eq!(c.face_height_pct, 100.0);
+        assert_eq!(c.vertical_offset, 1.0);
+        assert_eq!(c.horizontal_offset, -1.0);
+        assert_eq!(c.output_width, 512);
+        assert_eq!(c.output_height, 512);
+        assert_eq!(c.vignette_softness, 1.0);
+        assert_eq!(c.vignette_intensity, 0.0);
+    }
+
+    #[test]
+    fn metadata_mode_from_str_all_variants() {
+        assert_eq!("preserve".parse::<MetadataMode>().unwrap(), MetadataMode::Preserve);
+        assert_eq!("strip".parse::<MetadataMode>().unwrap(), MetadataMode::Strip);
+        assert_eq!("custom".parse::<MetadataMode>().unwrap(), MetadataMode::Custom);
+        assert!("unknown".parse::<MetadataMode>().is_err());
+    }
+
+    #[test]
+    fn resize_quality_from_str_and_as_label() {
+        assert_eq!("quality".parse::<ResizeQuality>().unwrap(), ResizeQuality::Quality);
+        assert_eq!("SPEED".parse::<ResizeQuality>().unwrap(), ResizeQuality::Speed);
+        assert!("fast".parse::<ResizeQuality>().is_err());
+        assert_eq!(ResizeQuality::Quality.as_label(), "Quality");
+        assert_eq!(ResizeQuality::Speed.as_label(), "Speed");
+    }
+
+    #[test]
+    fn resize_quality_display() {
+        assert_eq!(ResizeQuality::Quality.to_string(), "quality");
+        assert_eq!(ResizeQuality::Speed.to_string(), "speed");
+    }
+
+    #[test]
+    fn batch_log_format_display() {
+        assert_eq!(BatchLogFormat::Json.to_string(), "JSON");
+        assert_eq!(BatchLogFormat::Csv.to_string(), "CSV");
+    }
+
+    #[test]
+    fn gpu_settings_into_context_options() {
+        let gs = GpuSettings { enabled: false, respect_env: false, inference: true, preprocessing: true };
+        let opts: GpuContextOptions = gs.into();
+        assert!(!opts.enabled);
+        assert!(!opts.respect_env);
+
+        let gs_ref = GpuSettings { enabled: true, respect_env: true, inference: false, preprocessing: false };
+        let opts_ref: GpuContextOptions = (&gs_ref).into();
+        assert!(opts_ref.enabled);
+        assert!(opts_ref.respect_env);
+    }
+
+    #[test]
     fn telemetry_level_parses_variants() {
         let telemetry = TelemetrySettings {
             level: "TRACE".into(),

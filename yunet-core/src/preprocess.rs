@@ -741,6 +741,162 @@ mod tests {
     }
 
     #[test]
+    fn align_to_power_of_two() {
+        // Already aligned
+        assert_eq!(align_to(256, 256), 256);
+        assert_eq!(align_to(512, 256), 512);
+        // Rounds up
+        assert_eq!(align_to(1, 256), 256);
+        assert_eq!(align_to(257, 256), 512);
+        assert_eq!(align_to(0, 256), 0);
+    }
+
+    #[test]
+    fn preprocess_image_reads_from_disk() {
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let path: PathBuf = dir.path().join("test.png");
+
+        let img = ImageBuffer::<Rgb<u8>, _>::from_fn(64, 64, |x, y| {
+            Rgb([((x + y) % 255) as u8, 100, 50])
+        });
+        DynamicImage::ImageRgb8(img).save(&path).unwrap();
+
+        let config = PreprocessConfig {
+            input_size: InputSize::new(32, 32),
+            ..Default::default()
+        };
+        let out = preprocess_image(&path, &config).expect("should preprocess from disk");
+        assert_eq!(out.original_size, (64, 64));
+        assert_eq!(out.scale_x, 2.0);
+        assert_eq!(out.scale_y, 2.0);
+        assert_eq!(out.tensor.shape(), &[1, 3, 32, 32]);
+    }
+
+    #[test]
+    fn preprocess_image_errors_for_missing_file() {
+        let config = PreprocessConfig::default();
+        let result = preprocess_image("does_not_exist_xyz.png", &config);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("does not exist") || msg.contains("does_not_exist"));
+    }
+
+    #[test]
+    fn cpu_preprocess_errors_for_zero_input_dimension() {
+        let img = DynamicImage::ImageRgb8(ImageBuffer::from_fn(4, 4, |_, _| Rgb([1u8, 2, 3])));
+        let config = PreprocessConfig {
+            input_size: InputSize::new(0, 32),
+            ..Default::default()
+        };
+        assert!(preprocess_dynamic_image(&img, &config).is_err());
+    }
+
+    #[test]
+    fn cpu_preprocess_skips_resize_when_image_already_matches_input_size() {
+        let img = DynamicImage::ImageRgb8(ImageBuffer::from_fn(32, 32, |_, _| Rgb([100u8, 150, 200])));
+        let config = PreprocessConfig {
+            input_size: InputSize::new(32, 32),
+            ..Default::default()
+        };
+        let out = preprocess_dynamic_image(&img, &config).unwrap();
+        assert_eq!(out.original_size, (32, 32));
+        assert_eq!(out.scale_x, 1.0);
+        assert_eq!(out.scale_y, 1.0);
+    }
+
+    #[test]
+    fn resize_quality_speed_yields_nearest_filter() {
+        use image::imageops::FilterType;
+        use yunet_utils::config::ResizeQuality;
+        let config = PreprocessConfig {
+            input_size: InputSize::new(32, 32),
+            resize_quality: ResizeQuality::Speed,
+        };
+        assert_eq!(config.resize_filter(), FilterType::Nearest);
+    }
+
+    #[test]
+    fn resize_quality_quality_yields_triangle_filter() {
+        use image::imageops::FilterType;
+        use yunet_utils::config::ResizeQuality;
+        let config = PreprocessConfig {
+            input_size: InputSize::new(32, 32),
+            resize_quality: ResizeQuality::Quality,
+        };
+        assert_eq!(config.resize_filter(), FilterType::Triangle);
+    }
+
+    #[test]
+    fn preprocess_image_with_accepts_custom_preprocessor() {
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+
+        #[derive(Debug)]
+        struct DelegatingPreprocessor;
+
+        impl Preprocessor for DelegatingPreprocessor {
+            fn preprocess(
+                &self,
+                image: &DynamicImage,
+                config: &PreprocessConfig,
+            ) -> anyhow::Result<PreprocessOutput> {
+                CpuPreprocessor.preprocess(image, config)
+            }
+        }
+
+        let dir = tempdir().unwrap();
+        let path: PathBuf = dir.path().join("test.png");
+        let img = ImageBuffer::<Rgb<u8>, _>::from_fn(16, 16, |x, y| {
+            Rgb([((x + y) % 255) as u8, 100, 50])
+        });
+        DynamicImage::ImageRgb8(img).save(&path).unwrap();
+
+        let config = PreprocessConfig {
+            input_size: InputSize::new(8, 8),
+            ..Default::default()
+        };
+        let out = preprocess_image_with(&DelegatingPreprocessor, &path, &config).unwrap();
+        assert_eq!(out.original_size, (16, 16));
+        assert_eq!(out.scale_x, 2.0);
+        assert_eq!(out.scale_y, 2.0);
+        assert_eq!(out.tensor.shape(), &[1, 3, 8, 8]);
+    }
+
+    #[test]
+    fn from_ref_input_dimensions_for_input_size() {
+        use yunet_utils::config::ResizeQuality;
+        let dims = InputDimensions {
+            width: 128,
+            height: 96,
+            resize_quality: ResizeQuality::Speed,
+        };
+        let by_ref: InputSize = (&dims).into();
+        assert_eq!(by_ref.width, 128);
+        assert_eq!(by_ref.height, 96);
+        // owned conversion must agree
+        let by_owned: InputSize = dims.into();
+        assert_eq!(by_ref.width, by_owned.width);
+        assert_eq!(by_ref.height, by_owned.height);
+    }
+
+    #[test]
+    fn from_ref_input_dimensions_for_preprocess_config() {
+        use yunet_utils::config::ResizeQuality;
+        let dims = InputDimensions {
+            width: 320,
+            height: 240,
+            resize_quality: ResizeQuality::Speed,
+        };
+        let cfg: PreprocessConfig = (&dims).into();
+        assert_eq!(cfg.input_size.width, 320);
+        assert_eq!(cfg.input_size.height, 240);
+        assert!(matches!(cfg.resize_quality, ResizeQuality::Speed));
+    }
+
+    #[test]
     fn cpu_preprocessor_trait_matches_helpers() {
         let mut img = ImageBuffer::<Rgb<u8>, _>::new(2, 2);
         for (i, pixel) in img.pixels_mut().enumerate() {

@@ -7,6 +7,28 @@
 - [x] Align GitHub CI branch triggers with `master` for the `1.0.5-rc2` release path.
 - [x] Mirror the Windows CI job's `dav1d` and `pkg-config` setup with the release workflow so AVIF-enabled builds pass on GitHub Actions.
 
+### Coverage Follow-up
+
+- [x] Add direct unit tests for CSV/SQLite mapping ingestion, selector handling, and SQL query validation in `yunet-utils/src/mapping.rs`.
+- [x] Add direct unit tests for CLI input collection and mapping target resolution in `yunet-cli/src/input.rs`.
+- [x] Add direct unit tests for shared export and metadata helpers in `yunet-utils/src/output.rs`.
+- [x] Add direct unit tests for GUI export path sanitization and batch log formatting helpers in `yunet-gui/src/core/export.rs`.
+- [x] Add direct unit tests for CLI color parsing, GUI quality helpers, and core postprocess edge cases.
+
+### Coverage Follow-up #2 (yunet-utils gaps identified from coverage snapshot)
+
+- [x] `yunet-utils/src/color.rs` (80%) — cover 3-char/4-char/8-char hex parsing, `0x` prefix, `RgbaColor::to_hsv`/`from_hsv`, and blue-dominant HSV branch.
+- [x] `yunet-utils/src/config.rs` (75%) — cover `DetectionSettings::sanitize`, `InputDimensions::sanitize`, `CropSettings::sanitize`, `MetadataMode::from_str`, `ResizeQuality::from_str` error, `ResizeQuality::as_label`, `BatchLogFormat` Display, and `GpuSettings→GpuContextOptions` From impls.
+- [x] `yunet-utils/src/fixtures.rs` (58%) — cover `fixtures_dir()` via `YUNET_FIXTURE_ROOT` env var, `load_fixture_bytes`, and `load_fixture_json`.
+- [x] `yunet-utils/src/image_utils.rs` (75%) — cover `dynamic_to_bgr_chw`, `load_image` error path, and `resize_image` Triangle (non-fast) path.
+- [x] `yunet-utils/src/gpu/mod.rs` (49%) — cover `pack_rgba_pixels`/`unpack_rgba_pixels` roundtrip, all `GpuStatusIndicator` constructors, `GpuStatusMode::as_str`, `GpuAvailability::is_available`/`context`, and `GpuContextPool` acquire/try_acquire/capacity/available (GPU-gated).
+- [x] `yunet-utils/src/gpu/bilateral_filter.rs` (50%) — cover `smooth()` zero-amount early return.
+- [x] `yunet-utils/src/gpu/gaussian_blur.rs` (71%) — cover `blur()` zero-radius early return, `clear_cache`, `memory_usage` (GPU-gated).
+- [x] `yunet-utils/src/gpu/background_blur.rs` (25%) — cover `clear_cache` and `memory_usage` (GPU-gated).
+- [x] `yunet-utils/src/gpu/buffer_pool.rs` (80%) — cover `available()` and `Debug` impl.
+- [x] `yunet-utils/src/gpu/shape_mask.rs` (67%) — cover `Rectangle` variant early return (`Ok(None)`).
+- [x] `yunet-utils/src/gpu/red_eye.rs` (33%) — cover zero-pixel image early return path.
+
 This document outlines the development plan for the YuNet face detection project, broken down into phases.
 
 ### Phase 0: Workspace Bootstrap

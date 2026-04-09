@@ -206,6 +206,123 @@ fn log_gpu_status(status: &GpuStatusIndicator, pool: Option<&GpuContextPool>) {
     status.emit_telemetry(pool_capacity, pool_available);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, RgbaImage};
+    use yunet_core::{CropSettings, FillColor, PositioningMode};
+    use yunet_utils::{
+        EnhancementSettings,
+        config::AppSettings,
+        gpu::{GpuStatusIndicator, GpuStatusMode},
+    };
+
+    fn no_gpu_settings() -> AppSettings {
+        let mut s = AppSettings::default();
+        s.gpu.enabled = false;
+        s
+    }
+
+    // --- log_gpu_status: smoke-test each GpuStatusMode variant ---
+
+    #[test]
+    fn log_gpu_status_disabled_does_not_panic() {
+        let status = GpuStatusIndicator::disabled("unit test");
+        log_gpu_status(&status, None);
+        assert_eq!(status.mode, GpuStatusMode::Disabled);
+    }
+
+    #[test]
+    fn log_gpu_status_error_does_not_panic() {
+        let status = GpuStatusIndicator::error("unit test error");
+        log_gpu_status(&status, None);
+        assert_eq!(status.mode, GpuStatusMode::Error);
+    }
+
+    #[test]
+    fn log_gpu_status_fallback_does_not_panic() {
+        let status = GpuStatusIndicator::fallback("no reason", None, None);
+        log_gpu_status(&status, None);
+        assert_eq!(status.mode, GpuStatusMode::Fallback);
+    }
+
+    // --- CliGpuRuntime methods with GPU disabled ---
+
+    #[test]
+    fn init_runtime_gpu_disabled_has_no_context() {
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        assert!(runtime.context().is_none());
+    }
+
+    #[test]
+    fn log_pool_state_and_log_status_do_not_panic() {
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        runtime.log_pool_state();
+        runtime.log_status();
+    }
+
+    #[test]
+    fn crop_faces_gpu_returns_none_for_zero_output_width() {
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(100, 100));
+        let settings = CropSettings {
+            output_width: 0,
+            output_height: 100,
+            face_height_pct: 70.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+            fill_color: FillColor::default(),
+        };
+        assert!(runtime.crop_faces_gpu(&img, &[], &settings).is_none());
+    }
+
+    #[test]
+    fn crop_faces_gpu_returns_none_when_cropper_absent() {
+        // GPU disabled → cropper is None → returns None regardless of detections
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        let img = DynamicImage::ImageRgba8(RgbaImage::new(100, 100));
+        let settings = CropSettings {
+            output_width: 50,
+            output_height: 50,
+            face_height_pct: 70.0,
+            positioning_mode: PositioningMode::Center,
+            horizontal_offset: 0.0,
+            vertical_offset: 0.0,
+            fill_color: FillColor::default(),
+        };
+        assert!(runtime.crop_faces_gpu(&img, &[], &settings).is_none());
+    }
+
+    #[test]
+    fn enhance_falls_back_to_cpu_and_preserves_dimensions() {
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            20,
+            20,
+            image::Rgba([100, 120, 140, 255]),
+        ));
+        let enh = EnhancementSettings::default();
+        let result = runtime.enhance(&img, &enh);
+        assert_eq!(result.width(), 20);
+        assert_eq!(result.height(), 20);
+    }
+
+    #[test]
+    fn apply_shape_mask_falls_back_to_cpu_and_preserves_dimensions() {
+        use yunet_utils::{CropShape, color::RgbaColor};
+        let runtime = init_cli_gpu_runtime(&no_gpu_settings()).expect("init");
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            30,
+            30,
+            image::Rgba([200, 200, 200, 255]),
+        ));
+        let result = runtime.apply_shape_mask(&img, &CropShape::Rectangle, 0.0, 0.0, RgbaColor::default());
+        assert_eq!(result.width(), 30);
+        assert_eq!(result.height(), 30);
+    }
+}
+
 pub fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
     let options: GpuContextOptions = (&settings.gpu).into();
     let availability = GpuContext::init_with_fallback(&options);

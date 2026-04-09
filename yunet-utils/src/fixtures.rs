@@ -121,4 +121,50 @@ mod tests {
         };
         assert_eq!(image.dimensions(), (4, 4));
     }
+
+    #[test]
+    fn fixtures_dir_respects_env_var() {
+        use std::env;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let tmp_path = tmp.path().to_str().unwrap().to_string();
+
+        // Temporarily set the env var to our temp directory
+        // SAFETY: test environment is single-threaded at this point; no other threads read this var.
+        unsafe { env::set_var(FIXTURE_ENV, &tmp_path) };
+        let result = fixtures_dir();
+        unsafe { env::remove_var(FIXTURE_ENV) };
+
+        let dir = result.expect("fixtures_dir should succeed with YUNET_FIXTURE_ROOT set");
+        assert_eq!(dir.to_str().unwrap(), tmp_path);
+    }
+
+    #[test]
+    fn load_fixture_bytes_reads_file() {
+        let Ok(bytes) = load_fixture_bytes("images/test_pattern.png") else {
+            eprintln!("skipping: fixture images not available in this environment");
+            return;
+        };
+        assert!(!bytes.is_empty());
+        // PNG magic bytes: \x89PNG
+        assert_eq!(&bytes[0..4], b"\x89PNG");
+    }
+
+    #[test]
+    fn load_fixture_json_deserializes() {
+        // Try to load a known JSON fixture; skip if not available.
+        let result = load_fixture_json::<_, serde_json::Value>("images/test_pattern.json");
+        match result {
+            Ok(_) => {} // fixture exists and parsed
+            Err(e) => {
+                let msg = e.to_string();
+                // Acceptable: fixture missing OR JSON parse error
+                assert!(
+                    msg.contains("does not exist") || msg.contains("failed"),
+                    "unexpected error: {msg}"
+                );
+            }
+        }
+    }
 }

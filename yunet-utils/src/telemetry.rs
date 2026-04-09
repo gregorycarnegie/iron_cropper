@@ -155,3 +155,83 @@ fn filter_from_index(value: u8) -> LevelFilter {
         _ => LevelFilter::Off,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reset global telemetry state between tests so they don't interfere.
+    fn reset() {
+        configure(false, LevelFilter::Off);
+    }
+
+    #[test]
+    fn configure_roundtrips_enabled_flag_and_level() {
+        configure(true, LevelFilter::Debug);
+        assert!(telemetry_enabled());
+        assert_eq!(telemetry_level(), LevelFilter::Debug);
+
+        configure(false, LevelFilter::Off);
+        assert!(!telemetry_enabled());
+        assert_eq!(telemetry_level(), LevelFilter::Off);
+    }
+
+    #[test]
+    fn telemetry_allows_respects_enabled_flag() {
+        reset();
+        // Disabled → never allowed regardless of level.
+        assert!(!telemetry_allows(Level::Error));
+
+        configure(true, LevelFilter::Info);
+        assert!(telemetry_allows(Level::Error));
+        assert!(telemetry_allows(Level::Warn));
+        assert!(telemetry_allows(Level::Info));
+        assert!(!telemetry_allows(Level::Debug));
+        assert!(!telemetry_allows(Level::Trace));
+
+        reset();
+    }
+
+    #[test]
+    fn telemetry_allows_all_levels_at_trace() {
+        configure(true, LevelFilter::Trace);
+        for level in [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ] {
+            assert!(telemetry_allows(level), "expected {level:?} to be allowed");
+        }
+        reset();
+    }
+
+    #[test]
+    fn timing_guard_finish_suppresses_log_and_returns_duration() {
+        // finish() should mark the guard inactive so Drop does not log.
+        let guard = timing_guard_if("test_op", Level::Debug, false);
+        assert!(!guard.is_active());
+        let elapsed = guard.finish();
+        // We can't assert an exact value, but it should be a valid Duration.
+        assert!(elapsed.as_nanos() < 1_000_000_000); // < 1 second
+    }
+
+    #[test]
+    fn timing_guard_elapsed_increases_over_time() {
+        let guard = timing_guard_if("op", Level::Debug, false);
+        let d1 = guard.elapsed();
+        // Spin briefly to ensure time advances.
+        let start = std::time::Instant::now();
+        while start.elapsed().as_nanos() < 1_000 {}
+        let d2 = guard.elapsed();
+        assert!(d2 >= d1);
+        drop(guard);
+    }
+
+    #[test]
+    fn timing_guard_if_inactive_when_disabled() {
+        let guard = timing_guard_if("op", Level::Debug, false);
+        assert!(!guard.is_active());
+    }
+}

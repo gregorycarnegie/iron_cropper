@@ -969,7 +969,13 @@ impl WgpuEnhancer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::{
+        apply_background_blur, apply_background_blur_with_preblur, apply_red_eye_removal,
+        apply_saturation, apply_unsharp_mask, apply_unsharp_with_preblur,
+        build_equalization_lut, skin_kernel,
+    };
     use image::{GenericImageView, RgbaImage};
+    use std::sync::Arc;
 
     fn solid(color: [u8; 4]) -> DynamicImage {
         DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, image::Rgba(color)))
@@ -1333,6 +1339,208 @@ mod tests {
             - source.to_rgba8().get_pixel(0, 0)[0] as i16)
             .abs();
         assert!(corner_diff > 0, "corner should show blur impact");
+    }
+
+    // -----------------------------------------------------------------------
+    // equalization edge cases
+
+    #[test]
+    fn equalization_lut_zero_total_returns_identity() {
+        // An all-zero histogram (total == 0) must not divide by zero and must
+        // return the identity mapping.
+        let hist = [0u32; 256];
+        let lut = build_equalization_lut(&hist, 0);
+        for (i, &v) in lut.iter().enumerate() {
+            assert_eq!(v, i as u8, "identity expected at index {i}");
+        }
+    }
+
+    #[test]
+    fn equalization_lut_single_value_image_returns_identity() {
+        // Every pixel has the same intensity: cdf_min == total, so the result
+        // is undefined — we return identity to avoid divide-by-zero.
+        let mut hist = [0u32; 256];
+        hist[128] = 16; // all 16 pixels are intensity 128
+        let lut = build_equalization_lut(&hist, 16);
+        for (i, &v) in lut.iter().enumerate() {
+            assert_eq!(v, i as u8, "identity expected at index {i}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // red-eye removal with eye regions
+
+    #[test]
+    fn red_eye_removal_with_eye_region_only_corrects_inside() {
+        use crate::gpu::red_eye::RedEye;
+
+        let mut img = RgbaImage::new(8, 8);
+        // Fill with neutral gray
+        for y in 0..8 {
+            for x in 0..8 {
+                img.put_pixel(x, y, image::Rgba([90, 90, 90, 255]));
+            }
+        }
+        // Plant two red-eye pixels inside the eye radius (cx=4, cy=4, r=2)
+        img.put_pixel(4, 4, image::Rgba([220, 50, 50, 255]));
+        img.put_pixel(3, 4, image::Rgba([210, 45, 45, 255]));
+        // And a red pixel clearly outside the radius
+        img.put_pixel(0, 0, image::Rgba([220, 50, 50, 255]));
+
+        let source = DynamicImage::ImageRgba8(img);
+        let eyes = [RedEye { x: 4.0, y: 4.0, radius: 2.0, _pad: 0.0 }];
+        let out = apply_red_eye_removal(&source, 1.5, Some(&eyes)).to_rgba8();
+
+        // Pixels inside the eye circle must be corrected (red reduced)
+        assert!(
+            out.get_pixel(4, 4)[0] < 220,
+            "red inside eye region should be reduced"
+        );
+        assert!(
+            out.get_pixel(3, 4)[0] < 210,
+            "red inside eye region should be reduced"
+        );
+        // Pixel outside the eye region must be UNCHANGED despite being red
+        assert_eq!(
+            out.get_pixel(0, 0)[0], 220,
+            "pixel outside eye region must not be corrected"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // background blur helpers
+
+    #[test]
+    fn background_blur_with_preblur_dimension_mismatch_returns_sharp() {
+        // If the pre-blurred image has different dimensions, background_blur_from_rgba
+        // bails out and returns the original sharp image unchanged.
+        let sharp = RgbaImage::from_pixel(4, 4, image::Rgba([100u8, 150, 200, 255]));
+        let wrong_size_blur = RgbaImage::from_pixel(8, 8, image::Rgba([0u8, 0, 0, 255]));
+        let sharp_dyn = DynamicImage::ImageRgba8(sharp.clone());
+        let blur_dyn = DynamicImage::ImageRgba8(wrong_size_blur);
+
+        let out = apply_background_blur_with_preblur(&sharp_dyn, &blur_dyn, 0.6).to_rgba8();
+        assert_eq!(out, sharp, "mismatched dimensions should return the sharp image");
+    }
+
+    #[test]
+    fn background_blur_with_preblur_matches_direct_apply() {
+        let mut img = RgbaImage::new(20, 20);
+        for y in 0..20 {
+            for x in 0..20 {
+                img.put_pixel(x, y, image::Rgba([((x + y) * 6) as u8, 100, 50, 255]));
+            }
+        }
+        let source = DynamicImage::ImageRgba8(img);
+        let mask_size = 0.5f32;
+        let radius = 4.0f32;
+
+        // Produce the pre-blurred image the same way apply_background_blur does
+        let pre_blurred =
+            DynamicImage::ImageRgba8(image::imageops::blur(&source.to_rgba8(), radius));
+        let via_preblur =
+            apply_background_blur_with_preblur(&source, &pre_blurred, mask_size).to_rgba8();
+        let via_direct = apply_background_blur(&source, radius, mask_size).to_rgba8();
+
+        assert_eq!(
+            via_preblur, via_direct,
+            "pre-blurred and direct paths must produce identical output"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // unsharp-mask with pre-blurred image
+
+    #[test]
+    fn unsharp_with_preblur_direct_matches_indirect() {
+        let mut img = RgbaImage::new(6, 6);
+        for y in 0..6 {
+            for x in 0..6 {
+                let v = ((x * 20 + y * 15) % 200 + 30) as u8;
+                img.put_pixel(x, y, image::Rgba([v, 255 - v, v / 2, 200]));
+            }
+        }
+        let source = DynamicImage::ImageRgba8(img);
+        let amount = 1.2f32;
+        let radius = 1.0f32;
+
+        let pre_blurred =
+            DynamicImage::ImageRgba8(image::imageops::blur(&source.to_rgba8(), radius));
+        let via_preblur = apply_unsharp_with_preblur(&source, &pre_blurred, amount).to_rgba8();
+        let via_direct = apply_unsharp_mask(&source, amount, radius).to_rgba8();
+
+        assert_eq!(
+            via_preblur, via_direct,
+            "pre-blurred and direct unsharp paths must match"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // skin kernel cache
+
+    #[test]
+    fn skin_kernel_cache_hit_returns_same_arc() {
+        let a = skin_kernel(3, 3.0, 25.0);
+        let b = skin_kernel(3, 3.0, 25.0);
+        // Same Arc pointer means the cache returned the same allocation
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "second call with identical params must hit the cache"
+        );
+        // Different params must produce a distinct kernel
+        let c = skin_kernel(4, 3.0, 25.0);
+        assert!(
+            !Arc::ptr_eq(&a, &c),
+            "different params must produce a distinct kernel"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // saturation scalar tail path
+
+    #[test]
+    fn saturation_scalar_tail_is_exercised_by_odd_pixel_count() {
+        // 5 pixels = 1 SIMD batch of 4 + 1 scalar remainder pixel
+        let mut img = RgbaImage::new(5, 1);
+        img.put_pixel(0, 0, image::Rgba([200, 100, 50, 255]));
+        img.put_pixel(1, 0, image::Rgba([180, 90, 40, 255]));
+        img.put_pixel(2, 0, image::Rgba([160, 80, 30, 255]));
+        img.put_pixel(3, 0, image::Rgba([140, 70, 20, 255]));
+        img.put_pixel(4, 0, image::Rgba([120, 60, 10, 255]));
+
+        let source = DynamicImage::ImageRgba8(img.clone());
+        let out = apply_saturation(&source, 0.0).to_rgba8();
+
+        // At saturation=0 every pixel must be fully desaturated (all channels equal)
+        for x in 0..5 {
+            let px = out.get_pixel(x, 0);
+            assert_eq!(px[0], px[1], "pixel {x}: R and G must be equal at zero saturation");
+            assert_eq!(px[1], px[2], "pixel {x}: G and B must be equal at zero saturation");
+        }
+    }
+
+    #[test]
+    fn saturation_simd_and_scalar_paths_agree() {
+        // Run saturation on 4 pixels (SIMD only) and 5 pixels (SIMD + scalar)
+        // and verify the first 4 pixels match in both outputs.
+        let make_img = |width: u32| {
+            let mut img = RgbaImage::new(width, 1);
+            for x in 0..width {
+                img.put_pixel(x, 0, image::Rgba([(x * 40 + 40) as u8, 100, 50, 255]));
+            }
+            DynamicImage::ImageRgba8(img)
+        };
+
+        let out4 = apply_saturation(&make_img(4), 1.5).to_rgba8();
+        let out5 = apply_saturation(&make_img(5), 1.5).to_rgba8();
+
+        for x in 0..4 {
+            assert_eq!(
+                out4.get_pixel(x, 0),
+                out5.get_pixel(x, 0),
+                "pixel {x}: SIMD and scalar paths must agree"
+            );
+        }
     }
 }
 

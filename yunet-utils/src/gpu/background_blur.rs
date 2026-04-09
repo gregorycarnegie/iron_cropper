@@ -192,3 +192,44 @@ impl GpuBackgroundBlur {
         self.buffer_pool.memory_usage()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+    use image::RgbaImage;
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn clear_cache_and_memory_usage() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping background_blur cache test: no GPU");
+            return;
+        };
+        let blurrer = GpuBackgroundBlur::new(ctx).expect("init");
+        // Run blend to populate pool
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, image::Rgba([100, 100, 100, 255])));
+        blurrer.blend(&img, &img, 0.5).expect("blend");
+        // Verify accessors don't panic
+        blurrer.clear_cache();
+        let _ = blurrer.memory_usage();
+    }
+
+    #[test]
+    fn blend_rejects_mismatched_dimensions() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping background_blur dimension test: no GPU");
+            return;
+        };
+        let blurrer = GpuBackgroundBlur::new(ctx).expect("init");
+        let sharp = DynamicImage::ImageRgba8(RgbaImage::new(4, 4));
+        let blurred = DynamicImage::ImageRgba8(RgbaImage::new(8, 8));
+        assert!(blurrer.blend(&sharp, &blurred, 0.5).is_err());
+    }
+}

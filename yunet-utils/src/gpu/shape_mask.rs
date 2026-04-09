@@ -172,3 +172,81 @@ impl GpuShapeMask {
         Ok(Some(DynamicImage::ImageRgba8(masked)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::color::RgbaColor;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+    use image::RgbaImage;
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn rectangle_variant_returns_none() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping shape_mask rectangle test: no GPU");
+            return;
+        };
+        let mask = GpuShapeMask::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, image::Rgba([255, 0, 0, 255])));
+        let result = mask.apply(&image, &CropShape::Rectangle, 0.0, 1.0, RgbaColor::opaque(0, 0, 0))
+            .expect("apply");
+        assert!(result.is_none(), "Rectangle shape should return None (no masking needed)");
+    }
+
+    #[test]
+    fn ellipse_shape_produces_masked_image_with_correct_dimensions() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping shape_mask ellipse test: no GPU");
+            return;
+        };
+        let mask = GpuShapeMask::new(ctx).expect("init");
+        let width = 32u32;
+        let height = 32u32;
+        let image = DynamicImage::ImageRgba8(
+            RgbaImage::from_pixel(width, height, image::Rgba([255, 128, 64, 255])),
+        );
+        let result = mask
+            .apply(&image, &CropShape::Ellipse, 0.5, 0.8, RgbaColor::opaque(0, 0, 0))
+            .expect("apply should not error");
+        let output = result.expect("Ellipse shape should produce a masked image");
+        assert_eq!(output.width(), width);
+        assert_eq!(output.height(), height);
+        // Corner pixels (outside the ellipse) should be transparent.
+        let rgba = output.to_rgba8();
+        let corner_alpha = rgba.get_pixel(0, 0)[3];
+        assert_eq!(corner_alpha, 0, "Corner pixel should be masked to transparent");
+        // Center pixel (inside the ellipse) should remain opaque.
+        let center_alpha = rgba.get_pixel(width / 2, height / 2)[3];
+        assert_eq!(center_alpha, 255, "Center pixel should remain opaque");
+    }
+
+    #[test]
+    fn polygon_shape_produces_masked_image() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping shape_mask polygon test: no GPU");
+            return;
+        };
+        let mask = GpuShapeMask::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(
+            RgbaImage::from_pixel(64, 64, image::Rgba([200, 200, 200, 255])),
+        );
+        let shape = CropShape::Polygon {
+            sides: 6,
+            rotation_deg: 0.0,
+            corner_style: Default::default(),
+        };
+        let result = mask
+            .apply(&image, &shape, 0.0, 0.0, RgbaColor::opaque(0, 0, 0))
+            .expect("apply should not error");
+        let output = result.expect("Polygon shape should produce a masked image");
+        assert_eq!(output.width(), 64);
+        assert_eq!(output.height(), 64);
+    }
+}

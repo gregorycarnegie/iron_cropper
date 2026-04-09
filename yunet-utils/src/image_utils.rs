@@ -213,6 +213,37 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_to_bgr_chw_matches_rgb_input() {
+        let mut image = RgbImage::new(2, 1);
+        image.put_pixel(0, 0, Rgb([10, 20, 30]));
+        image.put_pixel(1, 0, Rgb([100, 150, 200]));
+        let dynamic = DynamicImage::ImageRgb8(image.clone());
+
+        let from_dynamic = dynamic_to_bgr_chw(&dynamic);
+        let from_rgb = rgb_to_bgr_chw(&image);
+
+        assert_eq!(from_dynamic, from_rgb);
+    }
+
+    #[test]
+    fn load_image_errors_on_missing_file() {
+        let result = super::load_image("/nonexistent/path/image.png");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resize_image_triangle_path() {
+        // Triangle filter bypasses the fast path — exercises the fallback branch
+        let mut image = ImageBuffer::<Rgb<u8>, _>::new(4, 4);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = Rgb([(x * 40) as u8, (y * 40) as u8, 128]);
+        }
+        let dynamic = DynamicImage::ImageRgb8(image);
+        let result = super::resize_image(&dynamic, 2, 2, FilterType::Triangle);
+        assert_eq!(result.dimensions(), (2, 2));
+    }
+
+    #[test]
     fn fast_resize_matches_reference_nearest() {
         let mut image = ImageBuffer::<Rgb<u8>, _>::new(5, 3);
         for (x, y, pixel) in image.enumerate_pixels_mut() {

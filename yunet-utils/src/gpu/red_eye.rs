@@ -172,3 +172,94 @@ impl GpuRedEyeRemoval {
 fn div_ceil(value: u32, divisor: u32) -> u32 {
     value.div_ceil(divisor)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::{GpuAvailability, GpuContextOptions};
+    use image::RgbaImage;
+
+    fn test_context() -> Option<Arc<GpuContext>> {
+        match GpuContext::init_with_fallback(&GpuContextOptions::default()) {
+            GpuAvailability::Available(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn div_ceil_basic() {
+        assert_eq!(div_ceil(0, 256), 0);
+        assert_eq!(div_ceil(256, 256), 1);
+        assert_eq!(div_ceil(257, 256), 2);
+        assert_eq!(div_ceil(1, 1), 1);
+    }
+
+    #[test]
+    fn apply_zero_pixel_image_returns_clone() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping red_eye zero-pixel test: no GPU");
+            return;
+        };
+        let remover = GpuRedEyeRemoval::new(ctx).expect("init");
+        // 0×0 image has pixel_count == 0 → early return
+        let image = DynamicImage::ImageRgba8(RgbaImage::new(0, 0));
+        let result = remover.apply(&image, 0.3, None).expect("apply");
+        assert_eq!(result.width(), 0);
+        assert_eq!(result.height(), 0);
+    }
+
+    #[test]
+    fn apply_with_no_eyes_preserves_low_red_pixels() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping red_eye no-eyes test: no GPU");
+            return;
+        };
+        let remover = GpuRedEyeRemoval::new(ctx).expect("init");
+        // Use a green pixel: r=0 < min_red(80) → shader returns early for every pixel.
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            16,
+            16,
+            image::Rgba([0, 200, 50, 255]),
+        ));
+        let result = remover.apply(&image, 0.3, None).expect("apply");
+        assert_eq!(result.width(), 16);
+        assert_eq!(result.height(), 16);
+        let original = image.to_rgba8();
+        let output = result.to_rgba8();
+        assert_eq!(original.as_raw(), output.as_raw(), "Low-red pixels should not be modified");
+    }
+
+    #[test]
+    fn apply_with_eye_region_desaturates_red_channel() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping red_eye correction test: no GPU");
+            return;
+        };
+        let remover = GpuRedEyeRemoval::new(ctx).expect("init");
+        // Fill image with a strongly red pixel (classic red-eye color).
+        let width = 16u32;
+        let height = 16u32;
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            width,
+            height,
+            image::Rgba([220, 30, 30, 255]),
+        ));
+        let eye = RedEye {
+            x: (width / 2) as f32,
+            y: (height / 2) as f32,
+            radius: (width / 2) as f32,
+            _pad: 0.0,
+        };
+        let result = remover.apply(&image, 0.3, Some(&[eye])).expect("apply");
+        assert_eq!(result.width(), width);
+        assert_eq!(result.height(), height);
+        // Center pixel should have its red channel reduced after correction.
+        let output = result.to_rgba8();
+        let center = output.get_pixel(width / 2, height / 2);
+        assert!(
+            center[0] < 220,
+            "Red channel should be reduced by red-eye removal (got {})",
+            center[0]
+        );
+    }
+}

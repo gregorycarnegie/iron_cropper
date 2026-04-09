@@ -302,6 +302,86 @@ mod tests {
     }
 
     #[test]
+    fn test_rgb_to_hsv_blue_dominant() {
+        // Blue is max channel — exercises the third branch in rgb_to_hsv
+        let (h, s, v) = rgb_to_hsv(0, 0, 255);
+        assert!((h - 240.0).abs() < 0.1, "hue should be ~240, got {h}");
+        assert!((s - 1.0).abs() < 0.01);
+        assert!((v - 1.0).abs() < 0.01);
+
+        // Negative hue wrap-around path: when gf < bf the hue formula yields < 0
+        let (h2, _, _) = rgb_to_hsv(255, 0, 128);
+        assert!(h2 >= 0.0, "hue must always be non-negative, got {h2}");
+    }
+
+    #[test]
+    fn test_rgba_color_to_from_hsv() {
+        let original = RgbaColor::opaque(200, 100, 50);
+        let (h, s, v) = original.to_hsv();
+        let restored = RgbaColor::from_hsv(h, s, v);
+        // Allow ±2 rounding error per channel
+        assert!(
+            (original.red as i16 - restored.red as i16).abs() <= 2,
+            "red mismatch: {} vs {}",
+            original.red,
+            restored.red
+        );
+        assert!(
+            (original.green as i16 - restored.green as i16).abs() <= 2,
+            "green mismatch"
+        );
+        assert!(
+            (original.blue as i16 - restored.blue as i16).abs() <= 2,
+            "blue mismatch"
+        );
+        // from_hsv always returns opaque
+        assert_eq!(restored.alpha, 255);
+    }
+
+    #[test]
+    fn test_parse_hex_color_3_char() {
+        let c = parse_hex_color("#F80").unwrap();
+        assert_eq!(c.red, 0xFF);
+        assert_eq!(c.green, 0x88);
+        assert_eq!(c.blue, 0x00);
+        assert_eq!(c.alpha, 255);
+    }
+
+    #[test]
+    fn test_parse_hex_color_4_char_rgba() {
+        let c = parse_hex_color("#F80A").unwrap();
+        assert_eq!(c.red, 0xFF);
+        assert_eq!(c.green, 0x88);
+        assert_eq!(c.blue, 0x00);
+        assert_eq!(c.alpha, 0xAA);
+    }
+
+    #[test]
+    fn test_parse_hex_color_8_char_with_alpha() {
+        let c = parse_hex_color("FF8800CC").unwrap();
+        assert_eq!(c.red, 0xFF);
+        assert_eq!(c.green, 0x88);
+        assert_eq!(c.blue, 0x00);
+        assert_eq!(c.alpha, 0xCC);
+    }
+
+    #[test]
+    fn test_parse_hex_color_0x_prefix() {
+        let c = parse_hex_color("0xFF8800").unwrap();
+        assert_eq!(c.red, 0xFF);
+        assert_eq!(c.green, 0x88);
+        assert_eq!(c.blue, 0x00);
+        assert_eq!(c.alpha, 255);
+    }
+
+    #[test]
+    fn test_parse_hex_color_invalid() {
+        assert!(parse_hex_color("").is_none());
+        assert!(parse_hex_color("#ZZZZZ").is_none());
+        assert!(parse_hex_color("#12345").is_none()); // 5 digits → no match
+    }
+
+    #[test]
     fn test_rgb_to_cmyk_and_back() {
         let cases = [
             ((0xFF, 0x00, 0x00), (0.0, 1.0, 1.0, 0.0)), // Red

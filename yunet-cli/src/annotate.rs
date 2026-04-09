@@ -83,3 +83,138 @@ fn clamp_to_i32(value: f32, max_extent: u32) -> i32 {
     let max = (max_extent - 1) as f32;
     value.clamp(0.0, max) as i32
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, RgbaImage};
+    use tempfile::tempdir;
+    use yunet_core::{BoundingBox, Landmark};
+
+    // --- clamp_to_i32 ---
+
+    #[test]
+    fn clamp_to_i32_zero_extent_returns_zero() {
+        assert_eq!(clamp_to_i32(999.0, 0), 0);
+        assert_eq!(clamp_to_i32(-5.0, 0), 0);
+    }
+
+    #[test]
+    fn clamp_to_i32_normal_value() {
+        assert_eq!(clamp_to_i32(50.0, 100), 50);
+    }
+
+    #[test]
+    fn clamp_to_i32_negative_clamps_to_zero() {
+        assert_eq!(clamp_to_i32(-10.0, 100), 0);
+    }
+
+    #[test]
+    fn clamp_to_i32_over_max_clamps_to_max_minus_one() {
+        assert_eq!(clamp_to_i32(200.0, 100), 99);
+    }
+
+    #[test]
+    fn clamp_to_i32_exactly_at_max_minus_one() {
+        assert_eq!(clamp_to_i32(99.0, 100), 99);
+    }
+
+    // --- rect_from_bbox ---
+
+    fn make_bbox(x: f32, y: f32, w: f32, h: f32) -> BoundingBox {
+        BoundingBox { x, y, width: w, height: h }
+    }
+
+    #[test]
+    fn rect_from_bbox_normal() {
+        let r = rect_from_bbox(&make_bbox(10.0, 20.0, 50.0, 60.0), 200, 200);
+        assert_eq!(r.left(), 10);
+        assert_eq!(r.top(), 20);
+        assert_eq!(r.width(), 50);
+        assert_eq!(r.height(), 60);
+    }
+
+    #[test]
+    fn rect_from_bbox_clamps_to_image_bounds() {
+        // bbox extends well past image edges
+        let r = rect_from_bbox(&make_bbox(0.0, 0.0, 500.0, 500.0), 100, 80);
+        assert_eq!(r.width(), 99);  // clamped to (99 - 0).max(1)
+        assert_eq!(r.height(), 79);
+    }
+
+    #[test]
+    fn rect_from_bbox_negative_origin_clamps_to_zero() {
+        let r = rect_from_bbox(&make_bbox(-20.0, -10.0, 60.0, 60.0), 200, 200);
+        assert_eq!(r.left(), 0);
+        assert_eq!(r.top(), 0);
+        // x2 = (-20 + 60).clamp(0, 199) = 40; width = (40 - 0).max(1) = 40
+        assert_eq!(r.width(), 40);
+    }
+
+    #[test]
+    fn rect_from_bbox_zero_image_dimensions_uses_zero_max() {
+        // With zero dimensions max_x/max_y = 0, so everything clamps to 0 and width/height = 1
+        let r = rect_from_bbox(&make_bbox(5.0, 5.0, 10.0, 10.0), 0, 0);
+        assert_eq!(r.width(), 1);
+        assert_eq!(r.height(), 1);
+    }
+
+    // --- annotate_image ---
+
+    fn make_detection(x: f32, y: f32, w: f32, h: f32) -> Detection {
+        Detection {
+            bbox: BoundingBox { x, y, width: w, height: h },
+            landmarks: [
+                Landmark { x: x + 10.0, y: y + 10.0 },
+                Landmark { x: x + 20.0, y: y + 10.0 },
+                Landmark { x: x + 15.0, y: y + 20.0 },
+                Landmark { x: x + 8.0,  y: y + 30.0 },
+                Landmark { x: x + 22.0, y: y + 30.0 },
+            ],
+            score: 0.95,
+        }
+    }
+
+    #[test]
+    fn annotate_image_creates_output_file() {
+        let dir = tempdir().expect("tempdir");
+        let img_path = dir.path().join("input.png");
+        let out_dir = dir.path().join("annotated");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        // Save a small RGBA image
+        let img = RgbaImage::from_pixel(100, 100, image::Rgba([128, 128, 128, 255]));
+        DynamicImage::ImageRgba8(img).save(&img_path).unwrap();
+
+        let det = make_detection(20.0, 20.0, 40.0, 40.0);
+        let result = annotate_image(&img_path, &[det], &out_dir);
+        assert!(result.is_ok(), "annotate_image failed: {:?}", result.err());
+        assert!(out_dir.join("input.png").exists());
+    }
+
+    #[test]
+    fn annotate_image_no_detections_copies_image_unchanged() {
+        let dir = tempdir().expect("tempdir");
+        let img_path = dir.path().join("empty.png");
+        let out_dir = dir.path().join("out");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        let img = RgbaImage::from_pixel(50, 50, image::Rgba([255, 0, 0, 255]));
+        DynamicImage::ImageRgba8(img).save(&img_path).unwrap();
+
+        let result = annotate_image(&img_path, &[], &out_dir);
+        assert!(result.is_ok());
+        assert!(out_dir.join("empty.png").exists());
+    }
+
+    #[test]
+    fn annotate_image_returns_err_for_missing_file() {
+        let dir = tempdir().expect("tempdir");
+        let missing = dir.path().join("does_not_exist.png");
+        let out_dir = dir.path().join("out");
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        let result = annotate_image(&missing, &[], &out_dir);
+        assert!(result.is_err());
+    }
+}

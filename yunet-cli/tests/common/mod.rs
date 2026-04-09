@@ -3,7 +3,6 @@ use std::{
     fs,
     io::Result,
     path::{Path, PathBuf},
-    sync::OnceLock,
 };
 
 pub fn find_model_path() -> Option<PathBuf> {
@@ -25,14 +24,13 @@ pub fn find_fixture_image() -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-// Cache fixture bytes so parallel test threads don't race to open the same file
-// (Windows Defender can block concurrent access to newly-accessed files).
-static FIXTURE_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+// Embed fixture bytes so coverage and parallel Windows test runs never need to
+// reopen the same JPEG from disk.
+static FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/images/006.jpg");
 
 #[allow(dead_code)]
-pub fn copy_fixture_to(src: &PathBuf, dest: &Path) -> Result<()> {
-    let bytes = FIXTURE_BYTES.get_or_init(|| fs::read(src).expect("read fixture image"));
-    fs::write(dest, bytes)
+pub fn copy_fixture_to(_src: &PathBuf, dest: &Path) -> Result<()> {
+    fs::write(dest, FIXTURE_BYTES)
 }
 
 /// Macro to set up common test environment with model, fixture, and temp directories.
@@ -83,10 +81,7 @@ macro_rules! cli_test_setup {
     (load_image) => {{
         let (model, fixture, temp_dir, input_path, output_dir) = $crate::cli_test_setup!();
 
-        image::open(&fixture)
-            .expect("load fixture")
-            .save(&input_path)
-            .expect("save input image");
+        $crate::common::copy_fixture_to(&fixture, &input_path).expect("copy input image");
 
         (model, fixture, temp_dir, input_path, output_dir)
     }};
