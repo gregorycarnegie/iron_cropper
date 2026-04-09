@@ -1,7 +1,7 @@
-use serde::Deserialize;
-use std::path::Path;
 use fcs_core::{DetectionOutput, InputSize, PostprocessConfig, PreprocessConfig, YuNetDetector};
 use fcs_utils::load_fixture_json;
+use serde::Deserialize;
+use std::path::Path;
 
 const MODEL_PATH: &str = "models/face_detection_yunet_2023mar.onnx";
 

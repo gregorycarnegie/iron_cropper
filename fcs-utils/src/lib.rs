@@ -86,7 +86,7 @@ pub fn init_logging(default_filter: LevelFilter) -> Result<()> {
     let mut builder = env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(default_filter.as_str()),
     );
-    builder.filter_module("yunet::telemetry", LevelFilter::Trace);
+    builder.filter_module("fcs::telemetry", LevelFilter::Trace);
 
     if builder.try_init().is_err() {
         // Logger already initialized; nothing to do.

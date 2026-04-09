@@ -120,7 +120,7 @@ Release screenshots/GIF asset plan lives in `screenshots/README.md`.
 
 ## Diagnostics
 
-- CLI: pass `--telemetry` (optionally `--telemetry-level trace`) to log scoped timings under the `yunet::telemetry` target. Use `--telemetry-level off` to disable timing logs for that run.
+- CLI: pass `--telemetry` (optionally `--telemetry-level trace`) to log scoped timings under the `fcs::lemetry` target. Use `--telemetry-level off` to disable timing logs for that run.
 - GUI: toggle the **Diagnostics → Telemetry logging** checkbox in the settings panel to emit the same timing traces.
 
 ## Documentation

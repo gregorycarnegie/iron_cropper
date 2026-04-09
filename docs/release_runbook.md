@@ -23,17 +23,17 @@ This triggers the tag-based release workflow and publishes Windows assets for va
 
 From GitHub Release assets:
 
-- `iron-cropper-windows-x86_64.msi`
-- `iron-cropper-windows-x86_64-setup.exe`
-- `iron-cropper-windows-x86_64.zip`
+- `face-crop-studio-windows-x86_64.msi`
+- `face-crop-studio-windows-x86_64-setup.exe`
+- `face-crop-studio-windows-x86_64.zip`
 - `SHA256SUMS.txt`
 
 Validate checksum(s) in PowerShell:
 
 ```powershell
-Get-FileHash .\iron-cropper-windows-x86_64.msi -Algorithm SHA256
-Get-FileHash .\iron-cropper-windows-x86_64-setup.exe -Algorithm SHA256
-Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256
+Get-FileHash .\face-crop-studio-windows-x86_64.msi -Algorithm SHA256
+Get-FileHash .\face-crop-studio-windows-x86_64-setup.exe -Algorithm SHA256
+Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
 ```
 
 Confirm executables launch:

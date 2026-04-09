@@ -61,7 +61,7 @@ impl Drop for TimingGuard {
         if self.active {
             let duration = self.start.elapsed();
             log!(
-                target: "yunet::telemetry",
+                target: "fcs::telemetry",
                 self.level,
                 "{} completed in {:.2?}",
                 self.label,
@@ -74,7 +74,7 @@ impl Drop for TimingGuard {
 /// Create a timing guard that logs at the provided level when that level is enabled.
 ///
 /// Logging only occurs when the global logger allows the provided level (e.g. via
-/// `RUST_LOG=yunet=debug`). This is the preferred helper when the guard should
+/// `RUST_LOG=fcs=debug`). This is the preferred helper when the guard should
 /// activate automatically based on the current log filter.
 pub fn timing_guard(label: impl Into<Cow<'static, str>>, level: Level) -> TimingGuard {
     timing_guard_if(label, level, true)
@@ -91,7 +91,7 @@ pub fn timing_guard_if(
 ) -> TimingGuard {
     let label = label.into();
     let active =
-        enabled && telemetry_allows(level) && log_enabled!(target: "yunet::telemetry", level);
+        enabled && telemetry_allows(level) && log_enabled!(target: "fcs::telemetry", level);
     TimingGuard::new(label, level, active)
 }
 

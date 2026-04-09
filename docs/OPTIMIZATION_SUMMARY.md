@@ -246,7 +246,7 @@ No configuration needed! All Phase 1 and Phase 2 (buffer pooling) optimizations 
 Check telemetry output:
 
 ```bash
-RUST_LOG=yunet::telemetry=debug cargo run -p fcs-gui
+RUST_LOG=fcs::lemetry=debug cargo run -p fcs-gui
 ```
 
 Look for:
@@ -258,7 +258,7 @@ Look for:
 ### Performance Not Improving
 
 1. Ensure release build: `cargo build --release`
-2. Enable telemetry to measure: `RUST_LOG=yunet::telemetry=debug`
+2. Enable telemetry to measure: `RUST_LOG=fcs::lemetry=debug`
 3. Verify image cache hits in crop preview regeneration
 4. Check GPU is actually enabled in settings
 
@@ -271,7 +271,7 @@ Look for:
 cargo build --release
 
 # Run with telemetry
-RUST_LOG=yunet::telemetry=debug ./target/release/fcs-gui
+RUST_LOG=fcs::lemetry=debug ./target/release/fcs-gui
 
 # Run benchmarks (requires model)
 cargo bench --bench inference_pipeline

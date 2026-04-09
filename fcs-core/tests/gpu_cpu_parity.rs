@@ -1,9 +1,9 @@
-use std::{path::Path, sync::Arc};
 use fcs_core::{
     DetectionOutput, PostprocessConfig, YuNetDetector,
     preprocess::{InputSize, PreprocessConfig, Preprocessor, WgpuPreprocessor},
 };
 use fcs_utils::gpu::{GpuAvailability, GpuContext, GpuContextOptions};
+use std::{path::Path, sync::Arc};
 
 const MODEL_PATH: &str = "models/face_detection_yunet_2023mar_640.onnx";
 

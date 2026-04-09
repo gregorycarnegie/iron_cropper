@@ -1,5 +1,3 @@
-use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
-use tempfile::tempdir;
 use fcs_core::{
     BoundingBox, CropSettings, Detection, FillColor, Landmark, PositioningMode,
     crop_face_from_image,
@@ -9,6 +7,8 @@ use fcs_utils::{
     append_suffix_to_filename, apply_enhancements, config::CropSettings as ConfigCropSettings,
     estimate_sharpness, save_dynamic_image,
 };
+use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
+use tempfile::tempdir;
 
 fn make_detection(x: f32, y: f32, width: f32, height: f32, score: f32) -> Detection {
     Detection {

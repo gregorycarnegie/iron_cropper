@@ -9,12 +9,12 @@ This document tracks performance optimizations implemented in the YuNet face det
 From telemetry logs:
 
 ```text
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_gui::load_image completed in 34.09ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::onnx_inference completed in 82.52ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::postprocess completed in 26.70µs
-[2025-11-29T07:11:51Z TRACE yunet::telemetry] fcs_core::run_preprocessed completed in 84.10ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_core::detect_image completed in 107.23ms
-[2025-11-29T07:11:51Z DEBUG yunet::telemetry] fcs_gui::detect_image completed in 107.85ms
+[2025-11-29T07:11:51Z DEBUG fcs::telemetry] fcs_gui::load_image completed in 34.09ms
+[2025-11-29T07:11:51Z DEBUG fcs::telemetry] fcs_core::onnx_inference completed in 82.52ms
+[2025-11-29T07:11:51Z DEBUG fcs::telemetry] fcs_core::postprocess completed in 26.70µs
+[2025-11-29T07:11:51Z TRACE fcs::telemetry] fcs_core::run_preprocessed completed in 84.10ms
+[2025-11-29T07:11:51Z DEBUG fcs::telemetry] fcs_core::detect_image completed in 107.23ms
+[2025-11-29T07:11:51Z DEBUG fcs::telemetry] fcs_gui::detect_image completed in 107.85ms
 ```
 
 **Breakdown:**
@@ -104,8 +104,8 @@ pub fn get_or_load_cached_image(
 
 ## Implementation Status
 
-| Optimization              | Status           | Files Changed | Est. Improvement     |
-|---------------------------|------------------|---------------|----------------------|
+| Optimization              | Status            | Files Changed | Est. Improvement     |
+|---------------------------|-------------------|---------------|----------------------|
 | Image crate rayon feature | ✅ Complete       | Cargo.toml    | 2-4ms (first load)   |
 | App-level image caching   | ✅ Complete       | 4 files       | 34ms (cached access) |
 | Tract rayon integration   | ✅ Already active | None          | Baseline             |
@@ -119,7 +119,7 @@ pub fn get_or_load_cached_image(
 To measure improvements, ensure telemetry is enabled:
 
 ```bash
-export RUST_LOG=yunet::telemetry=debug
+export RUST_LOG=fcs::telemetry=debug
 ```
 
 Key timing guards to monitor:
@@ -280,8 +280,8 @@ GPU preprocessing is controlled via GUI settings:
 
 ### Phase 2 Status
 
-| Optimization      | Status        | Est. Improvement             |
-|-------------------|---------------|------------------------------|
+| Optimization      | Status         | Est. Improvement             |
+|-------------------|----------------|------------------------------|
 | Buffer pooling    | ✅ Implemented | 2-5ms                        |
 | GPU preprocessing | ✅ Implemented | 20-25ms (when GPU available) |
 

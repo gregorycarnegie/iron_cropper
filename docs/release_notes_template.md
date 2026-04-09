@@ -40,10 +40,10 @@
 ## Packaging and Distribution
 
 - Artifacts:
-  - `iron-cropper-windows-x86_64.zip`
+  - `face-crop-studio-windows-x86_64.zip`
   - `SHA256SUMS.txt`
 - Checksum verification:
-  - Command (PowerShell): `Get-FileHash .\iron-cropper-windows-x86_64.zip -Algorithm SHA256`
+  - Command (PowerShell): `Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256`
 
 ## Known Issues
 

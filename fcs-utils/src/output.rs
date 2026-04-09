@@ -547,7 +547,7 @@ fn build_jpeg_xmp_segment(json: &str) -> Option<Vec<u8>> {
         r#"<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-  <rdf:Description xmlns:iron="https://iron-cropper.app/ns/1.0/">
+  <rdf:Description xmlns:iron="https://face-crop-studio.app/ns/1.0/">
    <iron:Metadata>{encoded}</iron:Metadata>
   </rdf:Description>
  </rdf:RDF>
@@ -669,7 +669,7 @@ fn build_custom_metadata_payload(
         return Ok(None);
     }
 
-    root.insert("generator".into(), JsonValue::String("iron-cropper".into()));
+    root.insert("generator".into(), JsonValue::String("face-crop-studio".into()));
     root.insert(
         "generator_version".into(),
         JsonValue::String(env!("CARGO_PKG_VERSION").into()),
@@ -1054,7 +1054,7 @@ mod tests {
             parsed["crop_settings"]["positioning_mode"].as_str(),
             Some("custom")
         );
-        assert_eq!(parsed["generator"].as_str(), Some("iron-cropper"));
+        assert_eq!(parsed["generator"].as_str(), Some("face-crop-studio"));
         assert_eq!(
             parsed["generator_version"].as_str(),
             Some(env!("CARGO_PKG_VERSION"))

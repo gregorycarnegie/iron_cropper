@@ -325,11 +325,11 @@ fn emit_gpu_status_event(
 
     match serde_json::to_string(&payload) {
         Ok(json) => {
-            log!(target: "yunet::telemetry", Level::Info, "{json}");
+            log!(target: "fcs::telemetry", Level::Info, "{json}");
         }
         Err(err) => {
             warn!(
-                target: "yunet::telemetry",
+                target: "fcs::telemetry",
                 "failed to serialize GPU telemetry payload: {err}"
             );
         }
@@ -397,7 +397,7 @@ impl GpuContext {
         let optional = options.optional_features & supported_features;
         if !optional.is_empty() {
             debug!(
-                target: "yunet::gpu",
+                target: "fcs::gpu",
                 "Enabling optional GPU features: {:?}", optional
             );
             features |= optional;
@@ -406,7 +406,7 @@ impl GpuContext {
         let missing_optional = options.optional_features & !supported_features;
         if !missing_optional.is_empty() {
             debug!(
-                target: "yunet::gpu",
+                target: "fcs::gpu",
                 "Skipping unsupported optional GPU features: {:?}", missing_optional
             );
         }
@@ -429,7 +429,7 @@ impl GpuContext {
             block_on(adapter.request_device(&device_desc)).map_err(GpuInitError::from)?;
 
         info!(
-            target: "yunet::gpu",
+            target: "fcs::gpu",
             "Using GPU adapter '{}' ({:?}/{:?}) with features {:?}",
             info.name, info.backend, info.device_type, features
         );
@@ -460,7 +460,7 @@ impl GpuContext {
             },
             Err(err) => {
                 warn!(
-                    target: "yunet::gpu",
+                    target: "fcs::gpu",
                     "GPU initialization failed ({err}); falling back to CPU."
                 );
                 GpuAvailability::Unavailable { error: err }
@@ -693,13 +693,13 @@ impl Drop for GpuContextGuard {
                 TrySendError::Full(ctx) => {
                     if let Err(send_err) = self.sender.send_blocking(ctx) {
                         debug!(
-                            target: "yunet::gpu",
+                            target: "fcs::gpu",
                             "GPU pool closed while returning guard: {send_err}"
                         );
                     }
                 }
                 TrySendError::Closed(_) => debug!(
-                    target: "yunet::gpu",
+                    target: "fcs::gpu",
                     "GPU pool closed; dropping context guard."
                 ),
             }
