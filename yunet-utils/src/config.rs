@@ -627,13 +627,21 @@ mod tests {
 
     #[test]
     fn input_dimensions_sanitize_replaces_zeros() {
-        let mut d = InputDimensions { width: 0, height: 0, resize_quality: ResizeQuality::Quality };
+        let mut d = InputDimensions {
+            width: 0,
+            height: 0,
+            resize_quality: ResizeQuality::Quality,
+        };
         d.sanitize();
         assert_eq!(d.width, DEFAULT_INPUT_WIDTH);
         assert_eq!(d.height, DEFAULT_INPUT_HEIGHT);
 
         // Non-zero dimensions should be left untouched
-        let mut d2 = InputDimensions { width: 320, height: 240, resize_quality: ResizeQuality::Speed };
+        let mut d2 = InputDimensions {
+            width: 320,
+            height: 240,
+            resize_quality: ResizeQuality::Speed,
+        };
         d2.sanitize();
         assert_eq!(d2.width, 320);
         assert_eq!(d2.height, 240);
@@ -663,16 +671,31 @@ mod tests {
 
     #[test]
     fn metadata_mode_from_str_all_variants() {
-        assert_eq!("preserve".parse::<MetadataMode>().unwrap(), MetadataMode::Preserve);
-        assert_eq!("strip".parse::<MetadataMode>().unwrap(), MetadataMode::Strip);
-        assert_eq!("custom".parse::<MetadataMode>().unwrap(), MetadataMode::Custom);
+        assert_eq!(
+            "preserve".parse::<MetadataMode>().unwrap(),
+            MetadataMode::Preserve
+        );
+        assert_eq!(
+            "strip".parse::<MetadataMode>().unwrap(),
+            MetadataMode::Strip
+        );
+        assert_eq!(
+            "custom".parse::<MetadataMode>().unwrap(),
+            MetadataMode::Custom
+        );
         assert!("unknown".parse::<MetadataMode>().is_err());
     }
 
     #[test]
     fn resize_quality_from_str_and_as_label() {
-        assert_eq!("quality".parse::<ResizeQuality>().unwrap(), ResizeQuality::Quality);
-        assert_eq!("SPEED".parse::<ResizeQuality>().unwrap(), ResizeQuality::Speed);
+        assert_eq!(
+            "quality".parse::<ResizeQuality>().unwrap(),
+            ResizeQuality::Quality
+        );
+        assert_eq!(
+            "SPEED".parse::<ResizeQuality>().unwrap(),
+            ResizeQuality::Speed
+        );
         assert!("fast".parse::<ResizeQuality>().is_err());
         assert_eq!(ResizeQuality::Quality.as_label(), "Quality");
         assert_eq!(ResizeQuality::Speed.as_label(), "Speed");
@@ -692,12 +715,22 @@ mod tests {
 
     #[test]
     fn gpu_settings_into_context_options() {
-        let gs = GpuSettings { enabled: false, respect_env: false, inference: true, preprocessing: true };
+        let gs = GpuSettings {
+            enabled: false,
+            respect_env: false,
+            inference: true,
+            preprocessing: true,
+        };
         let opts: GpuContextOptions = gs.into();
         assert!(!opts.enabled);
         assert!(!opts.respect_env);
 
-        let gs_ref = GpuSettings { enabled: true, respect_env: true, inference: false, preprocessing: false };
+        let gs_ref = GpuSettings {
+            enabled: true,
+            respect_env: true,
+            inference: false,
+            preprocessing: false,
+        };
         let opts_ref: GpuContextOptions = (&gs_ref).into();
         assert!(opts_ref.enabled);
         assert!(opts_ref.respect_env);

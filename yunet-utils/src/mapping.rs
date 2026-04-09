@@ -735,7 +735,10 @@ fn encode_bytes<B: AsRef<[u8]>>(bytes: B) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{encode_bytes, format_excel_cell, format_excel_header, format_parquet_field, quote_identifier};
+    use super::{
+        encode_bytes, format_excel_cell, format_excel_header, format_parquet_field,
+        quote_identifier,
+    };
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -1194,7 +1197,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert!(result.is_ok(), "keyword-as-substring should be allowed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "keyword-as-substring should be allowed: {result:?}"
+        );
     }
 
     fn write_parquet(path: &Path, rows: &[(&str, &str)]) {
@@ -1375,25 +1381,46 @@ mod tests {
     fn format_excel_cell_handles_scalar_variants() {
         use calamine::Data as ExcelData;
         assert_eq!(format_excel_cell(&ExcelData::Empty), "");
-        assert_eq!(format_excel_cell(&ExcelData::String("  hello  ".to_string())), "hello");
+        assert_eq!(
+            format_excel_cell(&ExcelData::String("  hello  ".to_string())),
+            "hello"
+        );
         assert_eq!(format_excel_cell(&ExcelData::Float(3.14_f64)), "3.14");
         assert_eq!(format_excel_cell(&ExcelData::Float(5.0_f64)), "5");
         assert_eq!(format_excel_cell(&ExcelData::Int(42)), "42");
         assert_eq!(format_excel_cell(&ExcelData::Bool(true)), "true");
         assert_eq!(format_excel_cell(&ExcelData::Bool(false)), "false");
-        assert_eq!(format_excel_cell(&ExcelData::DateTimeIso("2024-01-15".to_string())), "2024-01-15");
-        assert_eq!(format_excel_cell(&ExcelData::DurationIso("PT1H".to_string())), "PT1H");
+        assert_eq!(
+            format_excel_cell(&ExcelData::DateTimeIso("2024-01-15".to_string())),
+            "2024-01-15"
+        );
+        assert_eq!(
+            format_excel_cell(&ExcelData::DurationIso("PT1H".to_string())),
+            "PT1H"
+        );
         // Error variants always produce an empty string
-        assert_eq!(format_excel_cell(&ExcelData::Error(calamine::CellErrorType::Div0)), "");
-        assert_eq!(format_excel_cell(&ExcelData::Error(calamine::CellErrorType::NA)), "");
+        assert_eq!(
+            format_excel_cell(&ExcelData::Error(calamine::CellErrorType::Div0)),
+            ""
+        );
+        assert_eq!(
+            format_excel_cell(&ExcelData::Error(calamine::CellErrorType::NA)),
+            ""
+        );
     }
 
     #[test]
     fn format_excel_header_uses_column_n_for_blank() {
         use calamine::Data as ExcelData;
         assert_eq!(format_excel_header(&ExcelData::Empty, 0), "Column 1");
-        assert_eq!(format_excel_header(&ExcelData::String("  ".to_string()), 2), "Column 3");
-        assert_eq!(format_excel_header(&ExcelData::String("source".to_string()), 0), "source");
+        assert_eq!(
+            format_excel_header(&ExcelData::String("  ".to_string()), 2),
+            "Column 3"
+        );
+        assert_eq!(
+            format_excel_header(&ExcelData::String("source".to_string()), 0),
+            "source"
+        );
     }
 
     #[test]
@@ -1405,14 +1432,26 @@ mod tests {
         assert_eq!(format_parquet_field(&Field::Byte(42i8)), "42");
         assert_eq!(format_parquet_field(&Field::Short(1000i16)), "1000");
         assert_eq!(format_parquet_field(&Field::Int(99999i32)), "99999");
-        assert_eq!(format_parquet_field(&Field::Long(123456789i64)), "123456789");
+        assert_eq!(
+            format_parquet_field(&Field::Long(123456789i64)),
+            "123456789"
+        );
         assert_eq!(format_parquet_field(&Field::UByte(255u8)), "255");
         assert_eq!(format_parquet_field(&Field::UShort(65535u16)), "65535");
-        assert_eq!(format_parquet_field(&Field::UInt(4294967295u32)), "4294967295");
-        assert_eq!(format_parquet_field(&Field::ULong(u64::MAX)), u64::MAX.to_string());
+        assert_eq!(
+            format_parquet_field(&Field::UInt(4294967295u32)),
+            "4294967295"
+        );
+        assert_eq!(
+            format_parquet_field(&Field::ULong(u64::MAX)),
+            u64::MAX.to_string()
+        );
         assert_eq!(format_parquet_field(&Field::Float(1.5_f32)), "1.5");
         assert_eq!(format_parquet_field(&Field::Double(2.5_f64)), "2.5");
-        assert_eq!(format_parquet_field(&Field::Str("  hello  ".to_string())), "hello");
+        assert_eq!(
+            format_parquet_field(&Field::Str("  hello  ".to_string())),
+            "hello"
+        );
         // Bytes encodes as base64
         let bytes = parquet::data_type::ByteArray::from(vec![1u8, 2, 3]);
         let encoded = format_parquet_field(&Field::Bytes(bytes));

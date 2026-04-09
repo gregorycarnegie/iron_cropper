@@ -317,7 +317,8 @@ mod tests {
             30,
             image::Rgba([200, 200, 200, 255]),
         ));
-        let result = runtime.apply_shape_mask(&img, &CropShape::Rectangle, 0.0, 0.0, RgbaColor::default());
+        let result =
+            runtime.apply_shape_mask(&img, &CropShape::Rectangle, 0.0, 0.0, RgbaColor::default());
         assert_eq!(result.width(), 30);
         assert_eq!(result.height(), 30);
     }

@@ -14,6 +14,7 @@ pub const DEFAULT_TOP_K: usize = 5_000;
 const DETECTION_OUTPUT_COLS: usize = 15;
 /// Index of the confidence score in a detection row.
 const DETECTION_SCORE_INDEX: usize = 14;
+const GRID_SIZE: usize = 32;
 
 /// Canonical YuNet detection configuration.
 ///
@@ -216,6 +217,173 @@ fn sort_by_score_desc(detections: &mut Vec<Detection>, top_k: usize) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SceneBounds {
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
+}
+
+impl SceneBounds {
+    fn width(&self) -> f32 {
+        self.max_x - self.min_x
+    }
+
+    fn height(&self) -> f32 {
+        self.max_y - self.min_y
+    }
+
+    fn cell_range_for_bbox(&self, bbox: &BoundingBox, grid_size: usize) -> CellRange {
+        let cell_w = self.width() / grid_size as f32;
+        let cell_h = self.height() / grid_size as f32;
+        CellRange {
+            min_col: grid_cell_index(bbox.x - self.min_x, cell_w, grid_size),
+            max_col: grid_cell_index(bbox.x + bbox.width - self.min_x, cell_w, grid_size),
+            min_row: grid_cell_index(bbox.y - self.min_y, cell_h, grid_size),
+            max_row: grid_cell_index(bbox.y + bbox.height - self.min_y, cell_h, grid_size),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CellRange {
+    min_col: usize,
+    max_col: usize,
+    min_row: usize,
+    max_row: usize,
+}
+
+struct SpatialGrid {
+    grid_size: usize,
+    bounds: SceneBounds,
+    cells: Vec<Vec<usize>>,
+}
+
+fn compute_scene_bounds(detections: &[Detection]) -> Option<SceneBounds> {
+    if detections.is_empty() {
+        return None;
+    }
+
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+
+    for detection in detections {
+        let bbox = detection.bbox;
+        if bbox.x < min_x {
+            min_x = bbox.x;
+        }
+        if bbox.y < min_y {
+            min_y = bbox.y;
+        }
+
+        let right = bbox.x + bbox.width;
+        let bottom = bbox.y + bbox.height;
+        if right > max_x {
+            max_x = right;
+        }
+        if bottom > max_y {
+            max_y = bottom;
+        }
+    }
+
+    let bounds = SceneBounds {
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+    };
+
+    if bounds.width() <= f32::EPSILON || bounds.height() <= f32::EPSILON {
+        None
+    } else {
+        Some(bounds)
+    }
+}
+
+fn grid_cell_index(offset: f32, cell_d: f32, grid_size: usize) -> usize {
+    if cell_d <= f32::EPSILON {
+        return 0;
+    }
+
+    (offset / cell_d).floor().clamp(0.0, (grid_size - 1) as f32) as usize
+}
+
+fn build_spatial_grid(detections: &[Detection], bounds: SceneBounds) -> SpatialGrid {
+    let mut cells: Vec<Vec<usize>> = (0..GRID_SIZE * GRID_SIZE)
+        .map(|_| Vec::with_capacity(detections.len() / (GRID_SIZE * GRID_SIZE / 4).max(1)))
+        .collect();
+
+    for (i, detection) in detections.iter().enumerate() {
+        let range = bounds.cell_range_for_bbox(&detection.bbox, GRID_SIZE);
+        for row in range.min_row..=range.max_row {
+            let row_offset = row * GRID_SIZE;
+            for col in range.min_col..=range.max_col {
+                cells[row_offset + col].push(i);
+            }
+        }
+    }
+
+    SpatialGrid {
+        grid_size: GRID_SIZE,
+        bounds,
+        cells,
+    }
+}
+
+fn suppress_overlapping_candidates(
+    detections: &[Detection],
+    threshold: f32,
+    grid: &SpatialGrid,
+) -> Vec<bool> {
+    let len = detections.len();
+    let mut suppressed = vec![false; len];
+    let mut check_token = vec![usize::MAX; len];
+
+    for i in 0..len {
+        if suppressed[i] {
+            continue;
+        }
+
+        let bbox = detections[i].bbox;
+        let range = grid.bounds.cell_range_for_bbox(&bbox, grid.grid_size);
+
+        for row in range.min_row..=range.max_row {
+            let row_offset = row * grid.grid_size;
+            for col in range.min_col..=range.max_col {
+                let cell = &grid.cells[row_offset + col];
+                for &candidate in cell {
+                    if candidate > i && !suppressed[candidate] {
+                        if check_token[candidate] != i {
+                            check_token[candidate] = i;
+                            if bbox.iou(&detections[candidate].bbox) > threshold {
+                                suppressed[candidate] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    suppressed
+}
+
+fn compact_unsuppressed_detections(detections: &mut Vec<Detection>, suppressed: &[bool]) {
+    let mut keep = 0;
+    for (i, &is_suppressed) in suppressed.iter().enumerate() {
+        if !is_suppressed {
+            if i != keep {
+                detections.swap(i, keep);
+            }
+            keep += 1;
+        }
+    }
+    detections.truncate(keep);
+}
+
 fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
     let len = detections.len();
     if len <= 1 {
@@ -229,122 +397,14 @@ fn apply_nms_in_place(detections: &mut Vec<Detection>, threshold: f32) {
         return;
     }
 
-    // 1. Compute scene bounds
-    let mut min_x = f32::MAX;
-    let mut min_y = f32::MAX;
-    let mut max_x = f32::MIN;
-    let mut max_y = f32::MIN;
-
-    for d in detections.iter() {
-        let b = d.bbox;
-        if b.x < min_x {
-            min_x = b.x;
-        }
-        if b.y < min_y {
-            min_y = b.y;
-        }
-        // Use max to ensure width/height are accounted for
-        let right = b.x + b.width;
-        let bottom = b.y + b.height;
-        if right > max_x {
-            max_x = right;
-        }
-        if bottom > max_y {
-            max_y = bottom;
-        }
-    }
-
-    let width = max_x - min_x;
-    let height = max_y - min_y;
-
-    // Degenerate scene or empty area
-    if width <= f32::EPSILON || height <= f32::EPSILON {
+    let Some(bounds) = compute_scene_bounds(detections) else {
         apply_nms_naive(detections, threshold);
         return;
-    }
-
-    // 2. Setup Grid
-    // 32x32 = 1024 cells. Efficient for up to ~10k items.
-    const GRID_SIZE: usize = 32;
-    let cell_w = width / GRID_SIZE as f32;
-    let cell_h = height / GRID_SIZE as f32;
-
-    // Use a flat vector of vectors to store indices
-    // Pre-allocate assuming uniform distribution (len / cells) * safety_factor?
-    // Just a small capacity is fine.
-    let mut grid: Vec<Vec<usize>> = (0..GRID_SIZE * GRID_SIZE)
-        .map(|_| Vec::with_capacity(len / (GRID_SIZE * GRID_SIZE / 4).max(1)))
-        .collect();
-
-    // 3. Populate Grid
-    let grid_helper = |b: f32, cell_d: f32| -> usize {
-        ((b) / cell_d).floor().clamp(0.0, (GRID_SIZE - 1) as f32) as usize
     };
 
-    for (i, d) in detections.iter().enumerate() {
-        let b = d.bbox;
-        let c_min = grid_helper(b.x - min_x, cell_w);
-        let c_max = grid_helper(b.x + b.width - min_x, cell_w);
-        let r_min = grid_helper(b.y - min_y, cell_h);
-        let r_max = grid_helper(b.y + b.height - min_y, cell_h);
-
-        for r in r_min..=r_max {
-            let row_offset = r * GRID_SIZE;
-            for c in c_min..=c_max {
-                grid[row_offset + c].push(i);
-            }
-        }
-    }
-
-    // 4. Suppression Loop
-    let mut suppressed = vec![false; len];
-    // check_token[j] == i means we already checked 'j' against 'i'
-    let mut check_token = vec![usize::MAX; len];
-
-    for i in 0..len {
-        if suppressed[i] {
-            continue;
-        }
-
-        let b = detections[i].bbox;
-        let c_min = grid_helper(b.x - min_x, cell_w);
-        let c_max = grid_helper(b.x + b.width - min_x, cell_w);
-        let r_min = grid_helper(b.y - min_y, cell_h);
-        let r_max = grid_helper(b.y + b.height - min_y, cell_h);
-
-        for r in r_min..=r_max {
-            let row_offset = r * GRID_SIZE;
-            for c in c_min..=c_max {
-                let cell = &grid[row_offset + c];
-                for &candidate in cell {
-                    // Only check candidates that appear later in the sorted list (lower score)
-                    // and haven't been suppressed yet.
-                    if candidate > i && !suppressed[candidate] {
-                        // Avoid duplicate checks for the same candidate across different cells
-                        if check_token[candidate] != i {
-                            check_token[candidate] = i;
-
-                            if b.iou(&detections[candidate].bbox) > threshold {
-                                suppressed[candidate] = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 5. Compact the vector
-    let mut keep = 0;
-    for (i, &is_suppressed) in suppressed.iter().enumerate() {
-        if !is_suppressed {
-            if i != keep {
-                detections.swap(i, keep);
-            }
-            keep += 1;
-        }
-    }
-    detections.truncate(keep);
+    let grid = build_spatial_grid(detections, bounds);
+    let suppressed = suppress_overlapping_candidates(detections, threshold, &grid);
+    compact_unsuppressed_detections(detections, &suppressed);
 }
 
 fn apply_nms_naive(detections: &mut Vec<Detection>, threshold: f32) {
@@ -625,6 +685,110 @@ mod tests {
     }
 
     #[test]
+    fn compute_scene_bounds_returns_none_for_degenerate_scene() {
+        let detections = vec![
+            detection_with_score(
+                1.0,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
+            ),
+            detection_with_score(
+                0.9,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
+            ),
+        ];
+
+        assert!(compute_scene_bounds(&detections).is_none());
+    }
+
+    #[test]
+    fn build_spatial_grid_covers_all_cells_touched_by_bbox() {
+        let detections = vec![
+            detection_with_score(
+                1.0,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 96.0,
+                    height: 96.0,
+                },
+            ),
+            detection_with_score(
+                0.9,
+                BoundingBox {
+                    x: 48.0,
+                    y: 48.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
+            ),
+        ];
+        let bounds = compute_scene_bounds(&detections).expect("scene should be valid");
+        let grid = build_spatial_grid(&detections, bounds);
+
+        let range = grid
+            .bounds
+            .cell_range_for_bbox(&detections[0].bbox, grid.grid_size);
+        for row in range.min_row..=range.max_row {
+            for col in range.min_col..=range.max_col {
+                assert!(
+                    grid.cells[row * grid.grid_size + col].contains(&0),
+                    "cell ({row}, {col}) should contain detection 0"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compact_unsuppressed_detections_preserves_kept_order() {
+        let mut detections = vec![
+            detection_with_score(
+                0.9,
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+            detection_with_score(
+                0.8,
+                BoundingBox {
+                    x: 20.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+            detection_with_score(
+                0.7,
+                BoundingBox {
+                    x: 40.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ),
+        ];
+        let suppressed = vec![false, true, false];
+
+        compact_unsuppressed_detections(&mut detections, &suppressed);
+
+        assert_eq!(detections.len(), 2);
+        assert!((detections[0].score - 0.9).abs() < f32::EPSILON);
+        assert!((detections[1].score - 0.7).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn apply_nms_in_place_uses_large_grid_path_for_large_inputs() {
         let mut detections: Vec<_> = (0..200)
             .map(|i| {
@@ -700,11 +864,37 @@ mod tests {
         // Rows with NaN/Inf scores should be dropped regardless of threshold.
         let tensor = tensor_from_rows(&[
             [
-                0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0,
+                0.0,
+                5.0,
+                5.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
                 f32::NAN,
             ],
             [
-                0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0,
+                0.0,
+                5.0,
+                5.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
                 f32::INFINITY,
             ],
             [
@@ -826,12 +1016,22 @@ mod tests {
         // Index 0: highest score, box at x=0
         detections.push(detection_with_score(
             1.0,
-            BoundingBox { x: 0.0, y: 0.0, width: 50.0, height: 50.0 },
+            BoundingBox {
+                x: 0.0,
+                y: 0.0,
+                width: 50.0,
+                height: 50.0,
+            },
         ));
         // Index 1: overlaps index 0 heavily (will be suppressed)
         detections.push(detection_with_score(
             0.999,
-            BoundingBox { x: 5.0, y: 5.0, width: 50.0, height: 50.0 },
+            BoundingBox {
+                x: 5.0,
+                y: 5.0,
+                width: 50.0,
+                height: 50.0,
+            },
         ));
         // Indices 2..200: non-overlapping boxes spread across the scene
         for i in 2..201 {

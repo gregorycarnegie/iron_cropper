@@ -226,7 +226,11 @@ mod tests {
         assert_eq!(result.height(), 16);
         let original = image.to_rgba8();
         let output = result.to_rgba8();
-        assert_eq!(original.as_raw(), output.as_raw(), "Low-red pixels should not be modified");
+        assert_eq!(
+            original.as_raw(),
+            output.as_raw(),
+            "Low-red pixels should not be modified"
+        );
     }
 
     #[test]

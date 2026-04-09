@@ -214,7 +214,11 @@ mod tests {
         };
         let blurrer = GpuBackgroundBlur::new(ctx).expect("init");
         // Run blend to populate pool
-        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, image::Rgba([100, 100, 100, 255])));
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            8,
+            8,
+            image::Rgba([100, 100, 100, 255]),
+        ));
         blurrer.blend(&img, &img, 0.5).expect("blend");
         // Verify accessors don't panic
         blurrer.clear_cache();

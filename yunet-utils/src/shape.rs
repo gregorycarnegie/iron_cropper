@@ -616,6 +616,119 @@ pub fn apply_shape_mask(
     );
 }
 
+#[derive(Clone, Copy)]
+struct AnalyticalMaskParams {
+    width: f32,
+    height: f32,
+    cx: f32,
+    cy: f32,
+    softness_px: f32,
+    shape_param: f32,
+}
+
+fn precompute_analytical_mask_params(
+    shape: &CropShape,
+    width: u32,
+    height: u32,
+    vignette_softness: f32,
+) -> AnalyticalMaskParams {
+    let width = width as f32;
+    let height = height as f32;
+
+    AnalyticalMaskParams {
+        width,
+        height,
+        cx: width * 0.5,
+        cy: height * 0.5,
+        softness_px: if vignette_softness > 0.0 {
+            (width.min(height) * 0.5 * vignette_softness).max(1.0)
+        } else {
+            0.0
+        },
+        shape_param: analytical_shape_param(shape, width, height),
+    }
+}
+
+fn analytical_shape_param(shape: &CropShape, width: f32, height: f32) -> f32 {
+    match shape {
+        CropShape::RoundedRectangle { radius_pct } => {
+            let limit = width.min(height) * 0.5;
+            (width.min(height) * radius_pct).clamp(0.0, limit)
+        }
+        CropShape::ChamferedRectangle { size_pct } => {
+            let limit = width.min(height) * 0.5;
+            (width.min(height) * size_pct).clamp(0.0, limit)
+        }
+        _ => 0.0,
+    }
+}
+
+fn analytical_signed_distance(
+    shape: &CropShape,
+    px: f32,
+    py: f32,
+    params: &AnalyticalMaskParams,
+) -> f32 {
+    match shape {
+        CropShape::Ellipse => {
+            let rx = params.width * 0.5;
+            let ry = params.height * 0.5;
+            let dx = (px - params.cx).abs();
+            let dy = (py - params.cy).abs();
+            let val = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+            val.sqrt() * (params.width.min(params.height) * 0.5)
+                - (params.width.min(params.height) * 0.5)
+        }
+        CropShape::Rectangle => {
+            let bx = params.width * 0.5;
+            let by = params.height * 0.5;
+            let dx = (px - params.cx).abs() - bx;
+            let dy = (py - params.cy).abs() - by;
+            let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
+            let in_dist = dx.max(dy).min(0.0);
+            out_dist + in_dist
+        }
+        CropShape::RoundedRectangle { .. } => {
+            let radius = params.shape_param;
+            let bx = params.width * 0.5 - radius;
+            let by = params.height * 0.5 - radius;
+            let dx = (px - params.cx).abs() - bx;
+            let dy = (py - params.cy).abs() - by;
+            let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
+            let in_dist = dx.max(dy).min(0.0);
+            (out_dist + in_dist) - radius
+        }
+        CropShape::ChamferedRectangle { .. } => {
+            let chamfer = params.shape_param;
+            let bx = params.width * 0.5;
+            let by = params.height * 0.5;
+            let dx = (px - params.cx).abs() - bx;
+            let dy = (py - params.cy).abs() - by;
+            let rect_dist =
+                (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt() + dx.max(dy).min(0.0);
+
+            let p_abs_x = (px - params.cx).abs();
+            let p_abs_y = (py - params.cy).abs();
+            let diag_dist =
+                (p_abs_x + p_abs_y - (bx + by - chamfer)) * std::f32::consts::FRAC_1_SQRT_2;
+
+            rect_dist.max(diag_dist)
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn mask_alpha_from_distance(dist: f32, softness_px: f32) -> f32 {
+    if softness_px > 0.0 {
+        let t = dist / softness_px;
+        (0.5 - 0.5 * t).clamp(0.0, 1.0)
+    } else if dist <= 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
 fn apply_analytical_mask(
     image: &mut RgbaImage,
     shape: &CropShape,
@@ -627,31 +740,7 @@ fn apply_analytical_mask(
     if w == 0 || h == 0 {
         return;
     }
-    let width = w as f32;
-    let height = h as f32;
-    let cx = width * 0.5;
-    let cy = height * 0.5;
-
-    // Pre-calculate shape parameters
-    let (param_a, _param_b) = match shape {
-        CropShape::RoundedRectangle { radius_pct } => {
-            let limit = width.min(height) * 0.5;
-            let r = (width.min(height) * radius_pct).clamp(0.0, limit);
-            (r, 0.0)
-        }
-        CropShape::ChamferedRectangle { size_pct } => {
-            let limit = width.min(height) * 0.5;
-            let s = (width.min(height) * size_pct).clamp(0.0, limit);
-            (s, 0.0)
-        }
-        _ => (0.0, 0.0),
-    };
-
-    let softness_px = if vignette_softness > 0.0 {
-        (width.min(height) * 0.5 * vignette_softness).max(1.0)
-    } else {
-        0.0 // Hard edge
-    };
+    let params = precompute_analytical_mask_params(shape, w, h, vignette_softness);
 
     // Parallel iterator for O(W*H) performance
     image
@@ -661,110 +750,8 @@ fn apply_analytical_mask(
             let py = y as f32 + 0.5; // Pixel center
             for x in 0..w as usize {
                 let px = x as f32 + 0.5;
-
-                let dist = match shape {
-                    CropShape::Ellipse => {
-                        // Normalized distance from center (0..1 at edge)
-                        // x^2/a^2 + y^2/b^2 = 1
-                        let rx = width * 0.5;
-                        let ry = height * 0.5;
-                        let dx = (px - cx).abs();
-                        let dy = (py - cy).abs();
-                        // dist < 0 inside (far from edge), > 0 outside
-                        // Standard SDF for ellipse is complicated, but we can approximate for vignettes.
-                        // Let's use the explicit equation value.
-                        let val = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-                        // val = 1.0 at edge.
-                        // We want distance in pixels roughly.
-                        // Approx radial distance:
-                        val.sqrt() * (width.min(height) * 0.5) - (width.min(height) * 0.5)
-                    }
-                    CropShape::Rectangle => {
-                        // SDF for box (w, h) centered at (cx, cy)
-                        // d = length(max(abs(p) - b, 0.0)) + min(max(abs(p).x - b.x, abs(p).y - b.y), 0.0)
-                        let bx = width * 0.5;
-                        let by = height * 0.5;
-                        let dx = (px - cx).abs() - bx;
-                        let dy = (py - cy).abs() - by;
-                        // Outer distance
-                        let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
-                        // Inner distance (negative)
-                        let in_dist = dx.max(dy).min(0.0);
-                        out_dist + in_dist
-                    }
-                    CropShape::RoundedRectangle { .. } => {
-                        let radius = param_a;
-                        let bx = width * 0.5 - radius;
-                        let by = height * 0.5 - radius;
-                        let dx = (px - cx).abs() - bx;
-                        let dy = (py - cy).abs() - by;
-                        let out_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt();
-                        let in_dist = dx.max(dy).min(0.0);
-                        (out_dist + in_dist) - radius
-                    }
-                    CropShape::ChamferedRectangle { .. } => {
-                        let chamfer = param_a;
-                        // SDF for chamfered box is union of box and rotated planes.
-                        // Simpler: It's the intersection of the rect and a rotated rect (diamond).
-                        // Rectangle distance:
-                        let bx = width * 0.5;
-                        let by = height * 0.5;
-                        let dx = (px - cx).abs() - bx;
-                        let dy = (py - cy).abs() - by;
-                        let rect_dist = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt()
-                            + dx.max(dy).min(0.0);
-
-                        // Cutting planes at corners.
-                        // |x| + |y| < limit
-                        // limit is defined by the line connecting (w/2, h/2 - s) and (w/2 - s, h/2)
-                        // The line eq for corner is x + y = C.
-                        // Intercept is bx + by - chamfer.
-                        // Normalized normal is (1/sqrt(2), 1/sqrt(2)).
-                        // Dist = dot(p, n) - d.
-                        let p_abs_x = (px - cx).abs();
-                        let p_abs_y = (py - cy).abs();
-                        // Distance to x+y = C plane
-                        // C = (width/2) + (height/2) - chamfer * (1 + (w/h aspect correction? No, chamfer is isotropic usually))
-                        // The chamfer is defined as inset from corner.
-                        // Corner point is (bx, by). Chamfer points are (bx-s, by) and (bx, by-s).
-                        // Line passes through those.
-                        // Slope is -1.
-                        // x + y = bx - s + by = bx + by - s.
-                        // Perpendicular distance from origin to line is (bx + by - s) / sqrt(2).
-                        // Projected length of p along diagonal is (p_abs_x + p_abs_y) / sqrt(2).
-                        // Signed dist: current - max.
-                        // But we want dist > 0 outside.
-                        // d = (p_abs_x + p_abs_y - (bx + by - chamfer)) / sqrt(2.0);
-                        let diag_dist = (p_abs_x + p_abs_y - (bx + by - chamfer))
-                            * std::f32::consts::FRAC_1_SQRT_2;
-
-                        rect_dist.max(diag_dist)
-                    }
-                    _ => unreachable!(),
-                };
-
-                // Compute Mask Alpha
-                // 0.0 = fully transparent (outside), 1.0 = fully opaque (inside)
-                // dist > 0 is outside.
-                // If softness == 0, transition is at dist=0.
-                // If softness > 0, transition is over [-softness_px/2, softness_px/2]?
-                // Usually blur radius R implies transition over ~2R.
-                // Let's say edge is at 0.
-                // We want 0.5 at 0.
-                // 0.0 at +spread, 1.0 at -spread.
-                let mask_alpha = if softness_px > 0.0 {
-                    // Smoothstep or linear clamp
-                    // map dist from [softness_px, -softness_px] to [0, 1]
-                    let t = dist / softness_px; // 1 at far out, -1 at far in
-                    // We want 0 at out, 1 at in.
-                    // -t goes -1 to 1.
-                    // 0.5 - 0.5 * t = 0.5 at 0. 0 at 1. 1 at -1.
-                    (0.5 - 0.5 * t).clamp(0.0, 1.0)
-                } else if dist <= 0.0 {
-                    1.0
-                } else {
-                    0.0
-                };
+                let dist = analytical_signed_distance(shape, px, py, &params);
+                let mask_alpha = mask_alpha_from_distance(dist, params.softness_px);
 
                 process_pixel(
                     &mut row[x * 4..x * 4 + 4],
@@ -774,6 +761,86 @@ fn apply_analytical_mask(
                 );
             }
         });
+}
+
+fn raster_mask_scale(width: u32, height: u32) -> f32 {
+    if width.max(height) > MAX_MASK_RESOLUTION as u32 {
+        MAX_MASK_RESOLUTION / width.max(height) as f32
+    } else {
+        1.0
+    }
+}
+
+fn build_raster_hard_mask(mask_w: u32, mask_h: u32, shape: &CropShape) -> Option<RgbaImage> {
+    let mut pixmap = Pixmap::new(mask_w, mask_h)?;
+    pixmap.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 0));
+
+    if let Some(path) = build_path(mask_w, mask_h, shape) {
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(255, 255, 255, 255);
+        paint.anti_alias = true;
+
+        pixmap.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    Some(RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec())?)
+}
+
+fn build_raster_soft_mask(hard_mask: RgbaImage, vignette_softness: f32) -> RgbaImage {
+    if vignette_softness <= 0.0 {
+        return hard_mask;
+    }
+
+    let (mask_w, mask_h) = hard_mask.dimensions();
+    let radius = (mask_w.min(mask_h) as f32 * 0.5 * vignette_softness).max(1.0);
+    let soft_mask = image::imageops::blur(&hard_mask, radius);
+
+    let mut combined = hard_mask.clone();
+    for (c_pixel, s_pixel) in combined.pixels_mut().zip(soft_mask.pixels()) {
+        let hard_a = c_pixel[3] as f32 / 255.0;
+        let soft_a = s_pixel[3] as f32 / 255.0;
+        let final_a = (hard_a * soft_a * 255.0 + 0.5) as u8;
+        c_pixel[3] = final_a;
+    }
+
+    combined
+}
+
+fn sample_mask_alpha_bilinear(
+    mask_raw: &[u8],
+    mask_w: usize,
+    mask_h: usize,
+    sample_x: f32,
+    sample_y: f32,
+) -> f32 {
+    let x0 = sample_x.floor() as i32;
+    let y0 = sample_y.floor() as i32;
+    let x1 = x0 + 1;
+    let y1 = y0 + 1;
+
+    let wx = sample_x - x0 as f32;
+    let wy = sample_y - y0 as f32;
+
+    let get_alpha = |ix: i32, iy: i32| -> f32 {
+        let cx = ix.clamp(0, mask_w as i32 - 1) as usize;
+        let cy = iy.clamp(0, mask_h as i32 - 1) as usize;
+        mask_raw[(cy * mask_w + cx) * 4 + 3] as f32 / 255.0
+    };
+
+    let tl = get_alpha(x0, y0);
+    let tr = get_alpha(x1, y0);
+    let bl = get_alpha(x0, y1);
+    let br = get_alpha(x1, y1);
+
+    let top = tl * (1.0 - wx) + tr * wx;
+    let bot = bl * (1.0 - wx) + br * wx;
+    top * (1.0 - wy) + bot * wy
 }
 
 fn apply_raster_mask_optimized(
@@ -790,64 +857,17 @@ fn apply_raster_mask_optimized(
     }
 
     // Heuristic: For large images, generate mask at reduced resolution.
-    let scale = if width.max(height) > MAX_MASK_RESOLUTION as u32 {
-        MAX_MASK_RESOLUTION / width.max(height) as f32
-    } else {
-        1.0
-    };
+    let scale = raster_mask_scale(width, height);
 
     let mask_w = (width as f32 * scale).ceil() as u32;
     let mask_h = (height as f32 * scale).ceil() as u32;
 
-    let mut pixmap = match Pixmap::new(mask_w, mask_h) {
-        Some(p) => p,
+    let hard_mask = match build_raster_hard_mask(mask_w, mask_h, shape) {
+        Some(mask) => mask,
         None => return,
     };
-    pixmap.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 0));
 
-    // build_path returns path for given W/H. We need it for mask_w/mask_h.
-    // Note: shape parameters (like polygon sides) are scale invariant,
-    // but outline_points scales points to the box.
-    if let Some(path) = build_path(mask_w, mask_h, shape) {
-        let mut paint = Paint::default();
-        paint.set_color_rgba8(255, 255, 255, 255);
-        // Anti-aliasing is critical for small masks
-        paint.anti_alias = true;
-
-        pixmap.fill_path(
-            &path,
-            &paint,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-
-    // Extract the hard mask (rasterized shape)
-    let hard_mask = RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec()).unwrap();
-
-    // Apply blur to create the vignette mask, but CLIP it to the hard mask.
-    // This prevents the blur from bleeding outside the shape boundaries.
-    let mask_buffer = if vignette_softness > 0.0 {
-        let radius = (mask_w.min(mask_h) as f32 * 0.5 * vignette_softness).max(1.0);
-
-        // Generate the soft vignette mask by blurring the hard mask
-        let soft_mask = image::imageops::blur(&hard_mask, radius);
-
-        // Multiply the hard mask by the soft mask
-        // Hard=0 (Outside) * Soft (>0) = 0 (Transparent/Clipped)
-        // Hard=1 (Inside) * Soft (Gradient) = Gradient (Vignette)
-        let mut combined = hard_mask.clone();
-        for (c_pixel, s_pixel) in combined.pixels_mut().zip(soft_mask.pixels()) {
-            let hard_a = c_pixel[3] as f32 / 255.0;
-            let soft_a = s_pixel[3] as f32 / 255.0;
-            let final_a = (hard_a * soft_a * 255.0 + 0.5) as u8;
-            c_pixel[3] = final_a;
-        }
-        combined
-    } else {
-        hard_mask
-    };
+    let mask_buffer = build_raster_soft_mask(hard_mask, vignette_softness);
 
     // Apply to main image with bilinear sampling
     // Need raw slice for random access
@@ -864,39 +884,13 @@ fn apply_raster_mask_optimized(
                 let u = (x as f32 + 0.5) * scale;
 
                 // Bilinear sample from mask at (u, v)
-                let sample_x = u - 0.5;
-                let sample_y = v - 0.5;
-
-                let x0 = sample_x.floor() as i32;
-                let y0 = sample_y.floor() as i32;
-                let x1 = x0 + 1;
-                let y1 = y0 + 1;
-
-                let wx = sample_x - x0 as f32;
-                let wy = sample_y - y0 as f32; // Weights for x1, y1
-
-                // Helper to get alpha safely
-                let get_alpha = |ix: i32, iy: i32| -> f32 {
-                    if ix < 0 || iy < 0 || ix >= mask_w as i32 || iy >= mask_h as i32 {
-                        // Clamp to edge or 0? Edge is safer for shapes touching borders.
-                        // But for crop execution, usually we are inside.
-                        // Clamp to border pixel.
-                        let cx = ix.clamp(0, mask_w as i32 - 1) as usize;
-                        let cy = iy.clamp(0, mask_h as i32 - 1) as usize;
-                        mask_raw[(cy * mask_w_usize + cx) * 4 + 3] as f32 / 255.0
-                    } else {
-                        mask_raw[(iy as usize * mask_w_usize + ix as usize) * 4 + 3] as f32 / 255.0
-                    }
-                };
-
-                let tl = get_alpha(x0, y0);
-                let tr = get_alpha(x1, y0);
-                let bl = get_alpha(x0, y1);
-                let br = get_alpha(x1, y1);
-
-                let top = tl * (1.0 - wx) + tr * wx;
-                let bot = bl * (1.0 - wx) + br * wx;
-                let mask_alpha = top * (1.0 - wy) + bot * wy;
+                let mask_alpha = sample_mask_alpha_bilinear(
+                    mask_raw,
+                    mask_w_usize,
+                    mask_h as usize,
+                    u - 0.5,
+                    v - 0.5,
+                );
 
                 process_pixel(
                     &mut row[x * 4..x * 4 + 4],
@@ -1009,6 +1003,110 @@ pub fn outline_points_for_rect(
         .into_iter()
         .map(|p| (p.x, p.y))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn analytical_signed_distance_marks_center_inside_and_outside_positive() {
+        let params = precompute_analytical_mask_params(&CropShape::Rectangle, 20, 10, 0.0);
+        assert!(analytical_signed_distance(&CropShape::Rectangle, 10.0, 5.0, &params) <= 0.0);
+        assert!(analytical_signed_distance(&CropShape::Rectangle, 25.0, 5.0, &params) > 0.0);
+    }
+
+    #[test]
+    fn analytical_signed_distance_handles_ellipse_rounded_and_chamfered_shapes() {
+        let ellipse = precompute_analytical_mask_params(&CropShape::Ellipse, 20, 12, 0.0);
+        assert!(analytical_signed_distance(&CropShape::Ellipse, 10.0, 6.0, &ellipse) < 0.0);
+        assert!(analytical_signed_distance(&CropShape::Ellipse, 21.0, 6.0, &ellipse) > 0.0);
+
+        let rounded = precompute_analytical_mask_params(
+            &CropShape::RoundedRectangle { radius_pct: 0.2 },
+            20,
+            12,
+            0.0,
+        );
+        assert!(
+            analytical_signed_distance(
+                &CropShape::RoundedRectangle { radius_pct: 0.2 },
+                10.0,
+                6.0,
+                &rounded
+            ) < 0.0
+        );
+        assert!(
+            analytical_signed_distance(
+                &CropShape::RoundedRectangle { radius_pct: 0.2 },
+                21.0,
+                6.0,
+                &rounded
+            ) > 0.0
+        );
+
+        let chamfered = precompute_analytical_mask_params(
+            &CropShape::ChamferedRectangle { size_pct: 0.2 },
+            20,
+            12,
+            0.0,
+        );
+        assert!(
+            analytical_signed_distance(
+                &CropShape::ChamferedRectangle { size_pct: 0.2 },
+                10.0,
+                6.0,
+                &chamfered
+            ) < 0.0
+        );
+        assert!(
+            analytical_signed_distance(
+                &CropShape::ChamferedRectangle { size_pct: 0.2 },
+                21.0,
+                6.0,
+                &chamfered
+            ) > 0.0
+        );
+    }
+
+    #[test]
+    fn mask_alpha_from_distance_handles_hard_and_soft_edges() {
+        assert_eq!(mask_alpha_from_distance(-1.0, 0.0), 1.0);
+        assert_eq!(mask_alpha_from_distance(1.0, 0.0), 0.0);
+        assert!((mask_alpha_from_distance(0.0, 10.0) - 0.5).abs() < f32::EPSILON);
+        assert_eq!(mask_alpha_from_distance(-10.0, 10.0), 1.0);
+        assert_eq!(mask_alpha_from_distance(10.0, 10.0), 0.0);
+    }
+
+    #[test]
+    fn raster_mask_scale_only_downscales_above_threshold() {
+        assert_eq!(raster_mask_scale(2048, 1024), 1.0);
+        assert_eq!(raster_mask_scale(1024, 2048), 1.0);
+        assert_eq!(raster_mask_scale(4096, 2048), 0.5);
+    }
+
+    #[test]
+    fn sample_mask_alpha_bilinear_clamps_to_mask_borders() {
+        let mask = RgbaImage::from_raw(
+            2,
+            2,
+            vec![
+                0, 0, 0, 10, 0, 0, 0, 20, //
+                0, 0, 0, 30, 0, 0, 0, 40,
+            ],
+        )
+        .expect("valid test mask");
+        let raw = mask.as_raw();
+
+        assert_eq!(
+            sample_mask_alpha_bilinear(raw, 2, 2, -10.0, -10.0),
+            10.0 / 255.0
+        );
+        assert_eq!(
+            sample_mask_alpha_bilinear(raw, 2, 2, 10.0, 10.0),
+            40.0 / 255.0
+        );
+    }
 }
 
 /// Pushes a point to the vector, scaled to the given rectangle.

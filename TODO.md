@@ -7,6 +7,10 @@
 - [x] Align GitHub CI branch triggers with `master` for the `1.0.5-rc2` release path.
 - [x] Mirror the Windows CI job's `dav1d` and `pkg-config` setup with the release workflow so AVIF-enabled builds pass on GitHub Actions.
 
+### Refactor Follow-up
+
+- [x] Decompose oversized CLI, GUI, core, and utils functions into smaller private helpers and add unit coverage for the extracted decision logic.
+
 ### Coverage Follow-up
 
 - [x] Add direct unit tests for CSV/SQLite mapping ingestion, selector handling, and SQL query validation in `yunet-utils/src/mapping.rs`.

@@ -229,9 +229,18 @@ mod tests {
 
     #[test]
     fn positioning_mode_center_variants() {
-        assert!(matches!(parse_positioning_mode("center"), PositioningMode::Center));
-        assert!(matches!(parse_positioning_mode("unknown"), PositioningMode::Center));
-        assert!(matches!(parse_positioning_mode(""), PositioningMode::Center));
+        assert!(matches!(
+            parse_positioning_mode("center"),
+            PositioningMode::Center
+        ));
+        assert!(matches!(
+            parse_positioning_mode("unknown"),
+            PositioningMode::Center
+        ));
+        assert!(matches!(
+            parse_positioning_mode(""),
+            PositioningMode::Center
+        ));
     }
 
     #[test]
@@ -252,7 +261,10 @@ mod tests {
 
     #[test]
     fn positioning_mode_custom() {
-        assert!(matches!(parse_positioning_mode("custom"), PositioningMode::Custom));
+        assert!(matches!(
+            parse_positioning_mode("custom"),
+            PositioningMode::Custom
+        ));
     }
 
     // --- parse_metadata_tags_args ---
@@ -269,7 +281,10 @@ mod tests {
     fn metadata_tags_trims_whitespace() {
         let entries = vec![" key = value with spaces ".to_string()];
         let map = parse_metadata_tags_args(&entries);
-        assert_eq!(map.get("key").map(String::as_str), Some("value with spaces"));
+        assert_eq!(
+            map.get("key").map(String::as_str),
+            Some("value with spaces")
+        );
     }
 
     #[test]
@@ -335,10 +350,14 @@ mod tests {
     fn override_detection_thresholds() {
         let mut settings = AppSettings::default();
         let args = parse_args(&[
-            "--input", "x.jpg",
-            "--score-threshold", "0.5",
-            "--nms-threshold", "0.4",
-            "--top-k", "100",
+            "--input",
+            "x.jpg",
+            "--score-threshold",
+            "0.5",
+            "--nms-threshold",
+            "0.4",
+            "--top-k",
+            "100",
         ]);
         apply_cli_overrides(&mut settings, &args);
         assert!((settings.detection.score_threshold - 0.5).abs() < f32::EPSILON);
@@ -349,7 +368,14 @@ mod tests {
     #[test]
     fn override_output_width_height_sets_preset_custom() {
         let mut settings = AppSettings::default();
-        let args = parse_args(&["--input", "x.jpg", "--output-width", "300", "--output-height", "400"]);
+        let args = parse_args(&[
+            "--input",
+            "x.jpg",
+            "--output-width",
+            "300",
+            "--output-height",
+            "400",
+        ]);
         apply_cli_overrides(&mut settings, &args);
         assert_eq!(settings.crop.output_width, 300);
         assert_eq!(settings.crop.output_height, 400);
@@ -361,7 +387,10 @@ mod tests {
         let mut settings = AppSettings::default();
         let args = parse_args(&["--input", "x.jpg", "--skip-low-quality=true"]);
         apply_cli_overrides(&mut settings, &args);
-        assert_eq!(settings.crop.quality_rules.min_quality, Some(yunet_utils::Quality::Medium));
+        assert_eq!(
+            settings.crop.quality_rules.min_quality,
+            Some(yunet_utils::Quality::Medium)
+        );
     }
 
     #[test]
@@ -378,7 +407,10 @@ mod tests {
         let mut settings = AppSettings::default();
         let args = parse_args(&["--input", "x.jpg", "--min-quality", "high"]);
         apply_cli_overrides(&mut settings, &args);
-        assert_eq!(settings.crop.quality_rules.min_quality, Some(yunet_utils::Quality::High));
+        assert_eq!(
+            settings.crop.quality_rules.min_quality,
+            Some(yunet_utils::Quality::High)
+        );
     }
 
     // --- build_core_crop_settings ---
@@ -400,6 +432,9 @@ mod tests {
         let mut cfg = yunet_utils::config::CropSettings::default();
         cfg.positioning_mode = "rule-of-thirds".to_string();
         let core = build_core_crop_settings(&cfg);
-        assert!(matches!(core.positioning_mode, PositioningMode::RuleOfThirds));
+        assert!(matches!(
+            core.positioning_mode,
+            PositioningMode::RuleOfThirds
+        ));
     }
 }

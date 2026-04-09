@@ -763,7 +763,8 @@ mod tests {
         assert_eq!(pending.mode, GpuStatusMode::Pending);
         assert!(pending.adapter_name.is_none());
 
-        let avail = GpuStatusIndicator::available("RTX 4090", "Vulkan", None, Some(0x10DE), Some(0x2684));
+        let avail =
+            GpuStatusIndicator::available("RTX 4090", "Vulkan", None, Some(0x10DE), Some(0x2684));
         assert_eq!(avail.mode, GpuStatusMode::Available);
         assert!(avail.summary.contains("RTX 4090"));
         assert_eq!(avail.adapter_name.as_deref(), Some("RTX 4090"));
@@ -773,7 +774,8 @@ mod tests {
         assert_eq!(disabled.mode, GpuStatusMode::Disabled);
         assert_eq!(disabled.detail.as_deref(), Some("user flag"));
 
-        let fallback = GpuStatusIndicator::fallback("oom", Some("Intel".into()), Some("DX12".into()));
+        let fallback =
+            GpuStatusIndicator::fallback("oom", Some("Intel".into()), Some("DX12".into()));
         assert_eq!(fallback.mode, GpuStatusMode::Fallback);
         assert_eq!(fallback.adapter_name.as_deref(), Some("Intel"));
 
@@ -784,7 +786,9 @@ mod tests {
 
     #[test]
     fn gpu_availability_helpers() {
-        let disabled = GpuAvailability::Disabled { reason: "test".to_string() };
+        let disabled = GpuAvailability::Disabled {
+            reason: "test".to_string(),
+        };
         assert!(!disabled.is_available());
         assert!(disabled.context().is_none());
 
@@ -805,8 +809,7 @@ mod tests {
             }
         };
 
-        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(2).unwrap())
-            .expect("pool creation");
+        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(2).unwrap()).expect("pool creation");
 
         assert_eq!(pool.capacity(), 2);
         assert_eq!(pool.available(), 2);

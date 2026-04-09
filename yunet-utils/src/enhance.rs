@@ -971,8 +971,8 @@ mod tests {
     use super::*;
     use super::{
         apply_background_blur, apply_background_blur_with_preblur, apply_red_eye_removal,
-        apply_saturation, apply_unsharp_mask, apply_unsharp_with_preblur,
-        build_equalization_lut, skin_kernel,
+        apply_saturation, apply_unsharp_mask, apply_unsharp_with_preblur, build_equalization_lut,
+        skin_kernel,
     };
     use image::{GenericImageView, RgbaImage};
     use std::sync::Arc;
@@ -1388,7 +1388,12 @@ mod tests {
         img.put_pixel(0, 0, image::Rgba([220, 50, 50, 255]));
 
         let source = DynamicImage::ImageRgba8(img);
-        let eyes = [RedEye { x: 4.0, y: 4.0, radius: 2.0, _pad: 0.0 }];
+        let eyes = [RedEye {
+            x: 4.0,
+            y: 4.0,
+            radius: 2.0,
+            _pad: 0.0,
+        }];
         let out = apply_red_eye_removal(&source, 1.5, Some(&eyes)).to_rgba8();
 
         // Pixels inside the eye circle must be corrected (red reduced)
@@ -1402,7 +1407,8 @@ mod tests {
         );
         // Pixel outside the eye region must be UNCHANGED despite being red
         assert_eq!(
-            out.get_pixel(0, 0)[0], 220,
+            out.get_pixel(0, 0)[0],
+            220,
             "pixel outside eye region must not be corrected"
         );
     }
@@ -1420,7 +1426,10 @@ mod tests {
         let blur_dyn = DynamicImage::ImageRgba8(wrong_size_blur);
 
         let out = apply_background_blur_with_preblur(&sharp_dyn, &blur_dyn, 0.6).to_rgba8();
-        assert_eq!(out, sharp, "mismatched dimensions should return the sharp image");
+        assert_eq!(
+            out, sharp,
+            "mismatched dimensions should return the sharp image"
+        );
     }
 
     #[test]
@@ -1514,8 +1523,14 @@ mod tests {
         // At saturation=0 every pixel must be fully desaturated (all channels equal)
         for x in 0..5 {
             let px = out.get_pixel(x, 0);
-            assert_eq!(px[0], px[1], "pixel {x}: R and G must be equal at zero saturation");
-            assert_eq!(px[1], px[2], "pixel {x}: G and B must be equal at zero saturation");
+            assert_eq!(
+                px[0], px[1],
+                "pixel {x}: R and G must be equal at zero saturation"
+            );
+            assert_eq!(
+                px[1], px[2],
+                "pixel {x}: G and B must be equal at zero saturation"
+            );
         }
     }
 

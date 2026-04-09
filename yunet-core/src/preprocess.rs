@@ -796,7 +796,8 @@ mod tests {
 
     #[test]
     fn cpu_preprocess_skips_resize_when_image_already_matches_input_size() {
-        let img = DynamicImage::ImageRgb8(ImageBuffer::from_fn(32, 32, |_, _| Rgb([100u8, 150, 200])));
+        let img =
+            DynamicImage::ImageRgb8(ImageBuffer::from_fn(32, 32, |_, _| Rgb([100u8, 150, 200])));
         let config = PreprocessConfig {
             input_size: InputSize::new(32, 32),
             ..Default::default()

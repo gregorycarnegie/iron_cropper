@@ -3,118 +3,175 @@ use crate::ui::widgets;
 use egui::{ComboBox, Ui};
 use yunet_utils::{CropShape, PolygonCornerStyle};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ShapeVariant {
+    Rectangle,
+    RoundedRect,
+    ChamferRect,
+    Ellipse,
+    PolygonSharp,
+    PolygonRounded,
+    PolygonChamfered,
+    PolygonBezier,
+    Star,
+    KochPolygon,
+    KochRectangle,
+}
+
+fn shape_variant(shape: &CropShape) -> ShapeVariant {
+    match shape {
+        CropShape::Rectangle => ShapeVariant::Rectangle,
+        CropShape::RoundedRectangle { .. } => ShapeVariant::RoundedRect,
+        CropShape::ChamferedRectangle { .. } => ShapeVariant::ChamferRect,
+        CropShape::Ellipse => ShapeVariant::Ellipse,
+        CropShape::Polygon { corner_style, .. } => match corner_style {
+            PolygonCornerStyle::Sharp => ShapeVariant::PolygonSharp,
+            PolygonCornerStyle::Rounded { .. } => ShapeVariant::PolygonRounded,
+            PolygonCornerStyle::Chamfered { .. } => ShapeVariant::PolygonChamfered,
+            PolygonCornerStyle::Bezier { .. } => ShapeVariant::PolygonBezier,
+        },
+        CropShape::Star { .. } => ShapeVariant::Star,
+        CropShape::KochPolygon { .. } => ShapeVariant::KochPolygon,
+        CropShape::KochRectangle { .. } => ShapeVariant::KochRectangle,
+    }
+}
+
+fn shape_variant_label(variant: ShapeVariant) -> &'static str {
+    match variant {
+        ShapeVariant::Rectangle => "Rectangle",
+        ShapeVariant::RoundedRect => "Rounded rectangle",
+        ShapeVariant::ChamferRect => "Chamfered rectangle",
+        ShapeVariant::Ellipse => "Ellipse",
+        ShapeVariant::PolygonSharp => "Polygon",
+        ShapeVariant::PolygonRounded => "Polygon (rounded)",
+        ShapeVariant::PolygonChamfered => "Polygon (chamfered)",
+        ShapeVariant::PolygonBezier => "Polygon (bezier)",
+        ShapeVariant::Star => "Star",
+        ShapeVariant::KochPolygon => "Koch Polygon",
+        ShapeVariant::KochRectangle => "Koch Rectangle",
+    }
+}
+
+fn default_shape_for_variant(variant: ShapeVariant) -> CropShape {
+    match variant {
+        ShapeVariant::Rectangle => CropShape::Rectangle,
+        ShapeVariant::RoundedRect => CropShape::RoundedRectangle { radius_pct: 0.12 },
+        ShapeVariant::ChamferRect => CropShape::ChamferedRectangle { size_pct: 0.12 },
+        ShapeVariant::Ellipse => CropShape::Ellipse,
+        ShapeVariant::PolygonSharp => CropShape::Polygon {
+            sides: 6,
+            rotation_deg: 0.0,
+            corner_style: PolygonCornerStyle::Sharp,
+        },
+        ShapeVariant::PolygonRounded => CropShape::Polygon {
+            sides: 6,
+            rotation_deg: 0.0,
+            corner_style: PolygonCornerStyle::Rounded { radius_pct: 0.1 },
+        },
+        ShapeVariant::PolygonChamfered => CropShape::Polygon {
+            sides: 6,
+            rotation_deg: 0.0,
+            corner_style: PolygonCornerStyle::Chamfered { size_pct: 0.1 },
+        },
+        ShapeVariant::PolygonBezier => CropShape::Polygon {
+            sides: 6,
+            rotation_deg: 0.0,
+            corner_style: PolygonCornerStyle::Bezier { tension: 0.5 },
+        },
+        ShapeVariant::Star => CropShape::Star {
+            points: 5,
+            inner_radius_pct: 0.5,
+            rotation_deg: 0.0,
+        },
+        ShapeVariant::KochPolygon => CropShape::KochPolygon {
+            sides: 3,
+            rotation_deg: 0.0,
+            iterations: 3,
+        },
+        ShapeVariant::KochRectangle => CropShape::KochRectangle { iterations: 3 },
+    }
+}
+
+fn clamp_rounded_rect_radius_pct(radius_pct: f32) -> f32 {
+    radius_pct.clamp(0.0, 0.5)
+}
+
+fn clamp_chamfered_rect_size_pct(size_pct: f32) -> f32 {
+    size_pct.clamp(0.0, 0.5)
+}
+
+fn clamp_polygon_sides(value: u32) -> u8 {
+    value.clamp(3, 24) as u8
+}
+
+fn polygon_corner_radius_max_pct(sides: u32) -> f32 {
+    0.5 * (std::f32::consts::PI / sides as f32).cos()
+}
+
+fn polygon_corner_radius_display_max(sides: u32) -> f32 {
+    polygon_corner_radius_max_pct(sides) * 100.0
+}
+
+fn clamp_polygon_corner_radius_pct(radius_pct: f32, sides: u32) -> f32 {
+    radius_pct.clamp(0.0, polygon_corner_radius_max_pct(sides))
+}
+
+fn polygon_chamfer_size_max_pct(sides: u32) -> f32 {
+    0.5 * (std::f32::consts::PI / sides as f32).sin()
+}
+
+fn polygon_chamfer_size_display_max(sides: u32) -> f32 {
+    polygon_chamfer_size_max_pct(sides) * 100.0
+}
+
+fn clamp_polygon_chamfer_size_pct(size_pct: f32, sides: u32) -> f32 {
+    size_pct.clamp(0.0, polygon_chamfer_size_max_pct(sides))
+}
+
+fn clamp_star_points(value: u32) -> u8 {
+    value.clamp(3, 24) as u8
+}
+
+fn clamp_star_inner_radius_pct(inner_radius_pct: f32) -> f32 {
+    inner_radius_pct.clamp(0.0, 1.0)
+}
+
+fn clamp_koch_iterations(value: u32) -> u8 {
+    value.clamp(0, 5) as u8
+}
+
 /// Shape controls extracted from edit_shape_controls method.
 pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     let mut shape = app.settings.crop.shape.clone();
     let mut changed = false;
-
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum Variant {
-        Rectangle,
-        RoundedRect,
-        ChamferRect,
-        Ellipse,
-        PolygonSharp,
-        PolygonRounded,
-        PolygonChamfered,
-        PolygonBezier,
-        Star,
-        KochPolygon,
-        KochRectangle,
-    }
-
-    let mut variant = match &shape {
-        CropShape::Rectangle => Variant::Rectangle,
-        CropShape::RoundedRectangle { .. } => Variant::RoundedRect,
-        CropShape::ChamferedRectangle { .. } => Variant::ChamferRect,
-        CropShape::Ellipse => Variant::Ellipse,
-        CropShape::Polygon { corner_style, .. } => match corner_style {
-            PolygonCornerStyle::Sharp => Variant::PolygonSharp,
-            PolygonCornerStyle::Rounded { .. } => Variant::PolygonRounded,
-            PolygonCornerStyle::Chamfered { .. } => Variant::PolygonChamfered,
-            PolygonCornerStyle::Bezier { .. } => Variant::PolygonBezier,
-        },
-        CropShape::Star { .. } => Variant::Star,
-        CropShape::KochPolygon { .. } => Variant::KochPolygon,
-        CropShape::KochRectangle { .. } => Variant::KochRectangle,
-    };
-
-    let current_label = match variant {
-        Variant::Rectangle => "Rectangle",
-        Variant::RoundedRect => "Rounded rectangle",
-        Variant::ChamferRect => "Chamfered rectangle",
-        Variant::Ellipse => "Ellipse",
-        Variant::PolygonSharp => "Polygon",
-        Variant::PolygonRounded => "Polygon (rounded)",
-        Variant::PolygonChamfered => "Polygon (chamfered)",
-        Variant::PolygonBezier => "Polygon (bezier)",
-        Variant::Star => "Star",
-        Variant::KochPolygon => "Koch Polygon",
-        Variant::KochRectangle => "Koch Rectangle",
-    };
+    let mut variant = shape_variant(&shape);
 
     let mut variant_changed = false;
     ComboBox::from_label("Shape")
-        .selected_text(current_label)
+        .selected_text(shape_variant_label(variant))
         .show_ui(ui, |ui| {
-            let mut select_variant = |label: &str, target: Variant| {
+            let mut select_variant = |label: &str, target: ShapeVariant| {
                 let selected = variant == target;
                 if ui.selectable_label(selected, label).clicked() && !selected {
                     variant = target;
                     variant_changed = true;
                 }
             };
-            select_variant("Rectangle", Variant::Rectangle);
-            select_variant("Rounded rectangle", Variant::RoundedRect);
-            select_variant("Chamfered rectangle", Variant::ChamferRect);
-            select_variant("Ellipse", Variant::Ellipse);
-            select_variant("Polygon", Variant::PolygonSharp);
-            select_variant("Polygon (rounded)", Variant::PolygonRounded);
-            select_variant("Polygon (chamfered)", Variant::PolygonChamfered);
-            select_variant("Polygon (bezier)", Variant::PolygonBezier);
-            select_variant("Star", Variant::Star);
-            select_variant("Koch Polygon", Variant::KochPolygon);
-            select_variant("Koch Rectangle", Variant::KochRectangle);
+            select_variant("Rectangle", ShapeVariant::Rectangle);
+            select_variant("Rounded rectangle", ShapeVariant::RoundedRect);
+            select_variant("Chamfered rectangle", ShapeVariant::ChamferRect);
+            select_variant("Ellipse", ShapeVariant::Ellipse);
+            select_variant("Polygon", ShapeVariant::PolygonSharp);
+            select_variant("Polygon (rounded)", ShapeVariant::PolygonRounded);
+            select_variant("Polygon (chamfered)", ShapeVariant::PolygonChamfered);
+            select_variant("Polygon (bezier)", ShapeVariant::PolygonBezier);
+            select_variant("Star", ShapeVariant::Star);
+            select_variant("Koch Polygon", ShapeVariant::KochPolygon);
+            select_variant("Koch Rectangle", ShapeVariant::KochRectangle);
         });
 
     if variant_changed {
-        shape = match variant {
-            Variant::Rectangle => CropShape::Rectangle,
-            Variant::RoundedRect => CropShape::RoundedRectangle { radius_pct: 0.12 },
-            Variant::ChamferRect => CropShape::ChamferedRectangle { size_pct: 0.12 },
-            Variant::Ellipse => CropShape::Ellipse,
-            Variant::PolygonSharp => CropShape::Polygon {
-                sides: 6,
-                rotation_deg: 0.0,
-                corner_style: PolygonCornerStyle::Sharp,
-            },
-            Variant::PolygonRounded => CropShape::Polygon {
-                sides: 6,
-                rotation_deg: 0.0,
-                corner_style: PolygonCornerStyle::Rounded { radius_pct: 0.1 },
-            },
-            Variant::PolygonChamfered => CropShape::Polygon {
-                sides: 6,
-                rotation_deg: 0.0,
-                corner_style: PolygonCornerStyle::Chamfered { size_pct: 0.1 },
-            },
-            Variant::PolygonBezier => CropShape::Polygon {
-                sides: 6,
-                rotation_deg: 0.0,
-                corner_style: PolygonCornerStyle::Bezier { tension: 0.5 },
-            },
-            Variant::Star => CropShape::Star {
-                points: 5,
-                inner_radius_pct: 0.5,
-                rotation_deg: 0.0,
-            },
-            Variant::KochPolygon => CropShape::KochPolygon {
-                sides: 3,
-                rotation_deg: 0.0,
-                iterations: 3,
-            },
-            Variant::KochRectangle => CropShape::KochRectangle { iterations: 3 },
-        };
+        shape = default_shape_for_variant(variant);
         changed = true;
     }
 
@@ -130,7 +187,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 None,
                 None,
                 {
-                    *radius_pct = (radius / 100.0).clamp(0.0, 0.5);
+                    *radius_pct = clamp_rounded_rect_radius_pct(radius / 100.0);
                     changed = true;
                 }
             );
@@ -146,7 +203,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 None,
                 None,
                 {
-                    *size_pct = (size / 100.0).clamp(0.0, 0.5);
+                    *size_pct = clamp_chamfered_rect_size_pct(size / 100.0);
                     changed = true;
                 }
             );
@@ -161,7 +218,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 .on_hover_text("Number of sides")
                 .changed()
             {
-                *sides = sides_u32.clamp(3, 24) as u8;
+                *sides = clamp_polygon_sides(sides_u32);
                 changed = true;
             }
             crate::constrained_slider_row!(
@@ -180,9 +237,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
             match corner_style {
                 PolygonCornerStyle::Sharp => {}
                 PolygonCornerStyle::Rounded { radius_pct } => {
-                    let angle = std::f32::consts::PI / sides_u32 as f32;
-                    let max_radius_pct = 0.5 * angle.cos();
-                    let max_radius_display = max_radius_pct * 100.0;
+                    let max_radius_display = polygon_corner_radius_display_max(sides_u32);
 
                     let mut radius = (*radius_pct * 100.0).clamp(0.0, max_radius_display);
                     crate::constrained_slider_row!(
@@ -194,15 +249,14 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         None,
                         None,
                         {
-                            *radius_pct = (radius / 100.0).clamp(0.0, max_radius_pct);
+                            *radius_pct =
+                                clamp_polygon_corner_radius_pct(radius / 100.0, sides_u32);
                             changed = true;
                         }
                     );
                 }
                 PolygonCornerStyle::Chamfered { size_pct } => {
-                    let angle = std::f32::consts::PI / sides_u32 as f32;
-                    let max_size_pct = 0.5 * angle.sin();
-                    let max_size_display = max_size_pct * 100.0;
+                    let max_size_display = polygon_chamfer_size_display_max(sides_u32);
 
                     let mut size = (*size_pct * 100.0).clamp(0.0, max_size_display);
                     crate::constrained_slider_row!(
@@ -214,7 +268,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                         None,
                         None,
                         {
-                            *size_pct = (size / 100.0).clamp(0.0, max_size_pct);
+                            *size_pct = clamp_polygon_chamfer_size_pct(size / 100.0, sides_u32);
                             changed = true;
                         }
                     );
@@ -247,7 +301,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 .on_hover_text("Number of points")
                 .changed()
             {
-                *points = points_u32.clamp(3, 24) as u8;
+                *points = clamp_star_points(points_u32);
                 changed = true;
             }
 
@@ -261,7 +315,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 None,
                 None,
                 {
-                    *inner_radius_pct = (inner / 100.0).clamp(0.1, 0.9);
+                    *inner_radius_pct = clamp_star_inner_radius_pct(inner / 100.0);
                     changed = true;
                 }
             );
@@ -289,7 +343,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 .on_hover_text("Number of sides")
                 .changed()
             {
-                *sides = sides_u32.clamp(3, 24) as u8;
+                *sides = clamp_polygon_sides(sides_u32);
                 changed = true;
             }
             crate::constrained_slider_row!(
@@ -309,7 +363,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 .on_hover_text("Iterations")
                 .changed()
             {
-                *iterations = iter.clamp(0, 5) as u8;
+                *iterations = clamp_koch_iterations(iter);
                 changed = true;
             }
         }
@@ -319,7 +373,7 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
                 .on_hover_text("Iterations")
                 .changed()
             {
-                *iterations = iter.clamp(0, 5) as u8;
+                *iterations = clamp_koch_iterations(iter);
                 changed = true;
             }
         }
@@ -388,4 +442,58 @@ pub fn edit_shape_controls(app: &mut YuNetApp, ui: &mut Ui) -> bool {
     }
 
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shape_variant_round_trips_through_default_shape() {
+        let variants = [
+            ShapeVariant::Rectangle,
+            ShapeVariant::RoundedRect,
+            ShapeVariant::ChamferRect,
+            ShapeVariant::Ellipse,
+            ShapeVariant::PolygonSharp,
+            ShapeVariant::PolygonRounded,
+            ShapeVariant::PolygonChamfered,
+            ShapeVariant::PolygonBezier,
+            ShapeVariant::Star,
+            ShapeVariant::KochPolygon,
+            ShapeVariant::KochRectangle,
+        ];
+
+        for variant in variants {
+            assert_eq!(shape_variant(&default_shape_for_variant(variant)), variant);
+            assert!(!shape_variant_label(variant).is_empty());
+        }
+    }
+
+    #[test]
+    fn clamp_helpers_enforce_expected_ranges() {
+        assert_eq!(clamp_rounded_rect_radius_pct(0.75), 0.5);
+        assert_eq!(clamp_chamfered_rect_size_pct(-0.25), 0.0);
+        assert_eq!(clamp_polygon_sides(2), 3);
+        assert_eq!(clamp_polygon_sides(99), 24);
+        assert_eq!(clamp_star_points(1), 3);
+        assert_eq!(clamp_star_inner_radius_pct(1.5), 1.0);
+        assert_eq!(clamp_koch_iterations(99), 5);
+    }
+
+    #[test]
+    fn polygon_corner_helpers_cap_values_by_side_count() {
+        let sides = 6;
+
+        assert!(polygon_corner_radius_display_max(sides) > 0.0);
+        assert!(polygon_chamfer_size_display_max(sides) > 0.0);
+        assert_eq!(
+            clamp_polygon_corner_radius_pct(10.0, sides),
+            polygon_corner_radius_max_pct(sides)
+        );
+        assert_eq!(
+            clamp_polygon_chamfer_size_pct(10.0, sides),
+            polygon_chamfer_size_max_pct(sides)
+        );
+    }
 }

@@ -17,10 +17,13 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, mpsc::Sender},
 };
-use yunet_core::{YuNetDetector, calculate_crop_region, crop_face_from_image};
+use yunet_core::{
+    CropRegion, CropSettings as CoreCropSettings, Detection, YuNetDetector, calculate_crop_region,
+    crop_face_from_image,
+};
 use yunet_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename,
-    config::BatchLogFormat,
+    config::{BatchLogFormat, CropSettings as AppCropSettings, QualityAutomationSettings},
     gpu::BatchCropRequest,
     load_image,
     quality::{Quality, estimate_sharpness},
@@ -47,6 +50,235 @@ fn composite_export_background(image: DynamicImage, fill: yunet_core::FillColor)
     let mut rgba = image.to_rgba8();
     composite_with_fill_color(&mut rgba, fill);
     DynamicImage::ImageRgba8(rgba)
+}
+
+fn prepare_crop_regions(
+    source_image: &DynamicImage,
+    detections: &[Detection],
+    crop_settings: &CoreCropSettings,
+) -> Vec<CropRegion> {
+    detections
+        .iter()
+        .map(|detection| {
+            calculate_crop_region(
+                source_image.width(),
+                source_image.height(),
+                detection.bbox,
+                crop_settings,
+            )
+        })
+        .collect()
+}
+
+fn build_gpu_crop_requests(
+    source_image: &DynamicImage,
+    crop_regions: &[CropRegion],
+    crop_settings: &CoreCropSettings,
+) -> Vec<BatchCropRequest> {
+    crop_regions
+        .iter()
+        .filter_map(|region| {
+            region
+                .in_bounds_rect(source_image.width(), source_image.height())
+                .map(|(x, y, w, h)| BatchCropRequest {
+                    source_x: x,
+                    source_y: y,
+                    source_width: w.max(1),
+                    source_height: h.max(1),
+                    output_width: crop_settings.output_width,
+                    output_height: crop_settings.output_height,
+                })
+        })
+        .collect()
+}
+
+fn maybe_gpu_crop_faces(
+    source_image: &DynamicImage,
+    crop_regions: &[CropRegion],
+    config: &BatchJobConfig,
+) -> Option<Vec<DynamicImage>> {
+    if config.crop_settings.output_width == 0
+        || config.crop_settings.output_height == 0
+        || crop_regions.is_empty()
+        || crop_regions.iter().any(CropRegion::requires_padding)
+    {
+        return None;
+    }
+
+    let cropper = config.gpu_cropper.as_ref()?;
+    let requests = build_gpu_crop_requests(source_image, crop_regions, &config.crop_settings);
+
+    match cropper.crop(source_image, &requests) {
+        Ok(images) if images.len() == requests.len() => Some(images),
+        Ok(images) => {
+            warn!(
+                "GPU cropper returned {} images for {} requests",
+                images.len(),
+                requests.len()
+            );
+            None
+        }
+        Err(err) => {
+            warn!("GPU batch crop failed: {err}");
+            None
+        }
+    }
+}
+
+fn build_processed_face(
+    face_idx: usize,
+    detection: &Detection,
+    source_image: &DynamicImage,
+    crop_region: &CropRegion,
+    config: &BatchJobConfig,
+    gpu_crop: Option<DynamicImage>,
+) -> (Arc<DynamicImage>, FaceCandidate) {
+    let resized = gpu_crop
+        .unwrap_or_else(|| crop_face_from_image(source_image, detection, &config.crop_settings));
+
+    let processed = if config.enhance_enabled {
+        let eyes = if config.enhancement_settings.red_eye_removal {
+            Some(calculate_eyes_relative_to_crop(
+                &detection.landmarks,
+                crop_region,
+                source_image.width(),
+                source_image.height(),
+                config.crop_settings.output_width,
+                config.crop_settings.output_height,
+            ))
+        } else {
+            None
+        };
+        enhance_with_gpu(
+            &resized,
+            &config.enhancement_settings,
+            config.gpu_enhancer.as_ref(),
+            eyes.as_deref(),
+        )
+    } else {
+        resized
+    };
+
+    let masked = apply_mask_with_gpu(
+        processed,
+        &config.crop_config.shape,
+        config.crop_config.vignette_softness,
+        config.crop_config.vignette_intensity,
+        config.crop_config.vignette_color,
+        config.gpu_enhancer.as_ref(),
+    );
+    let composited = composite_export_background(masked, config.crop_settings.fill_color);
+    let final_image = Arc::new(composited);
+
+    let (quality_score, quality) = estimate_sharpness(final_image.as_ref());
+    (
+        final_image,
+        FaceCandidate {
+            index: face_idx,
+            quality,
+            quality_score,
+            score: detection.score,
+        },
+    )
+}
+
+fn select_export_candidate_indices(
+    candidates: &[FaceCandidate],
+    quality_rules: &QualityAutomationSettings,
+) -> Option<Vec<usize>> {
+    let best_quality = candidates.iter().map(|c| c.quality).max();
+    if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
+        return None;
+    }
+
+    let mut selected: Vec<usize> = (0..candidates.len()).collect();
+    if quality_rules.auto_select_best_face && selected.len() > 1 {
+        let best_index = selected
+            .iter()
+            .copied()
+            .max_by(|a, b| {
+                candidates[*a]
+                    .quality
+                    .cmp(&candidates[*b].quality)
+                    .then_with(|| {
+                        candidates[*a]
+                            .quality_score
+                            .partial_cmp(&candidates[*b].quality_score)
+                            .unwrap_or(Ordering::Equal)
+                    })
+            })
+            .unwrap();
+        selected.retain(|idx| *idx == best_index);
+    }
+
+    Some(selected)
+}
+
+fn export_output_extension(output_format: &str) -> String {
+    let mut ext = output_format.to_string();
+    if ext.is_empty() {
+        ext = "png".to_string();
+    }
+    ext.to_ascii_lowercase()
+}
+
+fn build_export_output_path(
+    output_dir: &Path,
+    source_path: &Path,
+    candidate: &FaceCandidate,
+    quality_rules: &QualityAutomationSettings,
+    output_format: &str,
+    output_override: Option<&PathBuf>,
+    multi_face: bool,
+) -> PathBuf {
+    let ext = export_output_extension(output_format);
+
+    if let Some(custom) = output_override {
+        return resolve_mapping_override_path(
+            output_dir,
+            custom,
+            &ext,
+            candidate.index,
+            multi_face,
+        );
+    }
+
+    let source_stem = source_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("face");
+    let mut output_filename = format!("{}_face_{:02}.{}", source_stem, candidate.index + 1, ext);
+    if quality_rules.quality_suffix {
+        let suffix = match candidate.quality {
+            Quality::High => Some("_highq"),
+            Quality::Medium => Some("_medq"),
+            Quality::Low => Some("_lowq"),
+        };
+        if let Some(suffix) = suffix {
+            output_filename = append_suffix_to_filename(&output_filename, suffix);
+        }
+    }
+
+    output_dir.join(output_filename)
+}
+
+fn save_processed_crop(
+    image: &DynamicImage,
+    output_path: &Path,
+    output_options: &OutputOptions,
+    source_path: &Path,
+    crop_config: &AppCropSettings,
+    candidate: &FaceCandidate,
+) -> anyhow::Result<()> {
+    let metadata_ctx = MetadataContext {
+        source_path: Some(source_path),
+        crop_settings: Some(crop_config),
+        detection_score: Some(candidate.score),
+        quality: Some(candidate.quality),
+        quality_score: Some(candidate.quality_score),
+    };
+
+    save_dynamic_image(image, output_path, output_options, &metadata_ctx)
 }
 
 /// Runs a single batch job for one image file.
@@ -78,115 +310,29 @@ pub fn run_batch_job(
 
     let faces_detected = detection_output.detections.len();
 
-    let crop_regions: Vec<_> = detection_output
-        .detections
-        .iter()
-        .map(|detection| {
-            calculate_crop_region(
-                source_image.width(),
-                source_image.height(),
-                detection.bbox,
-                &config.crop_settings,
-            )
-        })
-        .collect();
-
-    let gpu_allowed = crop_regions.iter().all(|region| !region.requires_padding());
-    let gpu_crops = if config.crop_settings.output_width > 0
-        && config.crop_settings.output_height > 0
-        && !crop_regions.is_empty()
-        && gpu_allowed
-    {
-        config.gpu_cropper.as_ref().and_then(|cropper| {
-            let requests: Vec<BatchCropRequest> = crop_regions
-                .iter()
-                .filter_map(|region| {
-                    region
-                        .in_bounds_rect(source_image.width(), source_image.height())
-                        .map(|(x, y, w, h)| BatchCropRequest {
-                            source_x: x,
-                            source_y: y,
-                            source_width: w.max(1),
-                            source_height: h.max(1),
-                            output_width: config.crop_settings.output_width,
-                            output_height: config.crop_settings.output_height,
-                        })
-                })
-                .collect();
-            match cropper.crop(&source_image, &requests) {
-                Ok(images) if images.len() == requests.len() => Some(images),
-                Ok(images) => {
-                    warn!(
-                        "GPU cropper returned {} images for {} requests",
-                        images.len(),
-                        requests.len()
-                    );
-                    None
-                }
-                Err(err) => {
-                    warn!("GPU batch crop failed: {err}");
-                    None
-                }
-            }
-        })
-    } else {
-        None
-    };
+    let crop_regions = prepare_crop_regions(
+        &source_image,
+        &detection_output.detections,
+        &config.crop_settings,
+    );
+    let gpu_crops = maybe_gpu_crop_faces(&source_image, &crop_regions, &config);
 
     let mut processed_faces: Vec<Arc<DynamicImage>> = Vec::with_capacity(faces_detected);
     let mut candidates = Vec::with_capacity(faces_detected);
     for (face_idx, detection) in detection_output.detections.iter().enumerate() {
-        let resized = if let Some(images) = gpu_crops.as_ref() {
-            images.get(face_idx).cloned().unwrap_or_else(|| {
-                crop_face_from_image(&source_image, detection, &config.crop_settings)
-            })
-        } else {
-            crop_face_from_image(&source_image, detection, &config.crop_settings)
-        };
-
-        let processed = if config.enhance_enabled {
-            let eyes = if config.enhancement_settings.red_eye_removal {
-                let landmarks = &detection.landmarks;
-                let region = &crop_regions[face_idx];
-                Some(calculate_eyes_relative_to_crop(
-                    landmarks,
-                    region,
-                    source_image.width(),
-                    source_image.height(),
-                    config.crop_settings.output_width,
-                    config.crop_settings.output_height,
-                ))
-            } else {
-                None
-            };
-            enhance_with_gpu(
-                &resized,
-                &config.enhancement_settings,
-                config.gpu_enhancer.as_ref(),
-                eyes.as_deref(),
-            )
-        } else {
-            resized
-        };
-        let masked = apply_mask_with_gpu(
-            processed,
-            &config.crop_config.shape,
-            config.crop_config.vignette_softness,
-            config.crop_config.vignette_intensity,
-            config.crop_config.vignette_color,
-            config.gpu_enhancer.as_ref(),
+        let gpu_crop = gpu_crops
+            .as_ref()
+            .and_then(|images| images.get(face_idx).cloned());
+        let (final_image, candidate) = build_processed_face(
+            face_idx,
+            detection,
+            &source_image,
+            &crop_regions[face_idx],
+            &config,
+            gpu_crop,
         );
-        let composited = composite_export_background(masked, config.crop_settings.fill_color);
-        let final_image = Arc::new(composited);
-
-        let (quality_score, quality) = estimate_sharpness(final_image.as_ref());
-        candidates.push(FaceCandidate {
-            index: face_idx,
-            quality,
-            quality_score,
-            score: detection.score,
-        });
         processed_faces.push(final_image);
+        candidates.push(candidate);
     }
 
     if candidates.is_empty() {
@@ -197,9 +343,7 @@ pub fn run_batch_job(
     }
 
     let quality_rules = &config.crop_config.quality_rules;
-    let best_quality = candidates.iter().map(|c| c.quality).max();
-
-    if quality_rules.auto_skip_no_high_quality && best_quality != Some(Quality::High) {
+    let Some(export_indices) = select_export_candidate_indices(&candidates, quality_rules) else {
         warn!(
             "Skipping {} - no high-quality faces detected",
             path.display()
@@ -208,27 +352,13 @@ pub fn run_batch_job(
             faces_detected,
             faces_exported: 0,
         };
-    }
+    };
 
-    let mut exports = candidates;
-    if quality_rules.auto_select_best_face
-        && exports.len() > 1
-        && let Some((best_idx, _)) = exports.iter().enumerate().max_by(|a, b| {
-            a.1.quality.cmp(&b.1.quality).then_with(|| {
-                a.1.quality_score
-                    .partial_cmp(&b.1.quality_score)
-                    .unwrap_or(Ordering::Equal)
-            })
-        })
-    {
-        let best_index = exports[best_idx].index;
-        exports.retain(|c| c.index == best_index);
-    }
-
-    let multi_face = exports.len() > 1;
+    let multi_face = export_indices.len() > 1;
 
     let mut faces_exported = 0;
-    for candidate in exports.into_iter() {
+    for candidate_index in export_indices {
+        let candidate = &candidates[candidate_index];
         let should_skip = if let Some(min) = quality_rules.min_quality {
             candidate.quality < min
         } else {
@@ -248,36 +378,15 @@ pub fn run_batch_job(
             continue;
         };
 
-        let source_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("face");
-        let mut ext = config.crop_config.output_format.clone();
-        if ext.is_empty() {
-            ext = "png".to_string();
-        }
-        let ext = ext.to_ascii_lowercase();
-
-        let output_path = if let Some(custom) = output_override.as_ref() {
-            resolve_mapping_override_path(
-                &config.output_dir,
-                custom,
-                &ext,
-                candidate.index,
-                multi_face,
-            )
-        } else {
-            let mut output_filename =
-                format!("{}_face_{:02}.{}", source_stem, candidate.index + 1, ext);
-            if quality_rules.quality_suffix {
-                let suffix = match candidate.quality {
-                    Quality::High => Some("_highq"),
-                    Quality::Medium => Some("_medq"),
-                    Quality::Low => Some("_lowq"),
-                };
-                if let Some(suffix) = suffix {
-                    output_filename = append_suffix_to_filename(&output_filename, suffix);
-                }
-            }
-            config.output_dir.join(output_filename)
-        };
+        let output_path = build_export_output_path(
+            &config.output_dir,
+            path.as_path(),
+            candidate,
+            quality_rules,
+            &config.crop_config.output_format,
+            output_override.as_ref(),
+            multi_face,
+        );
 
         if let Some(parent) = output_path.parent()
             && let Err(err) = std::fs::create_dir_all(parent)
@@ -288,19 +397,13 @@ pub fn run_batch_job(
             );
         }
 
-        let metadata_ctx = MetadataContext {
-            source_path: Some(path.as_path()),
-            crop_settings: Some(&config.crop_config),
-            detection_score: Some(candidate.score),
-            quality: Some(candidate.quality),
-            quality_score: Some(candidate.quality_score),
-        };
-
-        match save_dynamic_image(
+        match save_processed_crop(
             final_image.as_ref(),
             &output_path,
             &config.output_options,
-            &metadata_ctx,
+            path.as_path(),
+            &config.crop_config,
+            candidate,
         ) {
             Ok(_) => {
                 faces_exported += 1;
@@ -728,6 +831,8 @@ mod tests {
     use serde_json::Value;
     use std::path::PathBuf;
     use yunet_core::FillColor;
+    use yunet_utils::config::QualityAutomationSettings;
+    use yunet_utils::quality::Quality;
 
     #[test]
     fn export_background_compositing_applies_fill_color_to_transparent_pixels() {
@@ -896,5 +1001,71 @@ mod tests {
 
         assert!(csv.starts_with("index,path,error,faces_detected\n"));
         assert!(csv.contains(r#"7,"folder,""quoted"",name.jpg","failed, reason ""oops""",2"#));
+    }
+
+    fn candidate(index: usize, quality: Quality, quality_score: f64) -> FaceCandidate {
+        FaceCandidate {
+            index,
+            quality,
+            quality_score,
+            score: 0.95 - index as f32 * 0.1,
+        }
+    }
+
+    #[test]
+    fn select_export_candidate_indices_prefers_best_quality_then_score() {
+        let candidates = vec![
+            candidate(0, Quality::Medium, 0.9),
+            candidate(1, Quality::High, 0.2),
+            candidate(2, Quality::High, 0.8),
+        ];
+        let rules = QualityAutomationSettings {
+            auto_select_best_face: true,
+            min_quality: None,
+            auto_skip_no_high_quality: false,
+            quality_suffix: false,
+        };
+
+        let selected = select_export_candidate_indices(&candidates, &rules).unwrap();
+        assert_eq!(selected, vec![2]);
+    }
+
+    #[test]
+    fn select_export_candidate_indices_skips_when_no_high_quality_face_exists() {
+        let candidates = vec![
+            candidate(0, Quality::Low, 0.2),
+            candidate(1, Quality::Medium, 0.7),
+        ];
+        let rules = QualityAutomationSettings {
+            auto_select_best_face: false,
+            min_quality: None,
+            auto_skip_no_high_quality: true,
+            quality_suffix: false,
+        };
+
+        assert_eq!(select_export_candidate_indices(&candidates, &rules), None);
+    }
+
+    #[test]
+    fn build_export_output_path_adds_quality_suffix_for_standard_exports() {
+        let output = build_export_output_path(
+            Path::new("/exports"),
+            Path::new("/images/portrait.jpg"),
+            &candidate(1, Quality::High, 0.9),
+            &QualityAutomationSettings {
+                auto_select_best_face: false,
+                min_quality: None,
+                auto_skip_no_high_quality: false,
+                quality_suffix: true,
+            },
+            "PNG",
+            None,
+            false,
+        );
+
+        assert_eq!(
+            output,
+            PathBuf::from("/exports").join("portrait_face_02_highq.png")
+        );
     }
 }

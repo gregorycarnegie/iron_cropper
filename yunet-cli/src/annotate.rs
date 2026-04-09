@@ -122,7 +122,12 @@ mod tests {
     // --- rect_from_bbox ---
 
     fn make_bbox(x: f32, y: f32, w: f32, h: f32) -> BoundingBox {
-        BoundingBox { x, y, width: w, height: h }
+        BoundingBox {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
     }
 
     #[test]
@@ -138,7 +143,7 @@ mod tests {
     fn rect_from_bbox_clamps_to_image_bounds() {
         // bbox extends well past image edges
         let r = rect_from_bbox(&make_bbox(0.0, 0.0, 500.0, 500.0), 100, 80);
-        assert_eq!(r.width(), 99);  // clamped to (99 - 0).max(1)
+        assert_eq!(r.width(), 99); // clamped to (99 - 0).max(1)
         assert_eq!(r.height(), 79);
     }
 
@@ -163,13 +168,33 @@ mod tests {
 
     fn make_detection(x: f32, y: f32, w: f32, h: f32) -> Detection {
         Detection {
-            bbox: BoundingBox { x, y, width: w, height: h },
+            bbox: BoundingBox {
+                x,
+                y,
+                width: w,
+                height: h,
+            },
             landmarks: [
-                Landmark { x: x + 10.0, y: y + 10.0 },
-                Landmark { x: x + 20.0, y: y + 10.0 },
-                Landmark { x: x + 15.0, y: y + 20.0 },
-                Landmark { x: x + 8.0,  y: y + 30.0 },
-                Landmark { x: x + 22.0, y: y + 30.0 },
+                Landmark {
+                    x: x + 10.0,
+                    y: y + 10.0,
+                },
+                Landmark {
+                    x: x + 20.0,
+                    y: y + 10.0,
+                },
+                Landmark {
+                    x: x + 15.0,
+                    y: y + 20.0,
+                },
+                Landmark {
+                    x: x + 8.0,
+                    y: y + 30.0,
+                },
+                Landmark {
+                    x: x + 22.0,
+                    y: y + 30.0,
+                },
             ],
             score: 0.95,
         }

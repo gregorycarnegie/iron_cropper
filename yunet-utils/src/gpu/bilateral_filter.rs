@@ -178,7 +178,11 @@ mod tests {
             return;
         };
         let filter = GpuBilateralFilter::new(ctx).expect("init");
-        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, image::Rgba([100, 150, 200, 255])));
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            image::Rgba([100, 150, 200, 255]),
+        ));
         let result = filter.smooth(&image, 0.0, 3.0, 50.0).expect("smooth");
         assert_eq!(result.to_rgba8().as_raw(), image.to_rgba8().as_raw());
     }
