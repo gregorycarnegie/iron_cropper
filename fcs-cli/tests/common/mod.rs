@@ -24,13 +24,9 @@ pub fn find_fixture_image() -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-// Embed fixture bytes so coverage and parallel Windows test runs never need to
-// reopen the same JPEG from disk.
-static FIXTURE_BYTES: &[u8] = include_bytes!("../../../fixtures/images/006.jpg");
-
 #[allow(dead_code)]
-pub fn copy_fixture_to(_src: &PathBuf, dest: &Path) -> Result<()> {
-    fs::write(dest, FIXTURE_BYTES)
+pub fn copy_fixture_to(src: &PathBuf, dest: &Path) -> Result<()> {
+    fs::copy(src, dest).map(|_| ())
 }
 
 /// Macro to set up common test environment with model, fixture, and temp directories.
