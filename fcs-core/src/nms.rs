@@ -140,12 +140,13 @@ fn suppress_overlapping_candidates(
             for col in range.min_col..=range.max_col {
                 let cell = &grid.cells[row_offset + col];
                 for &candidate in cell {
-                    if candidate > i && !suppressed[candidate] {
-                        if check_token[candidate] != i {
-                            check_token[candidate] = i;
-                            if bbox.iou(&detections[candidate].bbox) > threshold {
-                                suppressed[candidate] = true;
-                            }
+                    if candidate > i
+                        && !suppressed[candidate]
+                        && check_token[candidate] != i
+                    {
+                        check_token[candidate] = i;
+                        if bbox.iou(&detections[candidate].bbox) > threshold {
+                            suppressed[candidate] = true;
                         }
                     }
                 }

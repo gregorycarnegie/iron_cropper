@@ -403,17 +403,18 @@ fn process_crops(
                 );
             }
         }
-    } else if quality_filter.auto_select && exports.len() > 1 {
-        if let Some(best_rel) = select_best_quality_index(&exports, quality_filter) {
-            let best_idx = exports[best_rel].index;
-            exports = retain_requested_face(exports, best_idx);
-            debug!(
-                "Auto-selected face {} for {} based on quality {:?}",
-                best_idx + 1,
-                image_path.display(),
-                exports.first().map(|c| c.quality)
-            );
-        }
+    } else if quality_filter.auto_select
+        && exports.len() > 1
+        && let Some(best_rel) = select_best_quality_index(&exports, quality_filter)
+    {
+        let best_idx = exports[best_rel].index;
+        exports = retain_requested_face(exports, best_idx);
+        debug!(
+            "Auto-selected face {} for {} based on quality {:?}",
+            best_idx + 1,
+            image_path.display(),
+            exports.first().map(|c| c.quality)
+        );
     }
 
     let multi_face = exports.len() > 1;

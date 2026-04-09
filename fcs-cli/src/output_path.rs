@@ -14,6 +14,7 @@ pub(crate) fn normalized_output_extension(output_format: &str) -> String {
     ext.to_ascii_lowercase()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_crop_filename(
     source_stem: &str,
     crop_index: usize,
@@ -48,6 +49,7 @@ pub(crate) fn build_crop_filename(
     out_name
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_crop_output_path(
     out_dir: &Path,
     source_path: &Path,

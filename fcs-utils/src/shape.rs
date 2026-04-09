@@ -789,7 +789,7 @@ fn build_raster_hard_mask(mask_w: u32, mask_h: u32, shape: &CropShape) -> Option
         );
     }
 
-    Some(RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec())?)
+    RgbaImage::from_raw(mask_w, mask_h, pixmap.data().to_vec())
 }
 
 fn build_raster_soft_mask(hard_mask: RgbaImage, vignette_softness: f32) -> RgbaImage {
