@@ -6,7 +6,7 @@ resolver = "2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 version = "1.0.5-rc3"
-description = "Pure Rust YuNet face detection workspace."
+description = "Face Crop Studio — pure Rust face detection and cropping."
 
 [workspace.dependencies]
 image = { version = "0.25.10", default-features = false, features = [

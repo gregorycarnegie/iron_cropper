@@ -17,6 +17,7 @@ pub mod image_utils;
 pub mod macros;
 
 /// Data-driven mapping utilities (CSV/Excel/Parquet/SQLite ingestion).
+#[cfg(feature = "mapping")]
 pub mod mapping;
 /// Image output helpers (encoding, metadata preservation).
 pub mod output;
@@ -31,6 +32,7 @@ mod shape_tests;
 /// Instrumentation helpers for optional performance tracing.
 pub mod telemetry;
 /// Webcam capture utilities for real-time face detection.
+#[cfg(feature = "webcam")]
 pub mod webcam;
 
 use anyhow::Result;
@@ -50,6 +52,7 @@ pub use image_utils::{
     compute_resize_scales, dynamic_to_bgr_chw, load_image, resize_image, rgb_to_bgr_chw,
 };
 use log::LevelFilter;
+#[cfg(feature = "mapping")]
 pub use mapping::{
     ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
     MappingReadOptions, detect_format as detect_mapping_format, inspect_mapping_sources,
@@ -68,6 +71,7 @@ pub use telemetry::{
     TimingGuard, configure as configure_telemetry, telemetry_allows, telemetry_enabled,
     telemetry_level, timing_guard, timing_guard_if,
 };
+#[cfg(feature = "webcam")]
 pub use webcam::{WebcamCapture, list_webcam_devices};
 
 /// Initialize logging once for CLI and GUI environments.

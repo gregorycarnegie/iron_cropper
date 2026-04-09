@@ -3,7 +3,7 @@ name = "fcs-gui"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "egui desktop app for YuNet face detection."
+description = "Face Crop Studio — egui desktop application for face detection and cropping."
 
 [lib]
 path = "src/lib.rs"
@@ -25,7 +25,7 @@ serde.workspace = true
 serde_json.workspace = true
 rfd = "0.17.2"
 fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils" }
+fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
 tempfile.workspace = true
 arboard.workspace = true
 lru = "0.16.3"

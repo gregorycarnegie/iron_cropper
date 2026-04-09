@@ -3,7 +3,7 @@ name = "fcs-cli"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "Command-line interface for YuNet face detection."
+description = "Face Crop Studio CLI — batch face detection and cropping."
 
 [dependencies]
 anyhow.workspace = true
@@ -17,14 +17,14 @@ tempfile.workspace = true
 walkdir = "2.5.0"
 imageproc.workspace = true
 fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils" }
+fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.0"
 tempfile.workspace = true
 predicates = "3.1.4"
 fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils" }
+fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
 
 [build-dependencies]
 winresource = "0.1.31"

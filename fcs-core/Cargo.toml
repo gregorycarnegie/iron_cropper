@@ -3,7 +3,7 @@ name = "fcs-core"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "YuNet model loading, preprocessing, and postprocessing."
+description = "Face Crop Studio core — ONNX model inference, preprocessing, and postprocessing."
 
 [lib]
 path = "src/lib.rs"

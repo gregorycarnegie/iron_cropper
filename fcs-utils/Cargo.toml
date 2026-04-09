@@ -3,7 +3,7 @@ name = "fcs-utils"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "Shared utilities for YuNet workspace."
+description = "Shared utilities for the Face Crop Studio workspace."
 
 [lib]
 path = "src/lib.rs"
@@ -24,17 +24,36 @@ tiny-skia.workspace = true
 ravif = "0.13.0"
 rgb = "0.8.53"
 imgref = "1.12.0"
-csv.workspace = true
-calamine.workspace = true
-parquet.workspace = true
-rusqlite.workspace = true
 fast_image_resize.workspace = true
 wgpu.workspace = true
 pollster.workspace = true
 async-channel.workspace = true
 thiserror.workspace = true
 bytemuck.workspace = true
-nokhwa.workspace = true
+
+[dependencies.csv]
+workspace = true
+optional = true
+
+[dependencies.calamine]
+workspace = true
+optional = true
+
+[dependencies.parquet]
+workspace = true
+optional = true
+
+[dependencies.rusqlite]
+workspace = true
+optional = true
+
+[dependencies.nokhwa]
+workspace = true
+optional = true
+
+[features]
+mapping = ["dep:csv", "dep:calamine", "dep:parquet", "dep:rusqlite"]
+webcam = ["dep:nokhwa"]
 
 [dev-dependencies]
 tempfile.workspace = true
