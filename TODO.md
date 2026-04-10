@@ -10,6 +10,10 @@
 - [x] **CI**: Deduplicate hardcoded SHA256s — added sync comments in both files (true deduplication requires a reusable workflow refactor).
 - [x] **CI**: Remove duplicate `PKG_CONFIG_PATH` assignment in ci.yml (was set at job `env:` level and again in a separate step).
 - [x] **CI**: Add code signing for release binaries and installers (skips gracefully if `CODE_SIGN_PFX` secret is absent).
+- [x] **CI**: Remove static secret-key checks in release.yml to avoid false-positive GitHub Actions editor diagnostics for optional code signing secrets.
+- [x] **CI**: Replace direct signing-secret lookups with computed-key expressions (`secrets[format(...)]`) to suppress remaining IDE false positives on optional secrets.
+- [x] **Release**: Add GitHub artifact provenance attestation (`actions/attest-build-provenance`) so unsigned releases still ship verifiable supply-chain metadata.
+- [x] **CI/Release**: Pin GitHub Actions Rust toolchain to `1.94.1` to match local workspace behavior.
 - [x] **NSIS**: Fix uninstall shortcut icon — was pointing to `fcs-gui.exe`, now correctly points to `Uninstall.exe`.
 - [x] **NSIS**: Extract inline PowerShell PATH one-liners — replaced with readable multi-line PS1 scripts written to `$PLUGINSDIR` at runtime.
 - [x] **NSIS**: Add a license page (`MUI_PAGE_LICENSE`) to the installer (uses `LICENSE-MIT` from dist dir).

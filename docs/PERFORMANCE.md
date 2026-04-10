@@ -4,14 +4,14 @@
 
 ### Complete Pipeline Breakdown (Release Build, 640x640)
 
-| Stage                 | Time       | % of Total | Status                  |
-|-----------------------|------------|------------|-------------------------|
+| Stage                 | Time       | % of Total | Status                   |
+|-----------------------|------------|------------|--------------------------|
 | **Model Loading**     | 0.11-0.29s | 14-22%     | ✅ Cached (happens once) |
 | **Preprocessing**     | 0.27s      | 33.7%      | ✅ Optimized with rayon  |
-| **Model Inference**   | 0.42s      | 52.0%      | ⚠️ Main bottleneck      |
+| **Model Inference**   | 0.42s      | 52.0%      | ⚠️ Main bottleneck       |
 | **Postprocessing**    | <0.001s    | 0.1%       | ✅ Already optimized     |
-| **TOTAL (first run)** | **0.81s**  | **100%**   |                         |
-| **TOTAL (cached)**    | **0.70s**  | **100%**   |                         |
+| **TOTAL (first run)** | **0.81s**  | **100%**   |                          |
+| **TOTAL (cached)**    | **0.70s**  | **100%**   |                          |
 
 ### Model Loading Details
 
@@ -355,13 +355,13 @@ All optimizations maintain correctness:
 
 ### For better UX
 
-3. **Preprocessing cache** - Instant threshold adjustments
-4. **Model pool for batch processing** - Better CLI performance on directories
+1. **Preprocessing cache** - Instant threshold adjustments
+2. **Model pool for batch processing** - Better CLI performance on directories
 
 ### For future
 
-5. **Monitor tract GPU support** - Would provide 5-10x speedup
-6. **Alternative**: Evaluate switching to `ort` crate for GPU support
+1. **Monitor tract GPU support** - Would provide 5-10x speedup
+2. **Alternative**: Evaluate switching to `ort` crate for GPU support
 
 ---
 

@@ -25,7 +25,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.x'
+        python-version: "3.14"
 
     - name: Install onnxsim
       run: pip install onnxsim==0.4.36
@@ -84,6 +84,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
+        toolchain: 1.94.1
         components: clippy, rustfmt
 
     - name: Rust Cache

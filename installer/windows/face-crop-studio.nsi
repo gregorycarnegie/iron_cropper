@@ -30,6 +30,7 @@ RequestExecutionLevel admin
 !include "LogicLib.nsh"
 !include "WinMessages.nsh"
 !include "Sections.nsh"
+!include "FileFunc.nsh"
 !define MUI_ICON "${DIST_DIR}\app_icon.ico"
 !define MUI_UNICON "${DIST_DIR}\app_icon.ico"
 !define MUI_LICENSEPAGE_TEXT_TOP "Face Crop Studio is dual-licensed (MIT OR Apache-2.0). Review the terms below."
@@ -47,6 +48,25 @@ RequestExecutionLevel admin
 !insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "English"
+
+; ── State variables for PATH mutual-exclusion ─────────────────────────────────
+Var PathUserWasSelected
+Var PathSystemWasSelected
+
+Function .onInit
+  StrCpy $PathUserWasSelected 0
+  StrCpy $PathSystemWasSelected 0
+
+  ; Detect an existing installation and offer to remove it first so the new
+  ; install starts clean rather than silently layering on top.
+  ReadRegStr $0 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "UninstallString"
+  ${If} $0 != ""
+    ReadRegStr $1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "DisplayVersion"
+    MessageBox MB_YESNO|MB_ICONQUESTION "Face Crop Studio $1 is already installed.$\n$\nRemove it before installing the new version?" IDNO done
+    ExecWait '$0 /S'
+    done:
+  ${EndIf}
+FunctionEnd
 
 ; ── Sections ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +91,11 @@ Section "Application Files (required)" SecMain
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "DisplayIcon" "$INSTDIR\fcs-gui.exe"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "NoRepair" 1
+
+  ; Populate EstimatedSize so Add/Remove Programs shows a real disk usage figure.
+  ; GetSize returns KB; measured after all files are written so it is accurate.
+  ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio" "EstimatedSize" $0
 SectionEnd
 
 Section "Desktop Shortcut" SecDesktop
@@ -109,22 +134,31 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Face Crop Studio\Uninstall Face Crop Studio.lnk"
   RMDir "$SMPROGRAMS\Face Crop Studio"
 
-  ; Delete only files this installer placed — preserves user-added files (e.g. custom models).
-  Delete "$INSTDIR\fcs-cli.exe"
-  Delete "$INSTDIR\fcs-gui.exe"
-  Delete "$INSTDIR\app_icon.ico"
-  Delete "$INSTDIR\README.md"
-  Delete "$INSTDIR\LICENSE-MIT"
-  Delete "$INSTDIR\LICENSE-APACHE"
+  ; Delete installed files by pattern so this section stays correct as binaries
+  ; and assets are added or renamed without needing manual updates here.
+  ; Wildcards cover all present and future executables / icons / docs.
+  Delete "$INSTDIR\*.exe"     ; fcs-gui.exe, fcs-cli.exe, Uninstall.exe
+  Delete "$INSTDIR\*.ico"
+  Delete "$INSTDIR\*.md"
+  Delete "$INSTDIR\LICENSE-*"
+  ; Remove only the bundled model; RMDir (no /r) leaves the directory intact
+  ; if the user placed additional models there.
   Delete "$INSTDIR\models\face_detection_yunet_2023mar_640.onnx"
   RMDir "$INSTDIR\models"
-  Delete "$INSTDIR\Uninstall.exe"
   ; Remove the install directory only if it is now empty.
   RMDir "$INSTDIR"
 
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\FaceCropStudio"
   DeleteRegKey HKLM "Software\Face Crop Studio"
 SectionEnd
+
+; ── Section descriptions (shown on the Components page) ───────────────────────
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}       "Core application files — fcs-gui.exe, fcs-cli.exe, bundled model, and required assets. Cannot be deselected."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop}    "Place a shortcut to Face Crop Studio on the desktop."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecPathUser}   "Append the install directory to the current user's PATH so fcs-cli is available in new terminals."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecPathSystem} "Append the install directory to the system PATH (all users). Requires administrator rights — mutually exclusive with the per-user option."
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; ── PATH helpers ──────────────────────────────────────────────────────────────
 ;
@@ -200,16 +234,36 @@ Function un.BroadcastEnvironmentChange
 FunctionEnd
 
 ; ── Mutual exclusion: prevent user and system PATH from both being selected ───
+;
+; "Last clicked wins": $PathUserWasSelected / $PathSystemWasSelected track the
+; previous state so we can tell which section was just activated and deselect
+; the other one rather than always deselecting the same side.
 
 Function .onSelChange
-  SectionGetFlags ${SecPathUser} $0
-  IntOp $1 $0 & ${SF_SELECTED}
-  SectionGetFlags ${SecPathSystem} $2
-  IntOp $3 $2 & ${SF_SELECTED}
+  SectionGetFlags ${SecPathUser}   $0
+  SectionGetFlags ${SecPathSystem} $1
+  IntOp $2 $0 & ${SF_SELECTED}   ; 0 or 1 — user currently selected?
+  IntOp $3 $1 & ${SF_SELECTED}   ; 0 or 1 — system currently selected?
 
-  ${If} $1 <> 0
+  ${If} $2 <> 0
   ${AndIf} $3 <> 0
-    IntOp $4 $0 & ~${SF_SELECTED}
-    SectionSetFlags ${SecPathUser} $4
+    ; Both on — keep the one that just changed, deselect the other.
+    ${If} $PathUserWasSelected = 0
+      ; User PATH was off before → it was just turned on → clear System PATH
+      IntOp $1 $1 & ~${SF_SELECTED}
+      SectionSetFlags ${SecPathSystem} $1
+      StrCpy $PathUserWasSelected 1
+      StrCpy $PathSystemWasSelected 0
+    ${Else}
+      ; User PATH was already on → System PATH was just turned on → clear User PATH
+      IntOp $0 $0 & ~${SF_SELECTED}
+      SectionSetFlags ${SecPathUser} $0
+      StrCpy $PathUserWasSelected 0
+      StrCpy $PathSystemWasSelected 1
+    ${EndIf}
+  ${Else}
+    ; No conflict — just keep prev-state in sync for the next call.
+    StrCpy $PathUserWasSelected $2
+    StrCpy $PathSystemWasSelected $3
   ${EndIf}
 FunctionEnd
