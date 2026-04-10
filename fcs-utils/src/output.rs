@@ -669,7 +669,10 @@ fn build_custom_metadata_payload(
         return Ok(None);
     }
 
-    root.insert("generator".into(), JsonValue::String("face-crop-studio".into()));
+    root.insert(
+        "generator".into(),
+        JsonValue::String("face-crop-studio".into()),
+    );
     root.insert(
         "generator_version".into(),
         JsonValue::String(env!("CARGO_PKG_VERSION").into()),
