@@ -122,7 +122,7 @@
     -->
     <Feature Id="MainFeature" Title="Face Crop Studio" Level="1">
       <!-- Exclude common debug artifacts that should never ship in a release build. -->
-      <Files Directory="INSTALLDIR" Include="$(var.SourceDir)\**" Exclude="$(var.SourceDir)\**\*.pdb;$(var.SourceDir)\**\*.ilk;$(var.SourceDir)\**\*.exp;$(var.SourceDir)\**\*.d" />
+      <Files Directory="INSTALLDIR" Include="$(var.SourceDir)\**" />
       <ComponentRef Id="StartMenuShortcutComponent" />
       <ComponentRef Id="StartMenuFolderCleanupComponent" />
       <ComponentRef Id="InstallDirCleanupComponent" />
