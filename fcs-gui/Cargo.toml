@@ -14,26 +14,25 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+arboard.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui_extras = { workspace = true, features = ["svg"] }
+fcs-core.workspace = true
+fcs-utils = { workspace = true, features = ["mapping", "webcam"] }
 image.workspace = true
 ico.workspace = true
 log.workspace = true
+lru.workspace = true
 rayon.workspace = true
+rfd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-rfd = "0.17.2"
-fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
 tempfile.workspace = true
-arboard.workspace = true
-lru = "0.16.3"
 
 [dev-dependencies]
-tempfile.workspace = true
 imageproc.workspace = true
-sha2 = "0.11.0"
+sha2.workspace = true
 
 [build-dependencies]
-winresource = "0.1.31"
+winresource.workspace = true

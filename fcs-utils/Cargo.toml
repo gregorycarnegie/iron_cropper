@@ -10,26 +10,26 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+async-channel.workspace = true
+base64.workspace = true
+bytemuck.workspace = true
+crc32fast.workspace = true
 env_logger.workspace = true
+fast_image_resize.workspace = true
 image.workspace = true
+imgref.workspace = true
 log.workspace = true
 ndarray.workspace = true
+pollster.workspace = true
+ravif.workspace = true
 rayon.workspace = true
+rgb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-base64.workspace = true
-crc32fast.workspace = true
-wide.workspace = true
-tiny-skia.workspace = true
-ravif = "0.13.0"
-rgb = "0.8.53"
-imgref = "1.12.0"
-fast_image_resize.workspace = true
-wgpu.workspace = true
-pollster.workspace = true
-async-channel.workspace = true
 thiserror.workspace = true
-bytemuck.workspace = true
+tiny-skia.workspace = true
+wgpu.workspace = true
+wide.workspace = true
 
 [dependencies.csv]
 workspace = true

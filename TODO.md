@@ -2,6 +2,10 @@
 
 ## Project TODO List: YuNet Face Detection
 
+### Manifest Maintenance
+
+- [x] Centralize remaining package-local Cargo dependency versions under workspace dependencies; keep native AVIF decode enabled so AVIF inputs load.
+
 ### CI / Installer Quality
 
 - [x] **CI**: Consolidate model-gen fallback — remove the redundant `Retry Model Gen` step; put a single clean fallback in the download step (both ci.yml and release.yml).

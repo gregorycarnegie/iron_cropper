@@ -8,23 +8,20 @@ description = "Face Crop Studio CLI — batch face detection and cropping."
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+fcs-core.workspace = true
+fcs-utils = { workspace = true, features = ["mapping", "webcam"] }
 image.workspace = true
+imageproc.workspace = true
 log.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-walkdir = "2.5.0"
-imageproc.workspace = true
-fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
+walkdir.workspace = true
 
 [dev-dependencies]
-assert_cmd = "2.2.0"
-tempfile.workspace = true
-predicates = "3.1.4"
-fcs-core = { path = "../fcs-core" }
-fcs-utils = { path = "../fcs-utils", features = ["mapping", "webcam"] }
+assert_cmd.workspace = true
+predicates.workspace = true
 
 [build-dependencies]
-winresource = "0.1.31"
+winresource.workspace = true

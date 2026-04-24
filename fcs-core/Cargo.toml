@@ -10,16 +10,16 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+bytemuck.workspace = true
+fcs-utils.workspace = true
 image.workspace = true
 log.workspace = true
+prost.workspace = true
 rayon.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tract-onnx.workspace = true
 wgpu.workspace = true
-bytemuck.workspace = true
-fcs-utils = { path = "../fcs-utils" }
-prost.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

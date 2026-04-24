@@ -9,22 +9,14 @@ version = "1.0.5-rc3"
 description = "Face Crop Studio — pure Rust face detection and cropping."
 
 [workspace.dependencies]
-image = { version = "0.25.10", default-features = false, features = [
-    "png",
-    "jpeg",
-    "webp",
-    "tiff",
-    "bmp",
-    "avif-native",
-    "rayon",
-] }
 anyhow = "1.0.102"
 arboard = "3.6.1"
+assert_cmd = "2.2.1"
 async-channel = "2.5.0"
 base64 = "0.22.1"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 calamine = "0.34.0"
-clap = { version = "4.6.0", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 crc32fast = "1.5.0"
 criterion = "0.8.2"
 csv = "1.4.0"
@@ -33,9 +25,24 @@ egui = "0.34.1"
 egui_extras = "0.34.1"
 env_logger = "0.11.10"
 fast_image_resize = "6.0.0"
+fcs-core = { path = "fcs-core" }
+fcs-utils = { path = "fcs-utils" }
 ico = "0.5.0"
+image = { version = "0.25.10", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+    "tiff",
+    "bmp",
+    "avif",
+    "avif-native",
+    "rayon",
+] }
 imageproc = "0.26.1"
+imgref = "1.12.0"
 log = "0.4.29"
+lru = "0.17.0"
+metal = "0.33.0"
 ndarray = { version = "0.17.2", features = ["rayon"] }
 nokhwa = { version = "0.10.10", features = ["input-native"] }
 parquet = { version = "58.1.0", default-features = false, features = [
@@ -47,19 +54,25 @@ parquet = { version = "58.1.0", default-features = false, features = [
     "zstd",
 ] }
 pollster = "0.4.0"
+predicates = "3.1.4"
 prost = "=0.11.9" # Set to 0.11.9 for tract-onnx v0.22.1 compatibility
-rayon = "1.11.0"
+ravif = { version = "0.13.0", default-features = false, features = ["threading"] }
+rayon = "1.12.0"
+rfd = "0.17.2"
+rgb = "0.8.53"
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.11.0"
 tempfile = "3.27.0"
 thiserror = "2.0.18"
 tiny-skia = "0.12.0"
 tract-onnx = "0.22.1"
+walkdir = "2.5.0"
 wgpu = "29.0.1" # Set to 29.0.1 for eframe v0.34.1 compatibility
-wide = "1.2.0"
+wide = "1.3.0"
 windows = { version = "0.62.2", features = [
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
 ] }
-metal = "0.33.0"
+winresource = "0.1.31"
