@@ -1,5 +1,5 @@
 [workspace]
-members = ["fcs-core", "fcs-utils", "fcs-cli", "fcs-gui"]
+members = ["fcs-core", "fcs-utils", "fcs-cli", "fcs-gui", "fcs-gui2"]
 resolver = "2"
 
 [workspace.package]

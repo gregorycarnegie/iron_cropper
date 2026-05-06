@@ -2167,6 +2167,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "fcs-gui2"
+version = "1.0.6-rc1"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "eframe",
+ "egui",
+ "egui_extras",
+ "fcs-core",
+ "fcs-utils",
+ "ico",
+ "image",
+ "imageproc",
+ "log",
+ "lru",
+ "rayon",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "winresource",
+]
+
+[[package]]
 name = "fcs-utils"
 version = "1.0.6-rc1"
 dependencies = [
