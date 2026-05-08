@@ -169,21 +169,10 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
         // Aspect ratio
         field_label(ui, "Aspect ratio");
         let aspect_options = ["Free", "1:1", "4:5", "3:4"];
-        let w = app.settings.crop.output_width as f32;
-        let h = app.settings.crop.output_height as f32;
-        let mut asp_idx = if w == h {
-            1
-        } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
-            2
-        } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
-            3
-        } else {
-            0
-        };
-        let asp_idx_bak = asp_idx;
-        segmented_control(ui, &aspect_options, &mut asp_idx);
-        if asp_idx != asp_idx_bak {
-            match asp_idx {
+        let prev_asp = app.aspect_ratio_idx;
+        segmented_control(ui, &aspect_options, &mut app.aspect_ratio_idx);
+        if app.aspect_ratio_idx != prev_asp {
+            match app.aspect_ratio_idx {
                 1 => {
                     app.settings.crop.output_width = 1024;
                     app.settings.crop.output_height = 1024;
@@ -196,7 +185,7 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                     app.settings.crop.output_width = 768;
                     app.settings.crop.output_height = 1024;
                 }
-                _ => {}
+                _ => {} // Free — keep current dimensions
             }
         }
 

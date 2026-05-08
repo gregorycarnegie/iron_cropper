@@ -88,6 +88,19 @@ impl App2 {
             settings.crop.fill_color.green,
             settings.crop.fill_color.blue
         );
+        let aspect_ratio_idx = {
+            let w = settings.crop.output_width as f32;
+            let h = settings.crop.output_height as f32;
+            if w == h {
+                1
+            } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
+                2
+            } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
+                3
+            } else {
+                0
+            }
+        };
 
         Self {
             settings,
@@ -109,6 +122,7 @@ impl App2 {
             crop_history_index: 0,
             crop_fill_hex_input,
             aspect_ratio_locked: false,
+            aspect_ratio_idx,
             batch_files: Vec::new(),
             batch_current_index: None,
             mapping: MappingUiState::new(),

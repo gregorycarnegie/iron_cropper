@@ -606,6 +606,7 @@ pub struct App2 {
     pub crop_history_index: usize,
     pub crop_fill_hex_input: String,
     pub aspect_ratio_locked: bool,
+    pub aspect_ratio_idx: usize,
 
     // Batch
     pub batch_files: Vec<BatchFile>,
