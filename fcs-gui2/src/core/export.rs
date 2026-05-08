@@ -7,9 +7,10 @@ use crate::{
 
 use fcs_core::{YuNetDetector, crop_face_from_image};
 use fcs_utils::{
-    MetadataContext, OutputOptions, append_suffix_to_filename, apply_shape_mask, estimate_sharpness,
-    load_image, quality::Quality, save_dynamic_image,
+    MetadataContext, OutputOptions, append_suffix_to_filename, apply_shape_mask,
+    estimate_sharpness, load_image, quality::Quality, save_dynamic_image,
 };
+use image::{DynamicImage, Rgba};
 use log::{info, warn};
 use rfd::FileDialog;
 use std::{
@@ -17,6 +18,43 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+/// Apply shape mask then composite transparent pixels onto `fill`.
+/// When `fill.alpha == 0` the output keeps its alpha channel (transparent PNG/WEBP).
+/// When `fill.alpha == 255` the output is fully opaque (safe for JPEG).
+fn apply_shape_and_fill(
+    crop: DynamicImage,
+    settings: &fcs_utils::config::CropSettings,
+) -> DynamicImage {
+    let mut rgba = crop.to_rgba8();
+    apply_shape_mask(
+        &mut rgba,
+        &settings.shape,
+        settings.vignette_softness,
+        settings.vignette_intensity,
+        settings.vignette_color,
+    );
+
+    let fill = settings.fill_color;
+    let bg_r = fill.red as f32;
+    let bg_g = fill.green as f32;
+    let bg_b = fill.blue as f32;
+    let bg_a = fill.alpha as f32 / 255.0;
+
+    for px in rgba.pixels_mut() {
+        let src_a = px[3] as f32 / 255.0;
+        if src_a >= 1.0 {
+            continue;
+        }
+        let inv = 1.0 - src_a;
+        let r = (px[0] as f32 * src_a + bg_r * bg_a * inv) as u8;
+        let g = (px[1] as f32 * src_a + bg_g * bg_a * inv) as u8;
+        let b = (px[2] as f32 * src_a + bg_b * bg_a * inv) as u8;
+        let a = ((src_a + bg_a * inv) * 255.0).min(255.0) as u8;
+        *px = Rgba([r, g, b, a]);
+    }
+    DynamicImage::ImageRgba8(rgba)
+}
 
 struct ExportCandidate {
     face_index: usize,
@@ -85,30 +123,7 @@ fn export_preview_faces(app: &mut App2, selected: Vec<usize>, error_title: &str)
         detection_for_crop.bbox = det.active_bbox();
         let raw_crop =
             crop_face_from_image(source_image.as_ref(), &detection_for_crop, &crop_settings);
-
-        // Apply shape mask (alpha cutout + vignette)
-        let mut rgba = raw_crop.to_rgba8();
-        apply_shape_mask(
-            &mut rgba,
-            &settings.crop.shape,
-            settings.crop.vignette_softness,
-            settings.crop.vignette_intensity,
-            settings.crop.vignette_color,
-        );
-        // Composite transparent areas onto the fill colour
-        let fill = settings.crop.fill_color;
-        for px in rgba.pixels_mut() {
-            let a = px[3] as f32 / 255.0;
-            if a >= 1.0 {
-                continue;
-            }
-            let inv = 1.0 - a;
-            px[0] = (px[0] as f32 * a + fill.red as f32 * inv) as u8;
-            px[1] = (px[1] as f32 * a + fill.green as f32 * inv) as u8;
-            px[2] = (px[2] as f32 * a + fill.blue as f32 * inv) as u8;
-            px[3] = 255;
-        }
-        let crop = image::DynamicImage::ImageRgba8(rgba);
+        let crop = apply_shape_and_fill(raw_crop, &settings.crop);
 
         let mut filename = format!("{source_stem}_face_{:02}.{ext}", face_index + 1);
         if let Some(suffix) = quality_suffix(&settings, det.quality) {
@@ -267,7 +282,8 @@ fn run_batch_job(
     let mut candidates = Vec::with_capacity(detections.len());
 
     for (face_index, detection) in detections.iter().enumerate() {
-        let crop = crop_face_from_image(&source_image, detection, &crop_settings);
+        let raw = crop_face_from_image(&source_image, detection, &crop_settings);
+        let crop = apply_shape_and_fill(raw, &settings.crop);
         let (quality_score, quality) = estimate_sharpness(&crop);
         crops.push(crop);
         candidates.push(ExportCandidate {
