@@ -7,8 +7,8 @@ use crate::{
 
 use fcs_core::{YuNetDetector, crop_face_from_image};
 use fcs_utils::{
-    MetadataContext, OutputOptions, append_suffix_to_filename, estimate_sharpness, load_image,
-    quality::Quality, save_dynamic_image,
+    MetadataContext, OutputOptions, append_suffix_to_filename, apply_shape_mask, estimate_sharpness,
+    load_image, quality::Quality, save_dynamic_image,
 };
 use log::{info, warn};
 use rfd::FileDialog;
@@ -83,7 +83,32 @@ fn export_preview_faces(app: &mut App2, selected: Vec<usize>, error_title: &str)
 
         let mut detection_for_crop = det.detection.clone();
         detection_for_crop.bbox = det.active_bbox();
-        let crop = crop_face_from_image(source_image.as_ref(), &detection_for_crop, &crop_settings);
+        let raw_crop =
+            crop_face_from_image(source_image.as_ref(), &detection_for_crop, &crop_settings);
+
+        // Apply shape mask (alpha cutout + vignette)
+        let mut rgba = raw_crop.to_rgba8();
+        apply_shape_mask(
+            &mut rgba,
+            &settings.crop.shape,
+            settings.crop.vignette_softness,
+            settings.crop.vignette_intensity,
+            settings.crop.vignette_color,
+        );
+        // Composite transparent areas onto the fill colour
+        let fill = settings.crop.fill_color;
+        for px in rgba.pixels_mut() {
+            let a = px[3] as f32 / 255.0;
+            if a >= 1.0 {
+                continue;
+            }
+            let inv = 1.0 - a;
+            px[0] = (px[0] as f32 * a + fill.red as f32 * inv) as u8;
+            px[1] = (px[1] as f32 * a + fill.green as f32 * inv) as u8;
+            px[2] = (px[2] as f32 * a + fill.blue as f32 * inv) as u8;
+            px[3] = 255;
+        }
+        let crop = image::DynamicImage::ImageRgba8(rgba);
 
         let mut filename = format!("{source_stem}_face_{:02}.{ext}", face_index + 1);
         if let Some(suffix) = quality_suffix(&settings, det.quality) {

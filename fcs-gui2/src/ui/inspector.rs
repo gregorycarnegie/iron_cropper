@@ -169,15 +169,16 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
         // Aspect ratio
         field_label(ui, "Aspect ratio");
         let aspect_options = ["Free", "1:1", "4:5", "3:4"];
-        // map current width/height to index
-        let mut asp_idx = match (
-            app.settings.crop.output_width,
-            app.settings.crop.output_height,
-        ) {
-            (w, h) if w == h => 1,
-            (4, 5) | (800, 1000) => 2,
-            (3, 4) | (900, 1200) => 3,
-            _ => 0,
+        let w = app.settings.crop.output_width as f32;
+        let h = app.settings.crop.output_height as f32;
+        let mut asp_idx = if w == h {
+            1
+        } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
+            2
+        } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
+            3
+        } else {
+            0
         };
         let asp_idx_bak = asp_idx;
         segmented_control(ui, &aspect_options, &mut asp_idx);
@@ -240,6 +241,9 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                 }
             });
         });
+
+        // Crop overlay toggle
+        toggle_row(ui, "Show crop overlay", &mut app.show_crop_overlay);
 
         // Confidence floor
         field_label(
@@ -519,8 +523,23 @@ fn output_tab(ui: &mut Ui, app: &mut App2) {
         ui.add_space(12.0);
         field_label(ui, "Format");
         let formats = ["JPEG", "PNG", "WEBP", "AVIF"];
-        let mut fmt_idx = 0usize;
+        let mut fmt_idx = match app.settings.crop.output_format.to_ascii_uppercase().as_str() {
+            "PNG" => 1,
+            "WEBP" => 2,
+            "AVIF" => 3,
+            _ => 0,
+        };
+        let fmt_idx_bak = fmt_idx;
         segmented_control(ui, &formats, &mut fmt_idx);
+        if fmt_idx != fmt_idx_bak {
+            app.settings.crop.output_format = match fmt_idx {
+                1 => "png",
+                2 => "webp",
+                3 => "avif",
+                _ => "jpeg",
+            }
+            .to_string();
+        }
 
         ui.add_space(8.0);
         field_label(ui, "JPEG quality");

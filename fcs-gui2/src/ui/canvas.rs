@@ -8,6 +8,8 @@ use crate::theme::P;
 use crate::types::{App2, LogKind};
 use crate::ui::widgets::{ctl_pill, face_chip};
 use egui::{Color32, Frame, Rect, Sense, Stroke, Ui, Vec2};
+use fcs_core::calculate_crop_region;
+use fcs_utils::outline_points_for_rect;
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
     ui.set_min_size(ui.available_size());
@@ -225,6 +227,36 @@ fn stage(ui: &mut Ui, app: &mut App2) {
                 ];
                 for corner in corners {
                     draw_drag_handle(painter, corner, color);
+                }
+            }
+        }
+    }
+
+    // Crop region + shape outline overlay
+    if app.show_crop_overlay {
+        if let Some((img_w, img_h)) = app.preview.image_size {
+            let crop_settings = app.build_crop_settings();
+            let crop_stroke = Stroke::new(2.0, P::LIME);
+            for det in &app.preview.detections {
+                let bbox = det.active_bbox();
+                let region = calculate_crop_region(img_w, img_h, bbox, &crop_settings);
+                let rx = image_rect.min.x
+                    + (region.x as f32 / img_w as f32) * image_rect.width();
+                let ry = image_rect.min.y
+                    + (region.y as f32 / img_h as f32) * image_rect.height();
+                let rw = (region.width as f32 / img_w as f32) * image_rect.width();
+                let rh = (region.height as f32 / img_h as f32) * image_rect.height();
+                let crop_rect = egui::Rect::from_min_size(egui::pos2(rx, ry), Vec2::new(rw, rh));
+
+                let shape_pts = outline_points_for_rect(rw, rh, &app.settings.crop.shape);
+                if shape_pts.len() >= 2 {
+                    let outline: Vec<egui::Pos2> = shape_pts
+                        .iter()
+                        .map(|(x, y)| egui::pos2(crop_rect.min.x + x, crop_rect.min.y + y))
+                        .collect();
+                    painter.add(egui::Shape::closed_line(outline, crop_stroke));
+                } else {
+                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
                 }
             }
         }

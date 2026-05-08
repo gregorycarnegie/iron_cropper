@@ -51,59 +51,58 @@ pub fn segmented_control(ui: &mut Ui, options: &[&str], selected: &mut usize) ->
     let total_w = ui.available_width();
     let btn_w = total_w / n as f32;
 
-    let bg = P::black_alpha(76);
-    let outer = ui.allocate_rect(
-        egui::Rect::from_min_size(ui.cursor().min, Vec2::new(total_w, 28.0)),
-        Sense::hover(),
-    );
-    let painter = ui.painter();
-    painter.rect_filled(outer.rect, 7.0, bg);
+    // Allocate the entire control as one painter — this correctly advances the
+    // cursor and gives us a stable ID.  Per-button interaction is registered
+    // via ui.interact() which does NOT allocate extra space.
+    let (outer_resp, painter) =
+        ui.allocate_painter(Vec2::new(total_w, 28.0), Sense::hover());
+    let outer_rect = outer_resp.rect;
+
+    painter.rect_filled(outer_rect, 7.0, P::black_alpha(76));
     painter.rect_stroke(
-        outer.rect,
+        outer_rect,
         7.0,
         Stroke::new(1.0, P::RULE),
         StrokeKind::Outside,
     );
 
-    ui.horizontal(|ui| {
-        for (i, &label) in options.iter().enumerate() {
-            let btn_rect = egui::Rect::from_min_size(
-                outer.rect.min + Vec2::new(i as f32 * btn_w + 2.0, 2.0),
-                Vec2::new(btn_w - 4.0, 24.0),
-            );
-            let resp = ui.allocate_rect(btn_rect, Sense::click());
-            let is_on = i == *selected;
-            let bg_fill = if is_on {
-                P::PEACH
-            } else if resp.hovered() {
-                P::white_alpha(10)
-            } else {
-                Color32::TRANSPARENT
-            };
-            let text_color = if is_on {
-                P::BG
-            } else if resp.hovered() {
-                P::INK
-            } else {
-                P::INK2
-            };
-            let painter = ui.painter();
-            if bg_fill != Color32::TRANSPARENT {
-                painter.rect_filled(btn_rect, 5.0, bg_fill);
-            }
-            painter.text(
-                btn_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::monospace(11.0),
-                text_color,
-            );
-            if resp.clicked() {
-                *selected = i;
-                changed = true;
-            }
+    for (i, &label) in options.iter().enumerate() {
+        let btn_rect = egui::Rect::from_min_size(
+            outer_rect.min + Vec2::new(i as f32 * btn_w + 2.0, 2.0),
+            Vec2::new(btn_w - 4.0, 24.0),
+        );
+        let btn_id = outer_resp.id.with(i);
+        let resp = ui.interact(btn_rect, btn_id, Sense::click());
+        let is_on = i == *selected;
+        let bg_fill = if is_on {
+            P::PEACH
+        } else if resp.hovered() {
+            P::white_alpha(10)
+        } else {
+            Color32::TRANSPARENT
+        };
+        let text_color = if is_on {
+            P::BG
+        } else if resp.hovered() {
+            P::INK
+        } else {
+            P::INK2
+        };
+        if bg_fill != Color32::TRANSPARENT {
+            painter.rect_filled(btn_rect, 5.0, bg_fill);
         }
-    });
+        painter.text(
+            btn_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::monospace(11.0),
+            text_color,
+        );
+        if resp.clicked() {
+            *selected = i;
+            changed = true;
+        }
+    }
     changed
 }
 
