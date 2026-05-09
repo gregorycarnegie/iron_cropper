@@ -645,4 +645,7 @@ pub struct App2 {
 
     // Dialogs
     pub show_about: bool,
+
+    // Deferred side-effects
+    pub needs_detector_rebuild: bool,
 }

@@ -153,6 +153,7 @@ impl App2 {
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
             show_about: false,
+            needs_detector_rebuild: false,
         }
     }
 }
@@ -170,6 +171,9 @@ fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineHandles {
 
 impl App for App2 {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        if self.needs_detector_rebuild {
+            self.rebuild_detector();
+        }
         self.poll_worker(ctx);
         self.handle_dropped_files(ctx);
         if self.is_busy {
@@ -304,6 +308,39 @@ fn install_resize_edges(ui: &mut egui::Ui) {
 // ── Worker polling / dropped files ───────────────────────────────────────────
 
 impl App2 {
+    pub fn rebuild_detector(&mut self) {
+        self.needs_detector_rebuild = false;
+        let shared = self.gpu_context.clone();
+        let (status, new_gpu_ctx, result) = build_detector(&self.settings, shared);
+        self.gpu_status = status;
+        if let Some(ctx) = new_gpu_ctx {
+            let enhancer = WgpuEnhancer::new(ctx.clone()).ok().map(Arc::new);
+            let cropper = GpuBatchCropper::new(ctx.clone()).ok().map(Arc::new);
+            self.gpu_context = Some(ctx);
+            self.gpu_enhancer = enhancer;
+            self.gpu_batch_cropper = cropper;
+        } else if !self.settings.gpu.enabled {
+            self.gpu_enhancer = None;
+            self.gpu_batch_cropper = None;
+        }
+        self.detector = match result {
+            Ok(d) => {
+                info!("Detector rebuilt");
+                Some(Arc::new(d))
+            }
+            Err(err) => {
+                log::warn!("Detector rebuild failed: {err}");
+                self.show_error("Rebuild failed", format!("{err:#}"));
+                None
+            }
+        };
+        self.cache.clear();
+        self.crop_preview_cache.clear();
+        if let Some(path) = self.preview.image_path.clone() {
+            self.load_image_path(path);
+        }
+    }
+
     fn poll_worker(&mut self, ctx: &egui::Context) {
         let mut updated = false;
         while let Ok(msg) = self.job_rx.try_recv() {

@@ -5,7 +5,10 @@ use crate::core::settings::persist_with_feedback;
 use crate::theme::P;
 use crate::types::App2;
 use egui::{Frame, Popup, RichText, Sense, Ui, Vec2};
-use fcs_utils::config::{BatchLogFormat, MetadataMode, ResizeQuality};
+use fcs_utils::{
+    configure_telemetry,
+    config::{BatchLogFormat, MetadataMode, ResizeQuality},
+};
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
     egui::Panel::top("menubar")
@@ -115,13 +118,20 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 menu_item(ui, "Settings", 240.0, |ui| {
                     if ui.button("Restore Defaults").clicked() {
                         app.settings = app.default_settings.clone();
+                        app.needs_detector_rebuild = true;
+                        configure_telemetry(
+                            app.settings.telemetry.enabled,
+                            app.settings.telemetry.level_filter(),
+                        );
                     }
                     if ui.button("Set as Default").clicked() {
                         app.default_settings = app.settings.clone();
                     }
                     ui.separator();
+
+                    // ── Detection ──────────────────────────────────────────────
                     section_label(ui, "Detection");
-                    ui.add(
+                    let r = ui.add(
                         egui::Slider::new(
                             &mut app.settings.detection.nms_threshold,
                             0.0..=1.0,
@@ -129,15 +139,23 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                         .text("NMS threshold")
                         .step_by(0.01),
                     );
-                    ui.add(
+                    if r.drag_stopped() || (r.changed() && !r.dragged()) {
+                        app.needs_detector_rebuild = true;
+                    }
+                    let r = ui.add(
                         egui::DragValue::new(&mut app.settings.detection.top_k)
                             .prefix("Top K: ")
                             .range(1..=10_000)
                             .speed(10),
                     );
+                    if r.drag_stopped() || (r.changed() && !r.dragged()) {
+                        app.needs_detector_rebuild = true;
+                    }
 
+                    // ── Input ──────────────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "Input");
+                    let old_rq = app.settings.input.resize_quality;
                     ui.horizontal(|ui| {
                         ui.label("Resize quality");
                         ui.radio_value(
@@ -151,35 +169,51 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                             "Speed",
                         );
                     });
+                    if app.settings.input.resize_quality != old_rq {
+                        app.needs_detector_rebuild = true;
+                    }
 
+                    // ── GPU ────────────────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "GPU");
-                    ui.checkbox(&mut app.settings.gpu.enabled, "Enable GPU");
-                    ui.add_enabled(
-                        app.settings.gpu.enabled,
-                        egui::Checkbox::new(
-                            &mut app.settings.gpu.inference,
-                            "GPU inference",
-                        ),
-                    );
-                    ui.add_enabled(
-                        app.settings.gpu.enabled,
-                        egui::Checkbox::new(
-                            &mut app.settings.gpu.preprocessing,
-                            "GPU preprocessing",
-                        ),
-                    );
-                    ui.add_enabled(
-                        app.settings.gpu.enabled,
-                        egui::Checkbox::new(
-                            &mut app.settings.gpu.respect_env,
-                            "Respect env overrides",
-                        ),
-                    );
+                    if ui
+                        .checkbox(&mut app.settings.gpu.enabled, "Enable GPU")
+                        .changed()
+                    {
+                        app.needs_detector_rebuild = true;
+                    }
+                    ui.add_enabled_ui(app.settings.gpu.enabled, |ui| {
+                        if ui
+                            .checkbox(&mut app.settings.gpu.inference, "GPU inference")
+                            .changed()
+                        {
+                            app.needs_detector_rebuild = true;
+                        }
+                        if ui
+                            .checkbox(&mut app.settings.gpu.preprocessing, "GPU preprocessing")
+                            .changed()
+                        {
+                            app.needs_detector_rebuild = true;
+                        }
+                        if ui
+                            .checkbox(&mut app.settings.gpu.respect_env, "Respect env overrides")
+                            .changed()
+                        {
+                            app.needs_detector_rebuild = true;
+                        }
+                    });
 
+                    // ── Telemetry ──────────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "Telemetry");
-                    ui.checkbox(&mut app.settings.telemetry.enabled, "Enable telemetry");
+                    let mut tel_dirty = false;
+                    if ui
+                        .checkbox(&mut app.settings.telemetry.enabled, "Enable telemetry")
+                        .changed()
+                    {
+                        tel_dirty = true;
+                    }
+                    let old_level = app.settings.telemetry.level.clone();
                     egui::ComboBox::new("telemetry_level", "Log level")
                         .selected_text(app.settings.telemetry.level.as_str())
                         .show_ui(ui, |ui| {
@@ -190,7 +224,17 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                                 }
                             }
                         });
+                    if app.settings.telemetry.level != old_level {
+                        tel_dirty = true;
+                    }
+                    if tel_dirty {
+                        configure_telemetry(
+                            app.settings.telemetry.enabled,
+                            app.settings.telemetry.level_filter(),
+                        );
+                    }
 
+                    // ── Batch Logging ──────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "Batch Logging");
                     ui.checkbox(
@@ -211,6 +255,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                         );
                     });
 
+                    // ── Quality Rules ──────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "Quality Rules");
                     ui.checkbox(
@@ -226,6 +271,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                         "Append quality suffix",
                     );
 
+                    // ── Metadata ───────────────────────────────────────────────
                     ui.separator();
                     section_label(ui, "Metadata");
                     egui::ComboBox::new("metadata_mode", "Mode")
