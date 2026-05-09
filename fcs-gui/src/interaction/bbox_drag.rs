@@ -1,151 +1,69 @@
-//! Bounding box dragging and resizing functionality.
+//! Bounding box drag/resize interaction.
 
-use super::coords::clamp_bbox_to_image;
-
-use crate::{ActiveBoxDrag, DetectionWithQuality, DragHandle, PointerSnapshot, PreviewSpace};
-
-use egui::{Rect, pos2, vec2};
+use crate::types::{ActiveBoxDrag, DragHandle};
+use egui::{Pos2, Rect};
 use fcs_core::BoundingBox;
 
-/// Gets the screen rectangle for a drag handle control.
-pub fn handle_rect_for(rect: Rect, handle: DragHandle) -> Rect {
-    let size = 12.0;
-    let center = match handle {
-        DragHandle::NorthWest => pos2(rect.left(), rect.top()),
-        DragHandle::NorthEast => pos2(rect.right(), rect.top()),
-        DragHandle::SouthWest => pos2(rect.left(), rect.bottom()),
-        DragHandle::SouthEast => pos2(rect.right(), rect.bottom()),
-        DragHandle::Move => rect.center(),
-    };
-    Rect::from_center_size(center, vec2(size, size))
+pub const HANDLE_SIZE: f32 = 9.0;
+
+/// Returns which drag handle (if any) is under `pos` for a bounding box `rect`.
+pub fn hit_test_handle(rect: Rect, pos: Pos2) -> Option<DragHandle> {
+    let _hs = HANDLE_SIZE / 2.0;
+    let corners = [
+        (DragHandle::NorthWest, Pos2::new(rect.min.x, rect.min.y)),
+        (DragHandle::NorthEast, Pos2::new(rect.max.x, rect.min.y)),
+        (DragHandle::SouthWest, Pos2::new(rect.min.x, rect.max.y)),
+        (DragHandle::SouthEast, Pos2::new(rect.max.x, rect.max.y)),
+    ];
+    for (handle, corner) in corners {
+        let h_rect = Rect::from_center_size(corner, egui::Vec2::splat(HANDLE_SIZE + 4.0));
+        if h_rect.contains(pos) {
+            return Some(handle);
+        }
+    }
+    if rect.shrink(4.0).contains(pos) {
+        return Some(DragHandle::Move);
+    }
+    None
 }
 
-/// Applies a drag operation to a bounding box.
-/// Returns the updated bounding box clamped to image bounds.
-pub fn apply_drag_to_bbox(
-    active: ActiveBoxDrag,
-    drag_delta: egui::Vec2,
-    image_rect: Rect,
-    image_size: (u32, u32),
+/// Apply a drag delta to a bounding box in image pixel space.
+pub fn apply_drag(
+    drag: &ActiveBoxDrag,
+    delta_px: egui::Vec2,
+    img_w: f32,
+    img_h: f32,
 ) -> BoundingBox {
-    if image_size.0 == 0 || image_size.1 == 0 {
-        return active.start_bbox;
-    }
-
-    let scale_x = image_rect.width() / image_size.0 as f32;
-    let scale_y = image_rect.height() / image_size.1 as f32;
-    if scale_x <= 0.0 || scale_y <= 0.0 {
-        return active.start_bbox;
-    }
-
-    let mut bbox = active.start_bbox;
-    let delta_x = drag_delta.x / scale_x;
-    let delta_y = drag_delta.y / scale_y;
-
-    match active.handle {
+    let mut bbox = drag.start_bbox;
+    match drag.handle {
         DragHandle::Move => {
-            bbox.x += delta_x;
-            bbox.y += delta_y;
+            bbox.x = (bbox.x + delta_px.x).clamp(0.0, img_w - bbox.width);
+            bbox.y = (bbox.y + delta_px.y).clamp(0.0, img_h - bbox.height);
         }
         DragHandle::NorthWest => {
-            bbox.x += delta_x;
-            bbox.y += delta_y;
-            bbox.width -= delta_x;
-            bbox.height -= delta_y;
+            let new_x = (bbox.x + delta_px.x).clamp(0.0, bbox.x + bbox.width - 10.0);
+            let new_y = (bbox.y + delta_px.y).clamp(0.0, bbox.y + bbox.height - 10.0);
+            bbox.width += bbox.x - new_x;
+            bbox.height += bbox.y - new_y;
+            bbox.x = new_x;
+            bbox.y = new_y;
         }
         DragHandle::NorthEast => {
-            bbox.y += delta_y;
-            bbox.width += delta_x;
-            bbox.height -= delta_y;
+            let new_y = (bbox.y + delta_px.y).clamp(0.0, bbox.y + bbox.height - 10.0);
+            bbox.height += bbox.y - new_y;
+            bbox.y = new_y;
+            bbox.width = (bbox.width + delta_px.x).clamp(10.0, img_w - bbox.x);
         }
         DragHandle::SouthWest => {
-            bbox.x += delta_x;
-            bbox.width -= delta_x;
-            bbox.height += delta_y;
+            let new_x = (bbox.x + delta_px.x).clamp(0.0, bbox.x + bbox.width - 10.0);
+            bbox.width += bbox.x - new_x;
+            bbox.x = new_x;
+            bbox.height = (bbox.height + delta_px.y).clamp(10.0, img_h - bbox.y);
         }
         DragHandle::SouthEast => {
-            bbox.width += delta_x;
-            bbox.height += delta_y;
+            bbox.width = (bbox.width + delta_px.x).clamp(10.0, img_w - bbox.x);
+            bbox.height = (bbox.height + delta_px.y).clamp(10.0, img_h - bbox.y);
         }
     }
-
-    clamp_bbox_to_image(bbox, image_size)
-}
-
-/// Handles bounding box drag interactions (starting, updating, ending drags).
-pub fn handle_bbox_drag_interactions(
-    active_drag: &mut Option<ActiveBoxDrag>,
-    detections: &mut [DetectionWithQuality],
-    pointer: &PointerSnapshot,
-    preview_space: &PreviewSpace,
-) {
-    let Some(pos) = pointer.pos else {
-        return;
-    };
-
-    // If drag is active, update it
-    if let Some(drag) = *active_drag {
-        if pointer.down {
-            // Continue dragging
-            if let Some(origin) = pointer.press_origin {
-                let drag_delta = pos - origin;
-                let new_bbox = apply_drag_to_bbox(
-                    drag,
-                    drag_delta,
-                    preview_space.rect,
-                    preview_space.image_size,
-                );
-                if let Some(det) = detections.get_mut(drag.index) {
-                    det.set_bbox(new_bbox);
-                }
-            }
-        } else {
-            // End drag
-            *active_drag = None;
-        }
-        return;
-    }
-
-    // If not dragging and pointer is pressed, check if we should start a drag
-    if pointer.pressed && preview_space.rect.contains(pos) {
-        // Check each detection to see if we're clicking on a handle or the bbox
-        for (idx, det) in detections.iter().enumerate() {
-            let bbox = det.active_bbox();
-            let bbox_rect = super::coords::bbox_to_screen_rect(
-                bbox,
-                preview_space.rect,
-                preview_space.image_size,
-            );
-
-            // Check corner handles first (higher priority)
-            let handles = [
-                DragHandle::NorthWest,
-                DragHandle::NorthEast,
-                DragHandle::SouthWest,
-                DragHandle::SouthEast,
-            ];
-
-            for handle in handles {
-                let handle_rect = handle_rect_for(bbox_rect, handle);
-                if handle_rect.contains(pos) {
-                    *active_drag = Some(ActiveBoxDrag {
-                        index: idx,
-                        handle,
-                        start_bbox: bbox,
-                    });
-                    return;
-                }
-            }
-
-            // Check if clicking inside the bbox for move
-            if bbox_rect.expand(-8.0).contains(pos) {
-                *active_drag = Some(ActiveBoxDrag {
-                    index: idx,
-                    handle: DragHandle::Move,
-                    start_bbox: bbox,
-                });
-                return;
-            }
-        }
-    }
+    bbox
 }

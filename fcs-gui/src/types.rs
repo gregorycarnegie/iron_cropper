@@ -1,14 +1,10 @@
-//! Type definitions for the YuNet GUI application.
+//! Application state types for fcs-gui2.
 
-use crate::ui::icons::IconSet;
-
-use anyhow::anyhow;
-use egui::{Context as EguiContext, Rect, TextureHandle};
-use fcs_core::{BoundingBox, CropSettings as CoreCropSettings, Detection};
+use egui::TextureHandle;
+use fcs_core::{BoundingBox, Detection};
 use fcs_utils::{
-    OutputOptions, WgpuEnhancer,
+    CropShape, PolygonCornerStyle, WgpuEnhancer,
     config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
-    enhance::EnhancementSettings,
     gpu::{GpuBatchCropper, GpuContext, GpuStatusIndicator},
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
@@ -18,7 +14,6 @@ use fcs_utils::{
 };
 use image::DynamicImage;
 use lru::LruCache;
-use std::num::NonZeroUsize;
 use std::{
     collections::HashSet,
     path::PathBuf,
@@ -26,7 +21,26 @@ use std::{
 };
 use tempfile::TempPath;
 
-/// Status of a batch file being processed.
+// ── Sidebar / inspector tab selectors ────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum SidebarTab {
+    #[default]
+    Queue,
+    Mapping,
+    History,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum InspectorTab {
+    #[default]
+    Crop,
+    Output,
+    Enhance,
+}
+
+// ── Batch file status ─────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BatchFileStatus {
     Pending,
@@ -38,9 +52,34 @@ pub enum BatchFileStatus {
     Failed {
         error: String,
     },
+    Skipped,
 }
 
-/// A file in the batch processing queue.
+impl BatchFileStatus {
+    pub fn badge_label(&self) -> &str {
+        match self {
+            Self::Pending => "—",
+            Self::Processing => "run",
+            Self::Completed { faces_exported, .. } => {
+                if *faces_exported == 0 {
+                    "skip"
+                } else {
+                    "ok"
+                }
+            }
+            Self::Failed { .. } => "err",
+            Self::Skipped => "skip",
+        }
+    }
+    pub fn face_count(&self) -> Option<usize> {
+        if let Self::Completed { faces_exported, .. } = self {
+            Some(*faces_exported)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BatchFile {
     pub path: PathBuf,
@@ -48,55 +87,138 @@ pub struct BatchFile {
     pub output_override: Option<PathBuf>,
 }
 
-/// Configuration for a batch export job.
+// ── Detection quality ─────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DetectionOrigin {
+    Detector,
+    Manual,
+}
+
 #[derive(Clone)]
-pub struct BatchJobConfig {
-    pub output_dir: PathBuf,
-    pub crop_settings: CoreCropSettings,
-    pub crop_config: ConfigCropSettings,
-    pub enhancement_settings: EnhancementSettings,
-    pub enhance_enabled: bool,
-    pub output_options: OutputOptions,
-    pub batch_logging: fcs_utils::config::BatchLoggingSettings,
-    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
-    pub gpu_cropper: Option<Arc<GpuBatchCropper>>,
+pub struct DetectionWithQuality {
+    pub detection: Detection,
+    pub quality_score: f64,
+    pub quality: Quality,
+    pub thumbnail: Option<TextureHandle>,
+    pub current_bbox: BoundingBox,
+    pub original_bbox: BoundingBox,
+    pub origin: DetectionOrigin,
 }
 
-/// Fingerprint of enhancement settings for cache invalidation.
+impl DetectionWithQuality {
+    pub fn active_bbox(&self) -> BoundingBox {
+        self.current_bbox
+    }
+    pub fn reset_bbox(&mut self) {
+        self.current_bbox = self.original_bbox;
+    }
+    pub fn set_bbox(&mut self, bbox: BoundingBox) {
+        self.current_bbox = bbox;
+    }
+    pub fn is_manual(&self) -> bool {
+        matches!(self.origin, DetectionOrigin::Manual)
+    }
+    pub fn is_modified(&self) -> bool {
+        self.current_bbox != self.original_bbox
+    }
+}
+
+// ── Cache keys ────────────────────────────────────────────────────────────────
+
+#[derive(Hash, PartialEq, Eq, Clone)]
+pub struct CacheKey {
+    pub path: PathBuf,
+    pub model_path: Option<String>,
+    pub input_width: u32,
+    pub input_height: u32,
+    pub resize_quality: ResizeQuality,
+    pub score_bits: u32,
+    pub nms_bits: u32,
+    pub top_k: usize,
+}
+
+pub struct DetectionCacheEntry {
+    pub texture: TextureHandle,
+    pub detections: Vec<DetectionWithQuality>,
+    pub original_size: (u32, u32),
+    pub source_image: Arc<DynamicImage>,
+}
+
+/// Hashable encoding of `CropShape` + vignette settings for cache keying.
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct EnhancementSignature {
-    pub auto_color: bool,
-    pub exposure_bits: u32,
-    pub brightness: i32,
-    pub contrast_bits: u32,
-    pub saturation_bits: u32,
-    pub unsharp_amount_bits: u32,
-    pub unsharp_radius_bits: u32,
-    pub sharpness_bits: u32,
-    pub skin_smooth_bits: u32,
-    pub skin_sigma_space_bits: u32,
-    pub skin_sigma_color_bits: u32,
-    pub red_eye_removal: bool,
-    pub red_eye_threshold_bits: u32,
-    pub background_blur: bool,
-    pub background_blur_radius_bits: u32,
-    pub background_blur_mask_bits: u32,
-}
-
-/// Fingerprint of shape settings for cache invalidation.
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct ShapeSignature {
+pub struct ShapeKey {
     pub kind: u8,
-    pub primary_bits: u32,
-    pub secondary_bits: u32,
+    pub param1_bits: u32,
+    pub param2_bits: u32,
     pub sides: u8,
     pub rotation_bits: u32,
     pub vignette_softness_bits: u32,
     pub vignette_intensity_bits: u32,
-    pub vignette_color_bits: u32,
+    pub vignette_r: u8,
+    pub vignette_g: u8,
+    pub vignette_b: u8,
+    pub vignette_a: u8,
 }
 
-/// Cache key for crop preview images.
+impl ShapeKey {
+    pub fn from_crop(crop: &ConfigCropSettings) -> Self {
+        let (kind, param1_bits, param2_bits, sides, rotation_bits) = encode_shape(&crop.shape);
+        Self {
+            kind,
+            param1_bits,
+            param2_bits,
+            sides,
+            rotation_bits,
+            vignette_softness_bits: crop.vignette_softness.to_bits(),
+            vignette_intensity_bits: crop.vignette_intensity.to_bits(),
+            vignette_r: crop.vignette_color.red,
+            vignette_g: crop.vignette_color.green,
+            vignette_b: crop.vignette_color.blue,
+            vignette_a: crop.vignette_color.alpha,
+        }
+    }
+}
+
+fn encode_shape(shape: &CropShape) -> (u8, u32, u32, u8, u32) {
+    match shape {
+        CropShape::Rectangle => (0, 0, 0, 0, 0),
+        CropShape::Ellipse => (1, 0, 0, 0, 0),
+        CropShape::RoundedRectangle { radius_pct } => (2, radius_pct.to_bits(), 0, 0, 0),
+        CropShape::ChamferedRectangle { size_pct } => (3, size_pct.to_bits(), 0, 0, 0),
+        CropShape::Polygon {
+            sides,
+            rotation_deg,
+            corner_style,
+        } => {
+            let (ck, p1) = match corner_style {
+                PolygonCornerStyle::Sharp => (0u8, 0u32),
+                PolygonCornerStyle::Rounded { radius_pct } => (1, radius_pct.to_bits()),
+                PolygonCornerStyle::Chamfered { size_pct } => (2, size_pct.to_bits()),
+                PolygonCornerStyle::Bezier { tension } => (3, tension.to_bits()),
+            };
+            (4 + ck, p1, 0, *sides, rotation_deg.to_bits())
+        }
+        CropShape::Star {
+            points,
+            inner_radius_pct,
+            rotation_deg,
+        } => (
+            8,
+            inner_radius_pct.to_bits(),
+            0,
+            *points,
+            rotation_deg.to_bits(),
+        ),
+        CropShape::KochPolygon {
+            sides,
+            rotation_deg,
+            iterations,
+        } => (9, *iterations as u32, 0, *sides, rotation_deg.to_bits()),
+        CropShape::KochRectangle { iterations } => (10, *iterations as u32, 0, 0, 0),
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct CropPreviewKey {
     pub path: PathBuf,
@@ -108,165 +230,39 @@ pub struct CropPreviewKey {
     pub horizontal_bits: u32,
     pub vertical_bits: u32,
     pub fill_color_bits: u32,
-    pub shape: ShapeSignature,
-    pub enhancement: EnhancementSignature,
-    pub enhance_enabled: bool,
+    pub shape: ShapeKey,
 }
 
-/// Cached crop preview entry.
 pub struct CropPreviewCacheEntry {
     pub image: Arc<DynamicImage>,
     pub texture: Option<TextureHandle>,
 }
 
-/// The main application state for the YuNet GUI.
-pub struct YuNetApp {
-    /// User-configurable settings.
-    pub settings: AppSettings,
-    /// Path to the settings file on disk.
-    pub settings_path: PathBuf,
-    /// Shared icon set for the UI.
-    pub icons: IconSet,
-    /// The current status message displayed in the top bar.
-    pub status_line: String,
-    /// The last error message, if any.
-    pub last_error: Option<String>,
-    /// Snapshot of GPU availability/fallback status.
-    pub gpu_status: GpuStatusIndicator,
-    /// Active GPU context, if initialized.
-    pub gpu_context: Option<Arc<GpuContext>>,
-    /// Shared GPU enhancer used for crop previews/exports.
-    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
-    /// Shared GPU cropper for face previews/exports.
-    pub gpu_batch_cropper: Option<Arc<GpuBatchCropper>>,
-    /// The face detector instance.
-    pub detector: Option<Arc<fcs_core::YuNetDetector>>,
-    /// Sender for submitting detection jobs to a background thread.
-    pub job_tx: mpsc::Sender<JobMessage>,
-    /// Receiver for collecting results from detection jobs.
-    pub job_rx: mpsc::Receiver<JobMessage>,
-    /// State of the image preview panel.
-    pub preview: PreviewState,
-    /// Cache for detection results to avoid re-running on the same image and settings.
-    pub cache: LruCache<CacheKey, DetectionCacheEntry>,
-    /// Cached cropped previews keyed by face + crop/enhancement configuration.
-    pub crop_preview_cache: LruCache<CropPreviewKey, CropPreviewCacheEntry>,
-    /// Cached loaded images to avoid redundant file I/O (especially during crop adjustments).
-    pub image_cache: LruCache<PathBuf, Arc<DynamicImage>>,
-    /// The current value of the model path text input.
-    pub model_path_input: String,
-    /// Flag indicating if the model path input has been modified.
-    pub model_path_dirty: bool,
-    /// Flag indicating if a detection job is currently running.
-    pub is_busy: bool,
-    /// A counter to generate unique texture names.
-    pub texture_seq: u64,
-    /// A counter to generate unique job IDs.
-    pub job_counter: u64,
-    /// The ID of the currently running detection job.
-    pub current_job: Option<u64>,
-    /// Flag indicating whether to show crop region overlays.
-    pub show_crop_overlay: bool,
-    /// Set of selected face indices (for cropping).
-    pub selected_faces: HashSet<usize>,
-    /// Undo/redo stack for crop configuration.
-    pub crop_history: Vec<ConfigCropSettings>,
-    pub crop_history_index: usize,
-    /// Hex text field backing the fill color editor.
-    pub crop_fill_hex_input: String,
-    /// Editable metadata tags input cached for the UI.
-    pub metadata_tags_input: String,
-    /// Batch mode state.
-    pub batch_files: Vec<BatchFile>,
-    /// Current index in batch processing.
-    pub batch_current_index: Option<usize>,
-    /// Mapping import workflow state.
-    pub mapping: MappingUiState,
-    /// Normalized anchor (0-1) describing the HUD offset inside the preview image.
-    pub preview_hud_anchor: egui::Vec2,
-    /// Whether the preview HUD content is collapsed.
-    pub preview_hud_minimized: bool,
-    /// Drag origin for HUD repositioning.
-    pub preview_hud_drag_origin: Option<egui::Pos2>,
-    /// Whether manual bounding-box draw mode is active.
-    pub manual_box_tool_enabled: bool,
-    /// In-progress manual bounding box draft in image coordinates.
-    pub manual_box_draft: Option<ManualBoxDraft>,
-    /// Currently active drag handle for adjusting a bounding box.
-    pub active_bbox_drag: Option<ActiveBoxDrag>,
-    /// Temporary clipboard/dropped images persisted to disk.
-    pub clipboard_temp_images: Vec<TempPath>,
-    /// Whether the settings window is open.
-    pub show_settings_window: bool,
-    /// Whether the batch queue window is open.
-    pub show_batch_window: bool,
-    /// Whether the mapping import window is open.
-    pub show_mapping_window: bool,
-    /// Whether the detection details window is open.
-    pub show_detection_window: bool,
-    /// Webcam state management.
-    pub webcam_state: WebcamState,
-    /// Selected color mode for the fill color picker.
-    pub fill_color_mode: ColorMode,
-    /// Whether the aspect ratio is locked in the crop settings.
-    pub aspect_ratio_locked: bool,
+// ── Preview state ─────────────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct PreviewState {
+    pub image_path: Option<PathBuf>,
+    pub texture: Option<TextureHandle>,
+    pub image_size: Option<(u32, u32)>,
+    pub detections: Vec<DetectionWithQuality>,
+    pub is_loading: bool,
+    pub source_image: Option<Arc<DynamicImage>>,
 }
 
-impl YuNetApp {
-    /// Creates a headless instance of the app for testing purposes.
-    pub fn test_instance() -> Self {
-        let (job_tx, job_rx) = mpsc::channel();
-        Self {
-            settings: AppSettings::default(),
-            settings_path: PathBuf::from("test_settings.json"),
-            icons: IconSet::new_headless(),
-            status_line: String::new(),
-            last_error: None,
-            gpu_status: GpuStatusIndicator::default(),
-            gpu_context: None,
-            gpu_enhancer: None,
-            gpu_batch_cropper: None,
-            detector: None,
-            job_tx,
-            job_rx,
-            preview: PreviewState::default(),
-            cache: LruCache::new(NonZeroUsize::new(50).unwrap()),
-            crop_preview_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
-            image_cache: LruCache::new(NonZeroUsize::new(20).unwrap()),
-            model_path_input: String::new(),
-            model_path_dirty: false,
-            is_busy: false,
-            texture_seq: 0,
-            job_counter: 0,
-            current_job: None,
-            show_crop_overlay: true,
-            selected_faces: HashSet::new(),
-            crop_history: vec![ConfigCropSettings::default()],
-            crop_history_index: 0,
-            crop_fill_hex_input: "#00000000".to_string(),
-            metadata_tags_input: String::new(),
-            batch_files: Vec::new(),
-            batch_current_index: None,
-            mapping: MappingUiState::default(),
-            preview_hud_anchor: egui::vec2(0.0, 0.0),
-            preview_hud_minimized: false,
-            preview_hud_drag_origin: None,
-            manual_box_tool_enabled: false,
-            manual_box_draft: None,
-            active_bbox_drag: None,
-            clipboard_temp_images: Vec::new(),
-            show_settings_window: false,
-            show_batch_window: false,
-            show_mapping_window: false,
-            show_detection_window: false,
-            webcam_state: WebcamState::default(),
-            fill_color_mode: ColorMode::Rgb,
-            aspect_ratio_locked: false,
-        }
+impl PreviewState {
+    pub fn begin_loading(&mut self, path: PathBuf) {
+        self.image_path = Some(path);
+        self.texture = None;
+        self.image_size = None;
+        self.detections.clear();
+        self.is_loading = true;
+        self.source_image = None;
     }
 }
 
-/// Webcam capture state.
+// ── Webcam state ──────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebcamStatus {
     Inactive,
@@ -276,41 +272,19 @@ pub enum WebcamStatus {
     Error,
 }
 
-/// Supported color modes for the fill color picker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorMode {
-    Rgb,
-    Hsv,
-    Hsl,
-    Cmyk,
-}
-
-/// Webcam configuration and runtime state.
 pub struct WebcamState {
-    /// Current status of the webcam.
     pub status: WebcamStatus,
-    /// Selected device index.
     pub device_index: u32,
-    /// Capture width.
     pub width: u32,
-    /// Capture height.
     pub height: u32,
-    /// Capture frame rate.
     pub fps: u32,
-    /// Total frames captured.
     pub frames_captured: u32,
-    /// Total faces detected across all frames.
     pub total_faces: usize,
-    /// Last error message if any.
     pub error_message: Option<String>,
-    /// Whether to show detection overlays in real-time.
     pub show_overlay: bool,
-    /// Whether to automatically crop detected faces.
     pub auto_crop: bool,
-    /// Atomic flag to signal the webcam thread to stop.
     pub stop_flag: Option<Arc<AtomicBool>>,
 }
-
 impl Default for WebcamState {
     fn default() -> Self {
         Self {
@@ -329,62 +303,14 @@ impl Default for WebcamState {
     }
 }
 
-/// Indicates whether a bounding box originated from the detector or the user.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DetectionOrigin {
-    Detector,
-    Manual,
-}
+// ── Drag / interaction ────────────────────────────────────────────────────────
 
-/// A detection with associated quality score and thumbnail.
-#[derive(Clone)]
-pub struct DetectionWithQuality {
-    /// The core detection data.
-    pub detection: Detection,
-    /// Laplacian variance (sharpness score).
-    pub quality_score: f64,
-    /// Quality level (Low, Medium, High).
-    pub quality: Quality,
-    /// Thumbnail texture handle for the face region.
-    pub thumbnail: Option<TextureHandle>,
-    /// Active bounding box (may diverge from the detector output).
-    pub current_bbox: BoundingBox,
-    /// Original bounding box (detector or initial manual draft).
-    pub original_bbox: BoundingBox,
-    /// Where this bounding box came from.
-    pub origin: DetectionOrigin,
-}
-
-impl DetectionWithQuality {
-    pub fn active_bbox(&self) -> BoundingBox {
-        self.current_bbox
-    }
-
-    pub fn reset_bbox(&mut self) {
-        self.current_bbox = self.original_bbox;
-    }
-
-    pub fn set_bbox(&mut self, bbox: BoundingBox) {
-        self.current_bbox = bbox;
-    }
-
-    pub fn is_manual(&self) -> bool {
-        matches!(self.origin, DetectionOrigin::Manual)
-    }
-
-    pub fn is_modified(&self) -> bool {
-        self.current_bbox != self.original_bbox
-    }
-}
-
-/// In-progress manual bounding box being drawn.
 #[derive(Clone, Copy)]
 pub struct ManualBoxDraft {
     pub start: egui::Pos2,
     pub current: egui::Pos2,
 }
 
-/// Active drag operation on a bounding box.
 #[derive(Clone, Copy)]
 pub struct ActiveBoxDrag {
     pub index: usize,
@@ -392,7 +318,6 @@ pub struct ActiveBoxDrag {
     pub start_bbox: BoundingBox,
 }
 
-/// Handle for dragging/resizing a bounding box.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DragHandle {
     Move,
@@ -402,7 +327,6 @@ pub enum DragHandle {
     SouthEast,
 }
 
-/// Snapshot of pointer state for interaction handling.
 #[derive(Clone, Copy, Default)]
 pub struct PointerSnapshot {
     pub pressed: bool,
@@ -411,56 +335,94 @@ pub struct PointerSnapshot {
     pub press_origin: Option<egui::Pos2>,
     pub pos: Option<egui::Pos2>,
 }
-
 impl PointerSnapshot {
-    pub fn capture(ctx: &EguiContext) -> Self {
-        ctx.input(|input| PointerSnapshot {
-            pressed: input.pointer.primary_pressed(),
-            released: input.pointer.primary_released(),
-            down: input.pointer.primary_down(),
-            press_origin: input.pointer.press_origin(),
-            pos: input.pointer.interact_pos(),
+    pub fn capture(ctx: &egui::Context) -> Self {
+        ctx.input(|i| PointerSnapshot {
+            pressed: i.pointer.primary_pressed(),
+            released: i.pointer.primary_released(),
+            down: i.pointer.primary_down(),
+            press_origin: i.pointer.press_origin(),
+            pos: i.pointer.interact_pos(),
         })
     }
 }
 
-/// Screen space metadata for preview panel.
-#[derive(Clone, Copy)]
-pub struct PreviewSpace {
-    pub rect: Rect,
-    pub image_size: (u32, u32),
-}
+// ── Panel open/close state ────────────────────────────────────────────────────
 
-/// State related to the image preview panel.
-#[derive(Default)]
-pub struct PreviewState {
-    /// The path to the currently displayed image.
-    pub image_path: Option<PathBuf>,
-    /// The handle to the egui texture for the image.
-    pub texture: Option<TextureHandle>,
-    /// The dimensions of the original image.
-    pub image_size: Option<(u32, u32)>,
-    /// The list of detections with quality scores for the current image.
-    pub detections: Vec<DetectionWithQuality>,
-    /// Whether the preview is currently loading/detecting.
-    pub is_loading: bool,
-    /// Cached original image pixels for computing previews without disk I/O.
-    pub source_image: Option<Arc<DynamicImage>>,
+pub struct PanelState {
+    pub crop_framing: bool,
+    pub crop_shape: bool,
+    pub positioning: bool,
+    pub crops_ready: bool,
+    pub enhancement: bool,
 }
-
-impl PreviewState {
-    /// Resets the preview state to a loading state for a new image.
-    pub fn begin_loading(&mut self, path: PathBuf) {
-        self.image_path = Some(path);
-        self.texture = None;
-        self.image_size = None;
-        self.detections.clear();
-        self.is_loading = true;
-        self.source_image = None;
+impl Default for PanelState {
+    fn default() -> Self {
+        Self {
+            crop_framing: true,
+            crop_shape: true,
+            positioning: true,
+            crops_ready: true,
+            enhancement: false,
+        }
     }
 }
 
-/// Mapping import workflow state.
+// ── Job messages ──────────────────────────────────────────────────────────────
+
+pub struct DetectionJobSuccess {
+    pub path: PathBuf,
+    pub color_image: egui::ColorImage,
+    pub detections: Vec<DetectionWithQuality>,
+    pub original_size: (u32, u32),
+    pub original_image: Arc<DynamicImage>,
+}
+
+pub enum JobMessage {
+    DetectionFinished {
+        job_id: u64,
+        cache_key: CacheKey,
+        data: DetectionJobSuccess,
+    },
+    DetectionFailed {
+        job_id: u64,
+        error: String,
+    },
+    WebcamFrame {
+        image: DynamicImage,
+        frame_number: u32,
+        detections: Vec<DetectionWithQuality>,
+    },
+    WebcamError(String),
+    WebcamStopped,
+    BatchProgress {
+        index: usize,
+        status: BatchFileStatus,
+    },
+    BatchComplete {
+        completed: usize,
+        failed: usize,
+    },
+}
+
+// ── Log line (mini-log overlay) ───────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct LogLine {
+    pub timestamp: String,
+    pub message: String,
+    pub kind: LogKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LogKind {
+    Info,
+    Ok,
+    Warn,
+}
+
+// ── Mapping UI state ──────────────────────────────────────────────────────────
+
 pub struct MappingUiState {
     pub file_path: Option<PathBuf>,
     pub base_dir: Option<PathBuf>,
@@ -478,13 +440,11 @@ pub struct MappingUiState {
     pub output_column_idx: Option<usize>,
     pub entries: Vec<MappingEntry>,
 }
-
 impl Default for MappingUiState {
     fn default() -> Self {
         Self::new()
     }
 }
-
 impl MappingUiState {
     pub fn new() -> Self {
         Self {
@@ -505,19 +465,14 @@ impl MappingUiState {
             entries: Vec::new(),
         }
     }
-
     pub fn set_file(&mut self, path: PathBuf) {
-        use fcs_utils::mapping::detect_format as detect_mapping_format_utils;
-
+        use fcs_utils::mapping::detect_format;
         self.file_path = Some(path);
         self.base_dir = self
             .file_path
             .as_ref()
-            .and_then(|p| p.parent().map(|parent| parent.to_path_buf()));
-        self.detected_format = self
-            .file_path
-            .as_ref()
-            .map(|p| detect_mapping_format_utils(p));
+            .and_then(|p| p.parent().map(|x| x.to_path_buf()));
+        self.detected_format = self.file_path.as_ref().map(|p| detect_format(p));
         self.preview = None;
         self.preview_error = None;
         self.source_column_idx = None;
@@ -529,193 +484,168 @@ impl MappingUiState {
         self.delimiter_input = ",".to_string();
         self.refresh_catalog();
     }
-
     pub fn effective_format(&self) -> Option<MappingFormat> {
         self.format_override.or(self.detected_format)
     }
-
     pub fn refresh_catalog(&mut self) {
         if let Some(path) = &self.file_path {
             match inspect_mapping_sources(path, &self.read_options()) {
                 Ok(catalog) => {
                     self.catalog = catalog;
-                    if self.sheet_name.is_empty()
-                        && let Some(first) = self.catalog.sheets.first()
-                    {
-                        self.sheet_name = first.clone();
+                    if self.sheet_name.is_empty() {
+                        if let Some(first) = self.catalog.sheets.first() {
+                            self.sheet_name = first.clone();
+                        }
                     }
-                    if self.sql_table.is_empty()
-                        && let Some(first) = self.catalog.sql_tables.first()
-                    {
-                        self.sql_table = first.clone();
+                    if self.sql_table.is_empty() {
+                        if let Some(first) = self.catalog.sql_tables.first() {
+                            self.sql_table = first.clone();
+                        }
                     }
                 }
-                Err(err) => {
-                    self.preview_error = Some(err.to_string());
-                }
+                Err(err) => self.preview_error = Some(err.to_string()),
             }
         } else {
             self.catalog = MappingCatalog::default();
         }
     }
-
     pub fn read_options(&self) -> MappingReadOptions {
-        let mut options = MappingReadOptions {
+        let mut opts = MappingReadOptions {
             format: self.effective_format(),
             has_headers: Some(self.has_headers),
             delimiter: self.delimiter_input.chars().next().map(|c| c as u8),
             ..Default::default()
         };
         if !self.sheet_name.trim().is_empty() {
-            options.sheet_name = Some(self.sheet_name.trim().to_string());
+            opts.sheet_name = Some(self.sheet_name.trim().to_string());
         }
         if !self.sql_table.trim().is_empty() {
-            options.sql_table = Some(self.sql_table.trim().to_string());
+            opts.sql_table = Some(self.sql_table.trim().to_string());
         }
         if !self.sql_query.trim().is_empty() {
-            options.sql_query = Some(self.sql_query.trim().to_string());
+            opts.sql_query = Some(self.sql_query.trim().to_string());
         }
-        options
+        opts
     }
-
-    pub fn selected_column_name(&self, idx: Option<usize>) -> String {
-        if let (Some(preview), Some(index)) = (self.preview.as_ref(), idx) {
-            preview
-                .columns
-                .get(index)
-                .cloned()
-                .unwrap_or_else(|| format!("Column {}", index + 1))
-        } else {
-            "Select column".to_string()
-        }
-    }
-
-    pub fn source_selector(&self) -> Option<ColumnSelector> {
-        self.source_column_idx.map(ColumnSelector::Index)
-    }
-
-    pub fn output_selector(&self) -> Option<ColumnSelector> {
-        self.output_column_idx.map(ColumnSelector::Index)
-    }
-
-    pub fn reload_preview(&mut self) -> anyhow::Result<()> {
-        let path = self
-            .file_path
-            .clone()
-            .ok_or_else(|| anyhow!("Select a mapping file first"))?;
-        match load_mapping_preview(&path, &self.read_options()) {
-            Ok(preview) => {
-                if self.source_column_idx.is_none() && !preview.columns.is_empty() {
-                    self.source_column_idx = Some(0);
-                }
-                if self.output_column_idx.is_none() && preview.columns.len() > 1 {
-                    self.output_column_idx = Some(1);
-                }
-                if self
-                    .source_column_idx
-                    .is_some_and(|idx| idx >= preview.columns.len())
-                {
-                    self.source_column_idx = None;
-                }
-                if self
-                    .output_column_idx
-                    .is_some_and(|idx| idx >= preview.columns.len())
-                {
-                    self.output_column_idx = None;
-                }
-                self.preview = Some(preview);
-                self.preview_error = None;
-                self.entries.clear();
-                Ok(())
-            }
-            Err(err) => {
-                self.preview_error = Some(err.to_string());
-                self.preview = None;
-                Err(err)
-            }
-        }
-    }
-
     pub fn load_entries(&mut self) -> anyhow::Result<()> {
         let path = self
             .file_path
             .clone()
-            .ok_or_else(|| anyhow!("Select a mapping file first"))?;
-        let source = self
-            .source_selector()
-            .ok_or_else(|| anyhow!("Select a source column"))?;
-        let output = self
-            .output_selector()
-            .ok_or_else(|| anyhow!("Select an output column"))?;
-        match load_mapping_entries(&path, &self.read_options(), &source, &output) {
-            Ok(entries) => {
-                self.entries = entries;
+            .ok_or_else(|| anyhow::anyhow!("No file selected"))?;
+        let src = self
+            .source_column_idx
+            .map(ColumnSelector::Index)
+            .ok_or_else(|| anyhow::anyhow!("No source column"))?;
+        let out = self
+            .output_column_idx
+            .map(ColumnSelector::Index)
+            .ok_or_else(|| anyhow::anyhow!("No output column"))?;
+        match load_mapping_entries(&path, &self.read_options(), &src, &out) {
+            Ok(e) => {
+                self.entries = e;
                 self.preview_error = None;
                 Ok(())
             }
-            Err(err) => {
-                self.preview_error = Some(err.to_string());
-                Err(err)
+            Err(e) => {
+                self.preview_error = Some(e.to_string());
+                Err(e)
+            }
+        }
+    }
+    pub fn reload_preview(&mut self) -> anyhow::Result<()> {
+        let path = self
+            .file_path
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("No file selected"))?;
+        match load_mapping_preview(&path, &self.read_options()) {
+            Ok(p) => {
+                if self.source_column_idx.is_none() && !p.columns.is_empty() {
+                    self.source_column_idx = Some(0);
+                }
+                if self.output_column_idx.is_none() && p.columns.len() > 1 {
+                    self.output_column_idx = Some(1);
+                }
+                self.preview = Some(p);
+                self.preview_error = None;
+                self.entries.clear();
+                Ok(())
+            }
+            Err(e) => {
+                self.preview_error = Some(e.to_string());
+                self.preview = None;
+                Err(e)
             }
         }
     }
 }
 
-/// A message sent from a background detection job to the GUI thread.
-pub enum JobMessage {
-    /// Indicates that a detection job has finished successfully.
-    DetectionFinished {
-        job_id: u64,
-        cache_key: CacheKey,
-        data: DetectionJobSuccess,
-    },
-    /// Indicates that a detection job has failed.
-    DetectionFailed { job_id: u64, error: String },
-    /// Webcam frame captured and ready for processing.
-    WebcamFrame {
-        image: DynamicImage,
-        frame_number: u32,
-        detections: Vec<DetectionWithQuality>,
-    },
-    /// Webcam capture error occurred.
-    WebcamError(String),
-    /// Webcam has been stopped.
-    WebcamStopped,
-    /// Progress update for a batch file.
-    BatchProgress {
-        index: usize,
-        status: BatchFileStatus,
-    },
-    /// Batch export process finished.
-    BatchComplete { completed: usize, failed: usize },
-}
+// ── Main app struct ───────────────────────────────────────────────────────────
 
-/// The data returned from a successful detection job.
-pub struct DetectionJobSuccess {
-    pub path: PathBuf,
-    pub color_image: egui::ColorImage,
-    pub detections: Vec<DetectionWithQuality>,
-    pub original_size: (u32, u32),
-    pub original_image: Arc<DynamicImage>,
-}
+pub struct App2 {
+    // Backend
+    pub settings: AppSettings,
+    pub default_settings: AppSettings,
+    pub settings_path: PathBuf,
+    pub gpu_status: GpuStatusIndicator,
+    pub gpu_context: Option<Arc<GpuContext>>,
+    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
+    pub gpu_batch_cropper: Option<Arc<GpuBatchCropper>>,
+    pub detector: Option<Arc<fcs_core::YuNetDetector>>,
+    pub job_tx: mpsc::Sender<JobMessage>,
+    pub job_rx: mpsc::Receiver<JobMessage>,
 
-/// A key used to cache detection results.
-#[derive(Hash, PartialEq, Eq, Clone)]
-pub struct CacheKey {
-    pub path: PathBuf,
-    pub model_path: Option<String>,
-    pub input_width: u32,
-    pub input_height: u32,
-    pub resize_quality: ResizeQuality,
-    pub score_bits: u32,
-    pub nms_bits: u32,
-    pub top_k: usize,
-}
+    // Preview
+    pub preview: PreviewState,
+    pub cache: LruCache<CacheKey, DetectionCacheEntry>,
+    pub crop_preview_cache: LruCache<CropPreviewKey, CropPreviewCacheEntry>,
+    pub image_cache: LruCache<PathBuf, Arc<DynamicImage>>,
 
-/// An entry in the detection cache.
-pub struct DetectionCacheEntry {
-    pub texture: TextureHandle,
-    pub detections: Vec<DetectionWithQuality>,
-    pub original_size: (u32, u32),
-    pub source_image: Arc<DynamicImage>,
+    // Selection & editing
+    pub selected_faces: HashSet<usize>,
+    pub show_crop_overlay: bool,
+    pub crop_history: Vec<ConfigCropSettings>,
+    pub crop_history_index: usize,
+    pub crop_fill_hex_input: String,
+    pub aspect_ratio_locked: bool,
+    pub aspect_ratio_idx: usize,
+
+    // Batch
+    pub batch_files: Vec<BatchFile>,
+    pub batch_current_index: Option<usize>,
+
+    // Mapping
+    pub mapping: MappingUiState,
+
+    // Interaction
+    pub manual_box_draft: Option<ManualBoxDraft>,
+    pub active_bbox_drag: Option<ActiveBoxDrag>,
+    pub manual_box_tool_enabled: bool,
+
+    // UI state
+    pub sidebar_tab: SidebarTab,
+    pub inspector_tab: InspectorTab,
+    pub panel_state: PanelState,
+    pub log_lines: Vec<LogLine>,
+
+    // Misc
+    pub status_line: String,
+    pub last_error: Option<String>,
+    pub is_busy: bool,
+    pub texture_seq: u64,
+    pub job_counter: u64,
+    pub current_job: Option<u64>,
+    pub model_path_input: String,
+    pub model_path_dirty: bool,
+    pub clipboard_temp_images: Vec<TempPath>,
+    pub webcam_state: WebcamState,
+
+    // Canvas zoom
+    pub zoom: f32,
+    pub pan: egui::Vec2,
+
+    // Dialogs
+    pub show_about: bool,
+
+    // Deferred side-effects
+    pub needs_detector_rebuild: bool,
 }

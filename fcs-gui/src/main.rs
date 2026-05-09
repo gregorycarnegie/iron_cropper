@@ -3,22 +3,23 @@
     windows_subsystem = "windows"
 )]
 
-//! Desktop GUI for YuNet face detection.
-
 use eframe::{NativeOptions, egui};
-use fcs_gui::YuNetApp;
+use fcs_gui2::App2;
 use fcs_utils::init_logging;
 use ico::IconDir;
 use log::{LevelFilter, warn};
 use std::{io::Cursor, sync::Arc};
 
-/// Main entry point for the GUI application.
 fn main() -> eframe::Result<()> {
     init_logging(LevelFilter::Info).expect("failed to initialize logging");
     let mut options = NativeOptions::default();
-
-    // Set initial window size to avoid scrunched UI on first launch
-    options.viewport = options.viewport.with_inner_size([1280.0, 800.0]);
+    options.viewport = options
+        .viewport
+        .with_inner_size([1480.0, 920.0])
+        .with_min_inner_size([1000.0, 640.0])
+        .with_resizable(true)
+        .with_drag_and_drop(true)
+        .with_decorations(false);
 
     if let Some(icon) = load_app_icon() {
         options.viewport = options.viewport.with_icon(Arc::new(icon));
@@ -27,46 +28,31 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Face Crop Studio",
         options,
-        Box::new(|cc| Ok(Box::new(YuNetApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(App2::new(cc)))),
     )
 }
 
-/// Load the embedded ICO file and convert it into an `eframe` icon, if possible.
 fn load_app_icon() -> Option<egui::IconData> {
     const ICON_BYTES: &[u8] = include_bytes!("../assets/app_icon.ico");
-
     let dir = match IconDir::read(Cursor::new(ICON_BYTES)) {
-        Ok(dir) => dir,
+        Ok(d) => d,
         Err(err) => {
-            warn!("Failed to read embedded app icon: {err}");
+            warn!("Failed to read app icon: {err}");
             return None;
         }
     };
-
     let mut best: Option<(ico::IconImage, u32)> = None;
     for entry in dir.entries() {
-        match entry.decode() {
-            Ok(image) => {
-                let score = image.width().saturating_mul(image.height());
-                if best
-                    .as_ref()
-                    .is_none_or(|(_, best_score)| score > *best_score)
-                {
-                    best = Some((image, score));
-                }
+        if let Ok(img) = entry.decode() {
+            let score = img.width().saturating_mul(img.height());
+            if best.as_ref().is_none_or(|(_, s)| score > *s) {
+                best = Some((img, score));
             }
-            Err(err) => warn!("Failed to decode icon entry: {err}"),
         }
     }
-
-    if let Some((image, _)) = best {
-        Some(egui::IconData {
-            rgba: image.rgba_data().to_vec(),
-            width: image.width(),
-            height: image.height(),
-        })
-    } else {
-        warn!("Embedded icon did not yield any usable RGBA data");
-        None
-    }
+    best.map(|(img, _)| egui::IconData {
+        rgba: img.rgba_data().to_vec(),
+        width: img.width(),
+        height: img.height(),
+    })
 }

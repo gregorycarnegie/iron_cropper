@@ -1,77 +1,560 @@
-use crate::theme;
-use crate::types::{BatchFile, BatchFileStatus, YuNetApp};
+//! eframe::App implementation for fcs-gui2.
 
-use egui::{Color32, RichText, Sense, Ui, vec2};
+use crate::core::{detection::build_detector, settings::load_settings};
+use crate::types::*;
+use crate::ui;
+
+use eframe::{App, CreationContext, Frame};
+use egui::{CursorIcon, ResizeDirection, ViewportCommand};
 use fcs_core::{CropSettings as CoreCropSettings, PositioningMode, preset_by_name};
-use fcs_utils::{RgbaColor, config::AppSettings, enhance::EnhancementSettings, quality::Quality};
+use fcs_utils::{
+    WgpuEnhancer,
+    config::default_settings_path,
+    configure_telemetry,
+    gpu::{GpuBatchCropper, GpuContext},
+    quality::Quality,
+};
 use log::info;
-use rfd::FileDialog;
-use std::{collections::BTreeMap, path::PathBuf};
+use lru::LruCache;
+use std::{
+    collections::{HashSet, VecDeque},
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    sync::{Arc, mpsc},
+};
 
-impl YuNetApp {
-    pub(crate) fn quality_legend(&self, ui: &mut Ui, palette: theme::Palette) {
-        ui.horizontal(|ui| {
-            self.legend_dot(ui, palette, palette.success, "High");
-            ui.add_space(8.0);
-            self.legend_dot(ui, palette, palette.warning, "Medium");
-            ui.add_space(8.0);
-            self.legend_dot(ui, palette, palette.danger, "Low");
+const SIDEBAR_W: f32 = 300.0;
+const INSPECTOR_W: f32 = 340.0;
+
+type GpuPipelineHandles = (
+    Option<Arc<GpuContext>>,
+    Option<Arc<WgpuEnhancer>>,
+    Option<Arc<GpuBatchCropper>>,
+);
+
+// ── App creation ─────────────────────────────────────────────────────────────
+
+impl App2 {
+    pub fn new(cc: &CreationContext<'_>) -> Self {
+        crate::theme::apply(&cc.egui_ctx);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
+        let settings_path = default_settings_path();
+        let settings = load_settings(&settings_path);
+        configure_telemetry(
+            settings.telemetry.enabled,
+            settings.telemetry.level_filter(),
+        );
+
+        let shared_gpu = cc.wgpu_render_state.as_ref().map(|rs| {
+            info!("Sharing GPU context from eframe renderer");
+            Arc::new(GpuContext::from_existing(
+                None,
+                None,
+                rs.device.clone(),
+                rs.queue.clone(),
+                rs.adapter.get_info(),
+            ))
         });
+
+        let (initial_gpu_status, initial_gpu_context, detector_result) =
+            build_detector(&settings, shared_gpu);
+
+        let (gpu_context, gpu_enhancer, gpu_batch_cropper) =
+            init_gpu_pipelines(initial_gpu_context);
+
+        let detector = match detector_result {
+            Ok(d) => {
+                info!("YuNet model loaded");
+                Some(Arc::new(d))
+            }
+            Err(err) => {
+                log::warn!("Model unavailable: {err}");
+                None
+            }
+        };
+
+        let status_line = if detector.is_some() {
+            "Model ready — select an image to detect faces.".to_owned()
+        } else {
+            "Model not loaded — configure model path to begin.".to_owned()
+        };
+
+        let (job_tx, job_rx) = mpsc::channel();
+        let default_settings = settings.clone();
+        let model_path_input = settings.model_path.clone().unwrap_or_default();
+        let crop_history = vec![settings.crop.clone()];
+        let crop_fill_hex_input = format!(
+            "#{:02X}{:02X}{:02X}",
+            settings.crop.fill_color.red,
+            settings.crop.fill_color.green,
+            settings.crop.fill_color.blue
+        );
+        let aspect_ratio_idx = {
+            let w = settings.crop.output_width as f32;
+            let h = settings.crop.output_height as f32;
+            if w == h {
+                1
+            } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
+                2
+            } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
+                3
+            } else {
+                0
+            }
+        };
+
+        Self {
+            settings,
+            default_settings,
+            settings_path,
+            gpu_status: initial_gpu_status,
+            gpu_context,
+            gpu_enhancer,
+            gpu_batch_cropper,
+            detector,
+            job_tx,
+            job_rx,
+            preview: PreviewState::default(),
+            cache: LruCache::new(NonZeroUsize::new(50).unwrap()),
+            crop_preview_cache: LruCache::new(NonZeroUsize::new(500).unwrap()),
+            image_cache: LruCache::new(NonZeroUsize::new(20).unwrap()),
+            selected_faces: HashSet::new(),
+            show_crop_overlay: true,
+            crop_history,
+            crop_history_index: 0,
+            crop_fill_hex_input,
+            aspect_ratio_locked: false,
+            aspect_ratio_idx,
+            batch_files: Vec::new(),
+            batch_current_index: None,
+            mapping: MappingUiState::new(),
+            manual_box_draft: None,
+            active_bbox_drag: None,
+            manual_box_tool_enabled: false,
+            sidebar_tab: SidebarTab::Queue,
+            inspector_tab: InspectorTab::Crop,
+            panel_state: PanelState::default(),
+            log_lines: vec![LogLine {
+                timestamp: "—".into(),
+                message: "Waiting for image…".into(),
+                kind: LogKind::Info,
+            }],
+            status_line,
+            last_error: None,
+            is_busy: false,
+            texture_seq: 0,
+            job_counter: 0,
+            current_job: None,
+            model_path_input,
+            model_path_dirty: false,
+            clipboard_temp_images: Vec::new(),
+            webcam_state: WebcamState::default(),
+            zoom: 1.0,
+            pan: egui::Vec2::ZERO,
+            show_about: false,
+            needs_detector_rebuild: false,
+        }
+    }
+}
+
+fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineHandles {
+    let Some(ctx) = context else {
+        return (None, None, None);
+    };
+    let enhancer = WgpuEnhancer::new(ctx.clone()).ok().map(Arc::new);
+    let cropper = GpuBatchCropper::new(ctx.clone()).ok().map(Arc::new);
+    (Some(ctx), enhancer, cropper)
+}
+
+// ── eframe::App ───────────────────────────────────────────────────────────────
+
+impl App for App2 {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        if self.needs_detector_rebuild {
+            self.rebuild_detector();
+        }
+        self.poll_worker(ctx);
+        self.handle_dropped_files(ctx);
+        if self.is_busy {
+            ctx.request_repaint();
+        }
     }
 
-    pub(crate) fn legend_dot(
-        &self,
-        ui: &mut Ui,
-        palette: theme::Palette,
-        color: Color32,
-        label: &str,
-    ) {
-        let (rect, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
-        ui.painter().circle_filled(rect.center(), 5.0, color);
-        ui.add_space(4.0);
-        ui.label(RichText::new(label).color(palette.subtle_text));
+    fn ui(&mut self, root_ui: &mut egui::Ui, _frame: &mut Frame) {
+        ui::titlebar::show(root_ui, self);
+        ui::menubar::show(root_ui, self);
+        ui::toolbar::show(root_ui, self);
+        ui::statusbar::show(root_ui, self);
+
+        let side_frame = egui::Frame::new()
+            .fill(crate::theme::P::BG2)
+            .inner_margin(egui::Margin::ZERO)
+            .outer_margin(egui::Margin::ZERO);
+
+        egui::Panel::left("sidebar")
+            .exact_size(SIDEBAR_W)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(side_frame)
+            .show_inside(root_ui, |ui| {
+                ui::sidebar::show(ui, self);
+            });
+
+        egui::Panel::right("inspector")
+            .exact_size(INSPECTOR_W)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(side_frame)
+            .show_inside(root_ui, |ui| {
+                ui::inspector::show(ui, self);
+            });
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(crate::theme::P::BG1)
+                    .inner_margin(egui::Margin::ZERO)
+                    .outer_margin(egui::Margin::ZERO),
+            )
+            .show_inside(root_ui, |ui| {
+                ui::canvas::show(ui, self);
+            });
+
+        install_resize_edges(root_ui);
+
+        if self.show_about {
+            show_about_window(root_ui.ctx(), &mut self.show_about);
+        }
+    }
+}
+
+fn install_resize_edges(ui: &mut egui::Ui) {
+    let full = ui.max_rect();
+    let edge = 6.0;
+    let corner = 14.0;
+    let entries = [
+        (
+            "resize_n",
+            egui::Rect::from_min_max(full.min, egui::pos2(full.max.x, full.min.y + edge)),
+            ResizeDirection::North,
+            CursorIcon::ResizeNorth,
+        ),
+        (
+            "resize_s",
+            egui::Rect::from_min_max(egui::pos2(full.min.x, full.max.y - edge), full.max),
+            ResizeDirection::South,
+            CursorIcon::ResizeSouth,
+        ),
+        (
+            "resize_w",
+            egui::Rect::from_min_max(full.min, egui::pos2(full.min.x + edge, full.max.y)),
+            ResizeDirection::West,
+            CursorIcon::ResizeWest,
+        ),
+        (
+            "resize_e",
+            egui::Rect::from_min_max(egui::pos2(full.max.x - edge, full.min.y), full.max),
+            ResizeDirection::East,
+            CursorIcon::ResizeEast,
+        ),
+        (
+            "resize_nw",
+            egui::Rect::from_min_size(full.min, egui::vec2(corner, corner)),
+            ResizeDirection::NorthWest,
+            CursorIcon::ResizeNorthWest,
+        ),
+        (
+            "resize_ne",
+            egui::Rect::from_min_size(
+                egui::pos2(full.max.x - corner, full.min.y),
+                egui::vec2(corner, corner),
+            ),
+            ResizeDirection::NorthEast,
+            CursorIcon::ResizeNorthEast,
+        ),
+        (
+            "resize_sw",
+            egui::Rect::from_min_size(
+                egui::pos2(full.min.x, full.max.y - corner),
+                egui::vec2(corner, corner),
+            ),
+            ResizeDirection::SouthWest,
+            CursorIcon::ResizeSouthWest,
+        ),
+        (
+            "resize_se",
+            egui::Rect::from_min_size(
+                full.max - egui::vec2(corner, corner),
+                egui::vec2(corner, corner),
+            ),
+            ResizeDirection::SouthEast,
+            CursorIcon::ResizeSouthEast,
+        ),
+    ];
+
+    for (id, rect, direction, cursor) in entries {
+        let response = ui.interact(rect, ui.id().with(id), egui::Sense::click_and_drag());
+        if response.hovered() {
+            ui.output_mut(|o| o.cursor_icon = cursor);
+        }
+        if response.drag_started() {
+            ui.ctx()
+                .send_viewport_cmd(ViewportCommand::BeginResize(direction));
+        }
+    }
+}
+
+// ── Worker polling / dropped files ───────────────────────────────────────────
+
+impl App2 {
+    pub fn rebuild_detector(&mut self) {
+        self.needs_detector_rebuild = false;
+        let shared = self.gpu_context.clone();
+        let (status, new_gpu_ctx, result) = build_detector(&self.settings, shared);
+        self.gpu_status = status;
+        if let Some(ctx) = new_gpu_ctx {
+            let enhancer = WgpuEnhancer::new(ctx.clone()).ok().map(Arc::new);
+            let cropper = GpuBatchCropper::new(ctx.clone()).ok().map(Arc::new);
+            self.gpu_context = Some(ctx);
+            self.gpu_enhancer = enhancer;
+            self.gpu_batch_cropper = cropper;
+        } else if !self.settings.gpu.enabled {
+            self.gpu_enhancer = None;
+            self.gpu_batch_cropper = None;
+        }
+        self.detector = match result {
+            Ok(d) => {
+                info!("Detector rebuilt");
+                Some(Arc::new(d))
+            }
+            Err(err) => {
+                log::warn!("Detector rebuild failed: {err}");
+                self.show_error("Rebuild failed", format!("{err:#}"));
+                None
+            }
+        };
+        self.cache.clear();
+        self.crop_preview_cache.clear();
+        if let Some(path) = self.preview.image_path.clone() {
+            self.load_image_path(path);
+        }
     }
 
-    /// Applies an enhancement preset to the current settings.
-    pub fn apply_enhancement_preset(&mut self) {
-        match self.settings.enhance.preset.as_str() {
-            "natural" => {
-                self.settings.enhance.auto_color = false;
-                self.settings.enhance.exposure_stops = 0.0;
-                self.settings.enhance.brightness = 5;
-                self.settings.enhance.contrast = 1.05;
-                self.settings.enhance.saturation = 1.05;
-                self.settings.enhance.sharpness = 0.3;
-                self.settings.enhance.skin_smooth = 0.0;
-                self.settings.enhance.red_eye_removal = false;
-                self.settings.enhance.background_blur = false;
+    fn poll_worker(&mut self, ctx: &egui::Context) {
+        let mut updated = false;
+        while let Ok(msg) = self.job_rx.try_recv() {
+            self.handle_job_message(ctx, msg);
+            updated = true;
+        }
+        if updated {
+            ctx.request_repaint();
+        }
+    }
+
+    fn handle_job_message(&mut self, ctx: &egui::Context, msg: JobMessage) {
+        use egui::TextureOptions;
+        match msg {
+            JobMessage::DetectionFinished {
+                job_id,
+                cache_key,
+                data,
+            } => {
+                if Some(job_id) != self.current_job {
+                    return;
+                }
+                self.current_job = None;
+                self.is_busy = false;
+                self.preview.is_loading = false;
+
+                let tex_name = format!("preview_{}", self.texture_seq);
+                self.texture_seq += 1;
+                let texture =
+                    ctx.load_texture(&tex_name, data.color_image, TextureOptions::default());
+
+                self.preview.texture = Some(texture.clone());
+                self.preview.image_size = Some(data.original_size);
+                self.preview.detections = data.detections.clone();
+                self.preview.source_image = Some(data.original_image.clone());
+                self.active_bbox_drag = None;
+                self.manual_box_tool_enabled = false;
+
+                let n = self.preview.detections.len();
+                self.push_log(format!("Detected {n} face(s)"), LogKind::Ok);
+                self.status_line = format!("Detected {n} face(s)");
+
+                // Auto-select all faces
+                self.selected_faces = (0..n).collect();
+
+                self.cache.put(
+                    cache_key,
+                    crate::types::DetectionCacheEntry {
+                        texture,
+                        detections: data.detections,
+                        original_size: data.original_size,
+                        source_image: data.original_image,
+                    },
+                );
             }
-            "vivid" => {
-                self.settings.enhance.auto_color = true;
-                self.settings.enhance.exposure_stops = 0.2;
-                self.settings.enhance.brightness = 10;
-                self.settings.enhance.contrast = 1.2;
-                self.settings.enhance.saturation = 1.3;
-                self.settings.enhance.sharpness = 0.8;
-                self.settings.enhance.skin_smooth = 0.0;
-                self.settings.enhance.red_eye_removal = false;
-                self.settings.enhance.background_blur = false;
+            JobMessage::DetectionFailed { job_id, error } => {
+                if Some(job_id) != self.current_job {
+                    return;
+                }
+                self.current_job = None;
+                self.is_busy = false;
+                self.preview.is_loading = false;
+                self.last_error = Some(error.clone());
+                self.push_log(format!("Detection failed: {error}"), LogKind::Warn);
+                self.status_line = "Detection failed.".to_owned();
             }
-            "professional" => {
-                self.settings.enhance.auto_color = false;
-                self.settings.enhance.exposure_stops = 0.0;
-                self.settings.enhance.brightness = 0;
-                self.settings.enhance.contrast = 1.1;
-                self.settings.enhance.saturation = 1.0;
-                self.settings.enhance.sharpness = 0.6;
-                self.settings.enhance.skin_smooth = 0.0;
-                self.settings.enhance.red_eye_removal = false;
-                self.settings.enhance.background_blur = false;
+            JobMessage::BatchProgress { index, status } => {
+                if let Some(f) = self.batch_files.get_mut(index) {
+                    f.status = status;
+                }
             }
-            _ => {
-                // "none" or unknown - no changes
+            JobMessage::BatchComplete { completed, failed } => {
+                self.is_busy = false;
+                self.push_log(
+                    format!("Batch done: {completed} ok, {failed} failed"),
+                    LogKind::Ok,
+                );
+                self.status_line = format!("Batch complete: {completed} ok, {failed} failed");
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        let dropped: Vec<_> = ctx.input(|i| i.raw.dropped_files.clone());
+        if dropped.is_empty() {
+            return;
+        }
+
+        const MAPPING_EXTS: &[&str] = &["csv", "xlsx", "xls", "db", "sqlite", "sqlite3"];
+        let mut mapping_loaded = false;
+        let mut paths = Vec::new();
+        let mut unsupported = 0usize;
+
+        for file in dropped {
+            let Some(path) = file.path else {
+                unsupported += 1;
+                continue;
+            };
+            let is_mapping = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| {
+                    let lower = e.to_ascii_lowercase();
+                    MAPPING_EXTS.iter().any(|&m| m == lower.as_str())
+                });
+            if is_mapping {
+                self.mapping.set_file(path.clone());
+                let _ = self.mapping.reload_preview();
+                self.sidebar_tab = SidebarTab::Mapping;
+                self.show_success(format!(
+                    "Loaded mapping: {}",
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                ));
+                mapping_loaded = true;
+            } else {
+                match expand_input_path(&path) {
+                    Ok(mut images) => paths.append(&mut images),
+                    Err(err) => {
+                        unsupported += 1;
+                        self.push_log(format!("Drop skipped: {err:#}"), LogKind::Warn);
+                    }
+                }
             }
         }
+
+        let had_image_paths = !paths.is_empty();
+        let first = paths.first().cloned();
+        let added = self.enqueue_batch_paths(paths);
+        if let Some(path) = first {
+            self.load_image_path(path);
+        }
+        if added > 0 {
+            self.show_success(format!(
+                "Added {added} image(s) to the queue ({} total)",
+                self.batch_files.len()
+            ));
+        } else if !mapping_loaded {
+            if unsupported > 0 {
+                self.show_error("Unsupported drop", "No supported files were found.");
+            } else if had_image_paths {
+                self.show_success("All dropped images were already queued.");
+            }
+        }
+
+        ctx.input_mut(|i| i.raw.dropped_files.clear());
+    }
+
+    pub fn push_log(&mut self, message: String, kind: LogKind) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let h = (secs / 3600) % 24;
+        let m = (secs / 60) % 60;
+        let s = secs % 60;
+        self.log_lines.push(LogLine {
+            timestamp: format!("{h:02}:{m:02}:{s:02}"),
+            message,
+            kind,
+        });
+        if self.log_lines.len() > 100 {
+            self.log_lines.remove(0);
+        }
+    }
+
+    pub fn load_image_path(&mut self, path: PathBuf) {
+        use crate::core::detection::spawn_detection_job;
+        self.preview.begin_loading(path.clone());
+        self.is_busy = true;
+        let job_id = self.job_counter;
+        self.job_counter += 1;
+        self.current_job = Some(job_id);
+        self.push_log(format!("Loading {}", path.display()), LogKind::Info);
+        spawn_detection_job(
+            job_id,
+            path,
+            self.detector.clone(),
+            self.settings.clone(),
+            self.job_tx.clone(),
+        );
+    }
+
+    pub fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> usize {
+        let mut existing: HashSet<PathBuf> =
+            self.batch_files.iter().map(|f| f.path.clone()).collect();
+        let mut added = 0usize;
+        for path in paths {
+            if !is_supported_image_path(&path) || !existing.insert(path.clone()) {
+                continue;
+            }
+            self.batch_files.push(BatchFile {
+                path,
+                status: BatchFileStatus::Pending,
+                output_override: None,
+            });
+            added += 1;
+        }
+        added
+    }
+
+    pub fn show_success(&mut self, message: impl Into<String>) {
+        let message = message.into();
+        self.last_error = None;
+        self.status_line = message.clone();
+        self.push_log(message, LogKind::Ok);
+    }
+
+    pub fn show_error(&mut self, title: impl AsRef<str>, detail: impl AsRef<str>) {
+        let message = format!("{}: {}", title.as_ref(), detail.as_ref());
+        self.last_error = Some(message.clone());
+        self.status_line = message.clone();
+        self.push_log(message, LogKind::Warn);
     }
 
     pub fn resolved_output_dimensions(&self) -> (u32, u32) {
@@ -83,54 +566,18 @@ impl YuNetApp {
         } else if let Some(preset) = preset_by_name(&self.settings.crop.preset) {
             (preset.width, preset.height)
         } else {
-            (400, 400)
+            (
+                self.settings.crop.output_width,
+                self.settings.crop.output_height,
+            )
         }
     }
 
-    /// Builds fcs-core CropSettings from the GUI settings.
     pub fn build_crop_settings(&self) -> CoreCropSettings {
-        let (output_width, output_height) = self.resolved_output_dimensions();
-
-        let positioning_mode = match self.settings.crop.positioning_mode.as_str() {
-            "rule-of-thirds" | "rule_of_thirds" => PositioningMode::RuleOfThirds,
-            "custom" => PositioningMode::Custom,
-            _ => PositioningMode::Center,
-        };
-
-        CoreCropSettings {
-            output_width,
-            output_height,
-            face_height_pct: self.settings.crop.face_height_pct,
-            positioning_mode,
-            horizontal_offset: self.settings.crop.horizontal_offset,
-            vertical_offset: self.settings.crop.vertical_offset,
-            fill_color: self.settings.crop.fill_color,
-        }
+        build_crop_settings_from_app_settings(&self.settings)
     }
 
-    /// Builds EnhancementSettings from the GUI settings.
-    pub(crate) fn build_enhancement_settings(&self) -> EnhancementSettings {
-        EnhancementSettings {
-            auto_color: self.settings.enhance.auto_color,
-            exposure_stops: self.settings.enhance.exposure_stops,
-            brightness: self.settings.enhance.brightness,
-            contrast: self.settings.enhance.contrast,
-            saturation: self.settings.enhance.saturation,
-            unsharp_amount: 0.6, // Base unsharp amount
-            unsharp_radius: 1.0,
-            sharpness: self.settings.enhance.sharpness,
-            skin_smooth_amount: self.settings.enhance.skin_smooth,
-            skin_smooth_sigma_space: 3.0,
-            skin_smooth_sigma_color: 25.0,
-            red_eye_removal: self.settings.enhance.red_eye_removal,
-            red_eye_threshold: 1.5,
-            background_blur: self.settings.enhance.background_blur,
-            background_blur_radius: 15.0,
-            background_blur_mask_size: 0.6,
-        }
-    }
-
-    pub(crate) fn quality_suffix(&self, quality: Quality) -> Option<&'static str> {
+    pub fn quality_suffix(&self, quality: Quality) -> Option<&'static str> {
         if !self.settings.crop.quality_rules.quality_suffix {
             return None;
         }
@@ -140,299 +587,166 @@ impl YuNetApp {
             Quality::Low => Some("_lowq"),
         }
     }
+}
 
-    pub(crate) fn format_metadata_tags(map: &BTreeMap<String, String>) -> String {
-        map.iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("\n")
+pub(crate) fn build_crop_settings_from_app_settings(
+    settings: &fcs_utils::config::AppSettings,
+) -> CoreCropSettings {
+    let (output_width, output_height) = if settings.crop.preset == "custom" {
+        (settings.crop.output_width, settings.crop.output_height)
+    } else if let Some(preset) = preset_by_name(&settings.crop.preset) {
+        (preset.width, preset.height)
+    } else {
+        (settings.crop.output_width, settings.crop.output_height)
+    };
+
+    let positioning_mode = match settings.crop.positioning_mode.as_str() {
+        "rule-of-thirds" | "rule_of_thirds" | "thirds" => PositioningMode::RuleOfThirds,
+        "custom" => PositioningMode::Custom,
+        _ => PositioningMode::Center,
+    };
+
+    CoreCropSettings {
+        output_width,
+        output_height,
+        face_height_pct: settings.crop.face_height_pct,
+        positioning_mode,
+        horizontal_offset: settings.crop.horizontal_offset,
+        vertical_offset: settings.crop.vertical_offset,
+        fill_color: settings.crop.fill_color,
     }
+}
 
-    pub(crate) fn format_fill_color_hex(color: RgbaColor) -> String {
-        if color.alpha != 255 {
-            format!(
-                "#{:02X}{:02X}{:02X}{:02X}",
-                color.red, color.green, color.blue, color.alpha
+pub(crate) fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff"
             )
-        } else {
-            format!("#{:02X}{:02X}{:02X}", color.red, color.green, color.blue)
+        })
+        .unwrap_or(false)
+}
+
+fn expand_input_path(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    if path.is_dir() {
+        collect_supported_images_in_dir(path)
+    } else if path.is_file() && is_supported_image_path(path) {
+        Ok(vec![path.to_path_buf()])
+    } else {
+        anyhow::bail!("unsupported path {}", path.display())
+    }
+}
+
+pub(crate) fn collect_folder_images(dir: &Path) -> Vec<PathBuf> {
+    collect_supported_images_in_dir(dir).unwrap_or_default()
+}
+
+fn collect_supported_images_in_dir(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let mut images = Vec::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(dir.to_path_buf());
+
+    while let Some(current) = queue.pop_front() {
+        for entry in std::fs::read_dir(&current)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                queue.push_back(path);
+            } else if path.is_file() && is_supported_image_path(&path) {
+                images.push(path);
+            }
         }
     }
 
-    pub(crate) fn refresh_fill_color_hex_input(&mut self) {
-        self.crop_fill_hex_input = Self::format_fill_color_hex(self.settings.crop.fill_color);
-    }
+    images.sort();
+    Ok(images)
+}
 
-    pub(crate) fn set_fill_color(&mut self, color: RgbaColor) -> bool {
-        if self.settings.crop.fill_color == color {
-            return false;
-        }
-        self.settings.crop.fill_color = color;
-        self.refresh_fill_color_hex_input();
-        true
-    }
+// ── About dialog ──────────────────────────────────────────────────────────────
 
-    pub(crate) fn display_with_output_ext(raw: &str, ext: &str) -> String {
-        let mut path = PathBuf::from(raw);
-        let trimmed = ext.trim().trim_start_matches('.');
-        if trimmed.is_empty() {
-            return path.display().to_string();
-        }
-        path.set_extension(trimmed);
-        path.display().to_string()
-    }
+fn show_about_window(ctx: &egui::Context, open: &mut bool) {
+    use crate::theme::P;
 
-    pub(crate) fn refresh_metadata_tags_input(&mut self) {
-        self.metadata_tags_input =
-            Self::format_metadata_tags(&self.settings.crop.metadata.custom_tags);
-    }
-
-    pub(crate) fn push_crop_history(&mut self) {
-        if self
-            .crop_history
-            .last()
-            .is_some_and(|last| last == &self.settings.crop)
-        {
-            return;
-        }
-        if self.crop_history_index + 1 < self.crop_history.len() {
-            self.crop_history.truncate(self.crop_history_index + 1);
-        }
-        self.crop_history.push(self.settings.crop.clone());
-        const MAX_HISTORY: usize = 100;
-        if self.crop_history.len() > MAX_HISTORY {
-            let remove = self.crop_history.len() - MAX_HISTORY;
-            self.crop_history.drain(0..remove);
-        }
-        self.crop_history_index = self.crop_history.len() - 1;
-    }
-
-    pub fn undo_crop_settings(&mut self) {
-        if self.crop_history_index == 0 {
-            return;
-        }
-        self.crop_history_index -= 1;
-        self.settings.crop = self.crop_history[self.crop_history_index].clone();
-        self.clear_crop_preview_cache();
-        self.refresh_fill_color_hex_input();
-        self.persist_settings_with_feedback();
-        self.apply_quality_rules_to_preview();
-        self.refresh_metadata_tags_input();
-    }
-
-    pub fn redo_crop_settings(&mut self) {
-        if self.crop_history_index + 1 >= self.crop_history.len() {
-            return;
-        }
-        self.crop_history_index += 1;
-        self.settings.crop = self.crop_history[self.crop_history_index].clone();
-        self.clear_crop_preview_cache();
-        self.refresh_fill_color_hex_input();
-        self.persist_settings_with_feedback();
-        self.apply_quality_rules_to_preview();
-        self.refresh_metadata_tags_input();
-    }
-
-    pub fn adjust_horizontal_offset(&mut self, delta: f32) {
-        if delta.abs() < f32::EPSILON {
-            return;
-        }
-        let new_value = (self.settings.crop.horizontal_offset + delta).clamp(-1.0, 1.0);
-        if (new_value - self.settings.crop.horizontal_offset).abs() < f32::EPSILON {
-            return;
-        }
-        self.settings.crop.horizontal_offset = new_value;
-        self.push_crop_history();
-        self.clear_crop_preview_cache();
-        self.persist_settings_with_feedback();
-    }
-
-    pub fn adjust_vertical_offset(&mut self, delta: f32) {
-        if delta.abs() < f32::EPSILON {
-            return;
-        }
-        let new_value = (self.settings.crop.vertical_offset + delta).clamp(-1.0, 1.0);
-        if (new_value - self.settings.crop.vertical_offset).abs() < f32::EPSILON {
-            return;
-        }
-        self.settings.crop.vertical_offset = new_value;
-        self.push_crop_history();
-        self.clear_crop_preview_cache();
-        self.persist_settings_with_feedback();
-    }
-
-    pub fn adjust_face_height(&mut self, delta: f32) {
-        if delta.abs() < f32::EPSILON {
-            return;
-        }
-        let new_value = (self.settings.crop.face_height_pct + delta).clamp(10.0, 100.0);
-        if (new_value - self.settings.crop.face_height_pct).abs() < f32::EPSILON {
-            return;
-        }
-        self.settings.crop.face_height_pct = new_value;
-        self.push_crop_history();
-        self.clear_crop_preview_cache();
-        self.persist_settings_with_feedback();
-    }
-
-    pub fn set_crop_preset(&mut self, preset: &str) {
-        if self.settings.crop.preset == preset {
-            return;
-        }
-        self.settings.crop.preset = preset.to_string();
-        if preset != "custom"
-            && let Some(info) = preset_by_name(preset)
-        {
-            self.settings.crop.output_width = info.width;
-            self.settings.crop.output_height = info.height;
-        }
-        self.push_crop_history();
-        self.clear_crop_preview_cache();
-        self.persist_settings_with_feedback();
-    }
-
-    /// Applies the model path from the text input field.
-    pub fn apply_model_path_input(&mut self) {
-        let trimmed = self.model_path_input.trim().to_owned();
-        self.model_path_input = trimmed.clone();
-        self.update_model_path(if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed)
+    let window_frame = egui::Frame::window(&ctx.global_style())
+        .fill(P::BG2)
+        .stroke(egui::Stroke::new(1.0, P::RULE2))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(24))
+        .shadow(egui::Shadow {
+            offset: [0, 8],
+            blur: 32,
+            spread: 0,
+            color: P::black_alpha(120),
         });
-    }
 
-    /// Updates the model path in the settings and invalidates the detector.
-    pub(crate) fn update_model_path(&mut self, new_path: Option<String>) {
-        let normalized = new_path.and_then(|value| {
-            let trimmed = value.trim().to_owned();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        });
-        let resolved = normalized
-            .clone()
-            .or_else(|| AppSettings::default().model_path.clone());
+    let mut close = false;
+    egui::Window::new("About Face Crop Studio")
+        .open(open)
+        .collapsible(false)
+        .resizable(false)
+        .fixed_size(egui::vec2(340.0, 0.0))
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .title_bar(false)
+        .frame(window_frame)
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add(
+                    egui::Image::new(egui::include_image!("../assets/app_logo.svg"))
+                        .fit_to_exact_size(egui::Vec2::splat(48.0)),
+                );
 
-        if normalized.is_none()
-            && let Some(default_path) = resolved.as_deref()
-        {
-            info!("Falling back to default model path: {}", default_path);
-        }
-
-        if self.settings.model_path != resolved {
-            self.settings.model_path = resolved.clone();
-            self.apply_settings_changes(true, false);
-        }
-
-        self.model_path_input = resolved.clone().unwrap_or_default();
-        self.model_path_dirty = false;
-    }
-
-    /// Opens a file dialog to select an image.
-    pub(crate) fn open_image_dialog(&mut self) {
-        if let Some(path) = FileDialog::new()
-            .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp"])
-            .pick_file()
-        {
-            self.start_detection(path);
-        }
-    }
-
-    /// Opens a file dialog to select an ONNX model.
-    pub(crate) fn open_model_dialog(&mut self) {
-        if let Some(path) = FileDialog::new()
-            .add_filter("ONNX model", &["onnx"])
-            .pick_file()
-        {
-            let display = path.to_string_lossy().to_string();
-            self.update_model_path(Some(display));
-        }
-    }
-
-    /// Opens a file dialog to select multiple images for batch processing.
-    pub(crate) fn open_batch_dialog(&mut self) {
-        if let Some(paths) = FileDialog::new()
-            .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "webp"])
-            .pick_files()
-        {
-            self.batch_files = paths
-                .into_iter()
-                .map(|path| BatchFile {
-                    path,
-                    status: BatchFileStatus::Pending,
-                    output_override: None,
-                })
-                .collect();
-
-            self.batch_current_index = None;
-            let loaded = self.batch_files.len();
-            self.show_success(format!("Loaded {loaded} images for batch processing"));
-            info!("Loaded {loaded} images for batch processing");
-        }
-    }
-
-    /// Opens a file dialog to select a folder for batch processing.
-    pub(crate) fn open_folder_dialog(&mut self) {
-        if let Some(path) = FileDialog::new().pick_folder() {
-            match Self::collect_images_from_directory(&path) {
-                Ok(images) => {
-                    if images.is_empty() {
-                        self.show_error(
-                            "No images found",
-                            format!("No supported images found in {}", path.display()),
-                        );
-                    } else {
-                        let count = images.len();
-                        self.enqueue_batch_paths(images);
-                        self.show_success(format!("Loaded {count} images from folder"));
-                    }
-                }
-                Err(err) => {
-                    self.show_error("Failed to load folder", err.to_string());
-                }
-            }
-        }
-    }
-
-    /// Enqueues additional image paths for batch processing, deduplicating existing entries.
-    pub(crate) fn enqueue_batch_images(&mut self, paths: Vec<PathBuf>) -> usize {
-        let mut added = 0;
-        for path in paths {
-            if self
-                .batch_files
-                .iter()
-                .any(|existing| existing.path == path)
-            {
-                continue;
-            }
-            self.batch_files.push(BatchFile {
-                path,
-                status: BatchFileStatus::Pending,
-                output_override: None,
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new("Face Crop Studio")
+                        .size(17.0)
+                        .color(P::INK)
+                        .strong(),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("AI-powered face detection and cropping")
+                        .size(12.0)
+                        .color(P::INK3),
+                );
             });
-            added += 1;
-        }
-        if added > 0 {
-            self.batch_current_index = None;
-        }
-        added
-    }
 
-    /// Loads a mapping file into the mapping import workflow.
-    pub(crate) fn load_mapping_file(&mut self, path: PathBuf) {
-        let already_loaded = self
-            .mapping
-            .file_path
-            .as_ref()
-            .is_some_and(|current| current == &path);
-        self.mapping.set_file(path.clone());
-        if already_loaded {
-            self.show_success(format!("Mapping file reloaded from {}", path.display()));
-        } else {
-            self.show_success(format!("Loaded mapping file from {}", path.display()));
-        }
+            ui.add_space(16.0);
+            ui.separator();
+            ui.add_space(12.0);
+
+            ui.label(
+                egui::RichText::new(
+                    "Face Crop Studio uses the YuNet neural network to detect \
+                     faces and automatically crop portraits at scale.",
+                )
+                .size(12.5)
+                .color(P::INK2),
+            );
+
+            ui.add_space(14.0);
+
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Website").size(12.0).color(P::INK3));
+                ui.add_space(4.0);
+                ui.hyperlink_to(
+                    egui::RichText::new("facecropstudio.com")
+                        .size(12.0)
+                        .color(P::CYAN),
+                    "https://facecropstudio.com/",
+                );
+            });
+
+            ui.add_space(16.0);
+
+            ui.vertical_centered(|ui| {
+                if ui.button(egui::RichText::new("Close").size(13.0)).clicked() {
+                    close = true;
+                }
+            });
+        });
+    if close {
+        *open = false;
     }
 }

@@ -1,17 +1,16 @@
-//! Settings persistence and loading.
+//! Settings persistence.
 
 use anyhow::{Context as AnyhowContext, Result};
 use fcs_utils::config::AppSettings;
 use log::warn;
 use std::path::Path;
 
-/// Loads application settings from a file, or returns default settings if loading fails.
 pub fn load_settings(path: &Path) -> AppSettings {
     match AppSettings::load_from_path(path) {
-        Ok(settings) => settings,
+        Ok(s) => s,
         Err(err) => {
             warn!(
-                "Failed to load settings from {}: {err:?}. Falling back to defaults.",
+                "Failed to load settings from {}: {err}. Using defaults.",
                 path.display()
             );
             AppSettings::default()
@@ -19,27 +18,22 @@ pub fn load_settings(path: &Path) -> AppSettings {
     }
 }
 
-/// Saves the current settings to the JSON file.
-pub fn persist_settings(settings: &AppSettings, settings_path: &Path) -> Result<()> {
-    if let Some(parent) = settings_path.parent()
-        && !parent.exists()
-    {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create settings directory {}", parent.display()))?;
+pub fn persist_settings(settings: &AppSettings, path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
     }
     settings
-        .save_to_path(settings_path)
-        .with_context(|| format!("failed to write settings to {}", settings_path.display()))
+        .save_to_path(path)
+        .with_context(|| format!("failed to write settings to {}", path.display()))
 }
 
-/// Persists the current settings to disk and provides feedback.
-pub fn persist_settings_with_feedback(
-    settings: &AppSettings,
-    settings_path: &Path,
-) -> Result<(), String> {
-    persist_settings(settings, settings_path).map_err(|err| {
-        let message = format!("Failed to persist settings: {err}");
-        warn!("{message}");
-        message
+pub fn persist_with_feedback(settings: &AppSettings, path: &Path) -> Result<(), String> {
+    persist_settings(settings, path).map_err(|e| {
+        let msg = format!("Failed to persist settings: {e}");
+        warn!("{msg}");
+        msg
     })
 }

@@ -1,11 +1,9 @@
-//! UI module organization for the YuNet GUI.
-
-pub mod batch_window;
-pub mod config;
-pub mod icons;
-pub mod mapping;
-pub mod navigation;
-pub mod preview;
-pub mod settings_window;
-pub mod status_bar;
+pub mod canvas;
+pub mod inspector;
+pub mod menubar;
+pub mod shape;
+pub mod sidebar;
+pub mod statusbar;
+pub mod titlebar;
+pub mod toolbar;
 pub mod widgets;

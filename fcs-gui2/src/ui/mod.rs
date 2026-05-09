@@ -1,9 +1,0 @@
-pub mod canvas;
-pub mod inspector;
-pub mod menubar;
-pub mod shape;
-pub mod sidebar;
-pub mod statusbar;
-pub mod titlebar;
-pub mod toolbar;
-pub mod widgets;

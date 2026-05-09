@@ -1,15 +1,15 @@
 [package]
-name = "fcs-gui"
+name = "fcs-gui2"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
-description = "Face Crop Studio — egui desktop application for face detection and cropping."
+description = "Face Crop Studio — redesigned egui desktop application."
 
 [lib]
 path = "src/lib.rs"
 
 [[bin]]
-name = "fcs-gui"
+name = "fcs-gui2"
 path = "src/main.rs"
 
 [dependencies]
@@ -19,7 +19,7 @@ eframe.workspace = true
 egui.workspace = true
 egui_extras = { workspace = true, features = ["svg"] }
 fcs-core.workspace = true
-fcs-utils = { workspace = true, features = ["mapping", "webcam"] }
+fcs-utils = { workspace = true, features = ["mapping"] }
 image.workspace = true
 ico.workspace = true
 log.workspace = true
