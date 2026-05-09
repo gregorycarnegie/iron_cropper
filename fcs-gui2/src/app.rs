@@ -385,22 +385,44 @@ impl App2 {
             return;
         }
 
+        const MAPPING_EXTS: &[&str] = &["csv", "xlsx", "xls", "db", "sqlite", "sqlite3"];
+        let mut mapping_loaded = false;
         let mut paths = Vec::new();
         let mut unsupported = 0usize;
+
         for file in dropped {
             let Some(path) = file.path else {
                 unsupported += 1;
                 continue;
             };
-            match expand_input_path(&path) {
-                Ok(mut images) => paths.append(&mut images),
-                Err(err) => {
-                    unsupported += 1;
-                    self.push_log(format!("Drop skipped: {err:#}"), LogKind::Warn);
+            let is_mapping = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| {
+                    let lower = e.to_ascii_lowercase();
+                    MAPPING_EXTS.iter().any(|&m| m == lower.as_str())
+                });
+            if is_mapping {
+                self.mapping.set_file(path.clone());
+                let _ = self.mapping.reload_preview();
+                self.sidebar_tab = SidebarTab::Mapping;
+                self.show_success(format!(
+                    "Loaded mapping: {}",
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                ));
+                mapping_loaded = true;
+            } else {
+                match expand_input_path(&path) {
+                    Ok(mut images) => paths.append(&mut images),
+                    Err(err) => {
+                        unsupported += 1;
+                        self.push_log(format!("Drop skipped: {err:#}"), LogKind::Warn);
+                    }
                 }
             }
         }
 
+        let had_image_paths = !paths.is_empty();
         let first = paths.first().cloned();
         let added = self.enqueue_batch_paths(paths);
         if let Some(path) = first {
@@ -411,10 +433,12 @@ impl App2 {
                 "Added {added} image(s) to the queue ({} total)",
                 self.batch_files.len()
             ));
-        } else if unsupported > 0 {
-            self.show_error("Unsupported drop", "No supported images were found.");
-        } else {
-            self.show_success("All dropped images were already queued.");
+        } else if !mapping_loaded {
+            if unsupported > 0 {
+                self.show_error("Unsupported drop", "No supported files were found.");
+            } else if had_image_paths {
+                self.show_success("All dropped images were already queued.");
+            }
         }
 
         ctx.input_mut(|i| i.raw.dropped_files.clear());
