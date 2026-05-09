@@ -2,6 +2,7 @@
 
 use crate::theme::P;
 use crate::types::{App2, InspectorTab};
+use fcs_core::preset_by_name;
 use crate::ui::shape::shape_controls;
 use crate::ui::widgets::{
     field_label, panel_header, segmented_control, slider_with_label, toggle_row,
@@ -150,24 +151,37 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
 
         // Preset dropdown
         field_label(ui, "Preset");
-        let preset = &mut app.settings.crop.preset;
-        let presets = [
-            "LinkedIn (1:1)",
-            "Passport (35×45)",
-            "Instagram (4:5)",
-            "Headshot (3:4)",
-            "ID Card (3:4)",
-            "Avatar (1:1)",
-            "Custom…",
+        const PRESETS: &[(&str, &str)] = &[
+            ("LinkedIn",  "LinkedIn (400×400)"),
+            ("Passport",  "Passport (413×531)"),
+            ("Instagram", "Instagram (1080×1080)"),
+            ("Headshot",  "Headshot (600×800)"),
+            ("ID Card",   "ID Card (332×498)"),
+            ("Avatar",    "Avatar (512×512)"),
+            ("Custom",    "Custom…"),
         ];
+        let current_label = PRESETS
+            .iter()
+            .find(|(key, _)| *key == app.settings.crop.preset)
+            .map(|(_, label)| *label)
+            .unwrap_or("Custom…");
+        let mut selected_key = app.settings.crop.preset.clone();
         egui::ComboBox::from_id_salt("preset_combo")
-            .selected_text(preset.as_str())
+            .selected_text(current_label)
             .width(ui.available_width())
             .show_ui(ui, |ui| {
-                for p in &presets {
-                    ui.selectable_value(preset, p.to_string(), *p);
+                for (key, label) in PRESETS {
+                    ui.selectable_value(&mut selected_key, key.to_string(), *label);
                 }
             });
+        if selected_key != app.settings.crop.preset {
+            app.settings.crop.preset = selected_key.clone();
+            if let Some(p) = preset_by_name(&selected_key) {
+                app.settings.crop.output_width = p.width;
+                app.settings.crop.output_height = p.height;
+            }
+            app.crop_preview_cache.clear();
+        }
 
         // Aspect ratio
         field_label(ui, "Aspect ratio");
