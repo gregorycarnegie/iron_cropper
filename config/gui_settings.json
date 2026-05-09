@@ -42,12 +42,7 @@
       "quality_suffix": true
     },
     "shape": {
-      "kind": "polygon",
-      "sides": 6,
-      "rotation_deg": 32.748623,
-      "corner_style": {
-        "style": "sharp"
-      }
+      "kind": "rectangle"
     },
     "vignette_softness": 0.0,
     "vignette_intensity": 1.0,

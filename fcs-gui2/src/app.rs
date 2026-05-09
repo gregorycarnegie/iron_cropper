@@ -81,6 +81,7 @@ impl App2 {
         };
 
         let (job_tx, job_rx) = mpsc::channel();
+        let default_settings = settings.clone();
         let model_path_input = settings.model_path.clone().unwrap_or_default();
         let crop_history = vec![settings.crop.clone()];
         let crop_fill_hex_input = format!(
@@ -105,6 +106,7 @@ impl App2 {
 
         Self {
             settings,
+            default_settings,
             settings_path,
             gpu_status: initial_gpu_status,
             gpu_context,

@@ -1,9 +1,11 @@
 //! Menu bar.
 
 use crate::app::collect_folder_images;
+use crate::core::settings::persist_with_feedback;
 use crate::theme::P;
 use crate::types::App2;
-use egui::{Frame, Popup, Sense, Ui, Vec2};
+use egui::{Frame, Popup, RichText, Sense, Ui, Vec2};
+use fcs_utils::config::{BatchLogFormat, MetadataMode, ResizeQuality};
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
     egui::Panel::top("menubar")
@@ -18,7 +20,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
             ui.horizontal_centered(|ui| {
                 ui.add_space(6.0);
 
-                menu_item(ui, "File", |ui| {
+                menu_item(ui, "File", 180.0, |ui| {
                     if ui.button("Open Images…").clicked() {
                         if let Some(paths) = rfd::FileDialog::new()
                             .add_filter(
@@ -52,12 +54,19 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                         crate::core::export::start_batch_export(app);
                     }
                     ui.separator();
+                    if ui.button("Save Settings").clicked() {
+                        let path = app.settings_path.clone();
+                        if let Err(msg) = persist_with_feedback(&app.settings, &path) {
+                            app.last_error = Some(msg);
+                        }
+                    }
+                    ui.separator();
                     if ui.button("Quit").clicked() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
 
-                menu_item(ui, "Edit", |ui| {
+                menu_item(ui, "Edit", 180.0, |ui| {
                     if ui.button("Select All").clicked() {
                         let n = app.preview.detections.len();
                         app.selected_faces = (0..n).collect();
@@ -71,7 +80,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                     }
                 });
 
-                menu_item(ui, "View", |ui| {
+                menu_item(ui, "View", 180.0, |ui| {
                     ui.checkbox(&mut app.show_crop_overlay, "Show Crop Overlay");
                     ui.separator();
                     if ui.button("Zoom In").clicked() {
@@ -86,7 +95,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                     }
                 });
 
-                menu_item(ui, "Detect", |ui| {
+                menu_item(ui, "Detect", 180.0, |ui| {
                     if ui.button("Run Detection").clicked() {
                         if let Some(path) = app.preview.image_path.clone() {
                             app.load_image_path(path);
@@ -99,11 +108,151 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                     }
                 });
 
-                menu_item(ui, "Tools", |ui| {
+                menu_item(ui, "Tools", 180.0, |ui| {
                     ui.checkbox(&mut app.manual_box_tool_enabled, "Draw Box Tool");
                 });
 
-                menu_item(ui, "Help", |ui| {
+                menu_item(ui, "Settings", 240.0, |ui| {
+                    if ui.button("Restore Defaults").clicked() {
+                        app.settings = app.default_settings.clone();
+                    }
+                    if ui.button("Set as Default").clicked() {
+                        app.default_settings = app.settings.clone();
+                    }
+                    ui.separator();
+                    section_label(ui, "Detection");
+                    ui.add(
+                        egui::Slider::new(
+                            &mut app.settings.detection.nms_threshold,
+                            0.0..=1.0,
+                        )
+                        .text("NMS threshold")
+                        .step_by(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut app.settings.detection.top_k)
+                            .prefix("Top K: ")
+                            .range(1..=10_000)
+                            .speed(10),
+                    );
+
+                    ui.separator();
+                    section_label(ui, "Input");
+                    ui.horizontal(|ui| {
+                        ui.label("Resize quality");
+                        ui.radio_value(
+                            &mut app.settings.input.resize_quality,
+                            ResizeQuality::Quality,
+                            "Quality",
+                        );
+                        ui.radio_value(
+                            &mut app.settings.input.resize_quality,
+                            ResizeQuality::Speed,
+                            "Speed",
+                        );
+                    });
+
+                    ui.separator();
+                    section_label(ui, "GPU");
+                    ui.checkbox(&mut app.settings.gpu.enabled, "Enable GPU");
+                    ui.add_enabled(
+                        app.settings.gpu.enabled,
+                        egui::Checkbox::new(
+                            &mut app.settings.gpu.inference,
+                            "GPU inference",
+                        ),
+                    );
+                    ui.add_enabled(
+                        app.settings.gpu.enabled,
+                        egui::Checkbox::new(
+                            &mut app.settings.gpu.preprocessing,
+                            "GPU preprocessing",
+                        ),
+                    );
+                    ui.add_enabled(
+                        app.settings.gpu.enabled,
+                        egui::Checkbox::new(
+                            &mut app.settings.gpu.respect_env,
+                            "Respect env overrides",
+                        ),
+                    );
+
+                    ui.separator();
+                    section_label(ui, "Telemetry");
+                    ui.checkbox(&mut app.settings.telemetry.enabled, "Enable telemetry");
+                    egui::ComboBox::new("telemetry_level", "Log level")
+                        .selected_text(app.settings.telemetry.level.as_str())
+                        .show_ui(ui, |ui| {
+                            for lvl in ["off", "error", "warn", "info", "debug", "trace"] {
+                                let selected = app.settings.telemetry.level == lvl;
+                                if ui.selectable_label(selected, lvl).clicked() {
+                                    app.settings.telemetry.level = lvl.to_string();
+                                }
+                            }
+                        });
+
+                    ui.separator();
+                    section_label(ui, "Batch Logging");
+                    ui.checkbox(
+                        &mut app.settings.batch_logging.enabled,
+                        "Enable batch logging",
+                    );
+                    ui.horizontal(|ui| {
+                        ui.label("Format");
+                        ui.radio_value(
+                            &mut app.settings.batch_logging.format,
+                            BatchLogFormat::Json,
+                            "JSON",
+                        );
+                        ui.radio_value(
+                            &mut app.settings.batch_logging.format,
+                            BatchLogFormat::Csv,
+                            "CSV",
+                        );
+                    });
+
+                    ui.separator();
+                    section_label(ui, "Quality Rules");
+                    ui.checkbox(
+                        &mut app.settings.crop.quality_rules.auto_select_best_face,
+                        "Auto-select best face",
+                    );
+                    ui.checkbox(
+                        &mut app.settings.crop.quality_rules.auto_skip_no_high_quality,
+                        "Skip if no high-quality face",
+                    );
+                    ui.checkbox(
+                        &mut app.settings.crop.quality_rules.quality_suffix,
+                        "Append quality suffix",
+                    );
+
+                    ui.separator();
+                    section_label(ui, "Metadata");
+                    egui::ComboBox::new("metadata_mode", "Mode")
+                        .selected_text(metadata_mode_label(&app.settings.crop.metadata.mode))
+                        .show_ui(ui, |ui| {
+                            for (mode, label) in [
+                                (MetadataMode::Preserve, "Preserve"),
+                                (MetadataMode::Strip, "Strip"),
+                                (MetadataMode::Custom, "Custom"),
+                            ] {
+                                let selected = app.settings.crop.metadata.mode == mode;
+                                if ui.selectable_label(selected, label).clicked() {
+                                    app.settings.crop.metadata.mode = mode;
+                                }
+                            }
+                        });
+                    ui.checkbox(
+                        &mut app.settings.crop.metadata.include_crop_settings,
+                        "Include crop settings",
+                    );
+                    ui.checkbox(
+                        &mut app.settings.crop.metadata.include_quality_metrics,
+                        "Include quality metrics",
+                    );
+                });
+
+                menu_item(ui, "Help", 180.0, |ui| {
                     if ui.button("About Face Crop Studio").clicked() {
                         app.show_about = true;
                     }
@@ -131,7 +280,29 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
         });
 }
 
-fn menu_item(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui::Ui)) {
+fn section_label(ui: &mut Ui, text: &str) {
+    ui.label(
+        RichText::new(text)
+            .size(10.0)
+            .color(P::INK3)
+            .family(egui::FontFamily::Monospace),
+    );
+}
+
+fn metadata_mode_label(mode: &MetadataMode) -> &'static str {
+    match mode {
+        MetadataMode::Preserve => "Preserve",
+        MetadataMode::Strip => "Strip",
+        MetadataMode::Custom => "Custom",
+    }
+}
+
+fn menu_item(
+    ui: &mut egui::Ui,
+    label: &str,
+    popup_width: f32,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
     let font = egui::FontId::proportional(13.0);
     let galley = ui
         .painter()
@@ -160,7 +331,7 @@ fn menu_item(ui: &mut egui::Ui, label: &str, add_contents: impl FnOnce(&mut egui
         text_color,
     );
 
-    Popup::menu(&resp).width(180.0).show(|ui| {
+    Popup::menu(&resp).width(popup_width).show(|ui| {
         add_contents(ui);
     });
 }

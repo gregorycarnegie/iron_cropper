@@ -584,6 +584,7 @@ impl MappingUiState {
 pub struct App2 {
     // Backend
     pub settings: AppSettings,
+    pub default_settings: AppSettings,
     pub settings_path: PathBuf,
     pub gpu_status: GpuStatusIndicator,
     pub gpu_context: Option<Arc<GpuContext>>,
