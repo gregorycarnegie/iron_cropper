@@ -13,7 +13,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
             ui.horizontal_centered(|ui| {
                 // Status dot + label
                 let (ready_dot, ready_text) = if app.is_busy {
-                    (P::PEACH, format!("  Running"))
+                    (P::PEACH, "  Running".to_string())
                 } else if app.last_error.is_some() {
                     (P::ROSE, " Error".to_string())
                 } else {

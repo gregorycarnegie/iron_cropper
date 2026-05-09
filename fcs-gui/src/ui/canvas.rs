@@ -239,59 +239,58 @@ fn stage(ui: &mut Ui, app: &mut App2) {
     }
 
     // Crop region + shape outline overlay
-    if app.show_crop_overlay {
-        if let Some((img_w, img_h)) = app.preview.image_size {
-            let crop_settings = app.build_crop_settings();
-            let crop_stroke = Stroke::new(2.0, P::LIME);
-            for det in &app.preview.detections {
-                let bbox = det.active_bbox();
-                let region = calculate_crop_region(img_w, img_h, bbox, &crop_settings);
-                let rx = image_rect.min.x + (region.x as f32 / img_w as f32) * image_rect.width();
-                let ry = image_rect.min.y + (region.y as f32 / img_h as f32) * image_rect.height();
-                let rw = (region.width as f32 / img_w as f32) * image_rect.width();
-                let rh = (region.height as f32 / img_h as f32) * image_rect.height();
-                let crop_rect = egui::Rect::from_min_size(egui::pos2(rx, ry), Vec2::new(rw, rh));
+    if app.show_crop_overlay
+        && let Some((img_w, img_h)) = app.preview.image_size
+    {
+        let crop_settings = app.build_crop_settings();
+        let crop_stroke = Stroke::new(2.0, P::LIME);
+        for det in &app.preview.detections {
+            let bbox = det.active_bbox();
+            let region = calculate_crop_region(img_w, img_h, bbox, &crop_settings);
+            let rx = image_rect.min.x + (region.x as f32 / img_w as f32) * image_rect.width();
+            let ry = image_rect.min.y + (region.y as f32 / img_h as f32) * image_rect.height();
+            let rw = (region.width as f32 / img_w as f32) * image_rect.width();
+            let rh = (region.height as f32 / img_h as f32) * image_rect.height();
+            let crop_rect = egui::Rect::from_min_size(egui::pos2(rx, ry), Vec2::new(rw, rh));
 
-                let shape_pts = outline_points_for_rect(rw, rh, &app.settings.crop.shape);
-                if shape_pts.len() >= 2 {
-                    let outline: Vec<egui::Pos2> = shape_pts
-                        .iter()
-                        .map(|(x, y)| egui::pos2(crop_rect.min.x + x, crop_rect.min.y + y))
-                        .collect();
-                    painter.add(egui::Shape::closed_line(outline, crop_stroke));
-                } else {
-                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
-                }
+            let shape_pts = outline_points_for_rect(rw, rh, &app.settings.crop.shape);
+            if shape_pts.len() >= 2 {
+                let outline: Vec<egui::Pos2> = shape_pts
+                    .iter()
+                    .map(|(x, y)| egui::pos2(crop_rect.min.x + x, crop_rect.min.y + y))
+                    .collect();
+                painter.add(egui::Shape::closed_line(outline, crop_stroke));
+            } else {
+                painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
             }
         }
     }
 
     // Face click interaction
     let resp = ui.allocate_rect(image_rect, Sense::click());
-    if resp.clicked() {
-        if let Some(pos) = resp.interact_pointer_pos() {
-            if let Some((img_w, img_h)) = app.preview.image_size {
-                let iw = img_w as f32;
-                let ih = img_h as f32;
-                let mut clicked_any = false;
-                for (i, det) in app.preview.detections.iter().enumerate() {
-                    let bbox = det.active_bbox();
-                    let norm = bbox_to_norm_rect(bbox.x, bbox.y, bbox.width, bbox.height, iw, ih);
-                    let sr = norm_to_screen(norm, image_rect);
-                    if sr.expand(4.0).contains(pos) {
-                        if app.selected_faces.contains(&i) {
-                            app.selected_faces.remove(&i);
-                        } else {
-                            app.selected_faces.insert(i);
-                        }
-                        clicked_any = true;
-                        break;
-                    }
+    if resp.clicked()
+        && let Some(pos) = resp.interact_pointer_pos()
+        && let Some((img_w, img_h)) = app.preview.image_size
+    {
+        let iw = img_w as f32;
+        let ih = img_h as f32;
+        let mut clicked_any = false;
+        for (i, det) in app.preview.detections.iter().enumerate() {
+            let bbox = det.active_bbox();
+            let norm = bbox_to_norm_rect(bbox.x, bbox.y, bbox.width, bbox.height, iw, ih);
+            let sr = norm_to_screen(norm, image_rect);
+            if sr.expand(4.0).contains(pos) {
+                if app.selected_faces.contains(&i) {
+                    app.selected_faces.remove(&i);
+                } else {
+                    app.selected_faces.insert(i);
                 }
-                if !clicked_any {
-                    app.selected_faces.clear();
-                }
+                clicked_any = true;
+                break;
             }
+        }
+        if !clicked_any {
+            app.selected_faces.clear();
         }
     }
 

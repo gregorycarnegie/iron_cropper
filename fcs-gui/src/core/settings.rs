@@ -19,11 +19,11 @@ pub fn load_settings(path: &Path) -> AppSettings {
 }
 
 pub fn persist_settings(settings: &AppSettings, path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create {}", parent.display()))?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     settings
         .save_to_path(path)

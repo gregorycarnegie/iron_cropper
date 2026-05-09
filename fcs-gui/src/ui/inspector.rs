@@ -269,10 +269,9 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                 if ui
                     .add(egui::TextEdit::singleline(&mut w_str).desired_width(ui.available_width()))
                     .changed()
+                    && let Ok(v) = w_str.parse::<u32>()
                 {
-                    if let Ok(v) = w_str.parse::<u32>() {
-                        app.settings.crop.output_width = v;
-                    }
+                    app.settings.crop.output_width = v;
                 }
             });
             ui.add_space(6.0);
@@ -282,10 +281,9 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                 if ui
                     .add(egui::TextEdit::singleline(&mut h_str).desired_width(ui.available_width()))
                     .changed()
+                    && let Ok(v) = h_str.parse::<u32>()
                 {
-                    if let Ok(v) = h_str.parse::<u32>() {
-                        app.settings.crop.output_height = v;
-                    }
+                    app.settings.crop.output_height = v;
                 }
             });
         });
@@ -388,10 +386,9 @@ fn panel_03_positioning(ui: &mut Ui, app: &mut App2) {
                 if ui
                     .add(egui::TextEdit::singleline(&mut x_str).desired_width(ui.available_width()))
                     .changed()
+                    && let Ok(v) = x_str.parse::<f32>()
                 {
-                    if let Ok(v) = x_str.parse::<f32>() {
-                        app.settings.crop.horizontal_offset = v;
-                    }
+                    app.settings.crop.horizontal_offset = v;
                 }
             });
             ui.add_space(6.0);
@@ -401,10 +398,9 @@ fn panel_03_positioning(ui: &mut Ui, app: &mut App2) {
                 if ui
                     .add(egui::TextEdit::singleline(&mut y_str).desired_width(ui.available_width()))
                     .changed()
+                    && let Ok(v) = y_str.parse::<f32>()
                 {
-                    if let Ok(v) = y_str.parse::<f32>() {
-                        app.settings.crop.vertical_offset = v;
-                    }
+                    app.settings.crop.vertical_offset = v;
                 }
             });
         });
@@ -607,16 +603,13 @@ fn output_tab(ui: &mut Ui, app: &mut App2) {
         ui.add_space(8.0);
         field_label(ui, "Output directory");
         let mut dir_str = String::new(); // output_dir not in AppSettings; use rfd directly
-        if ui
-            .add(egui::TextEdit::singleline(&mut dir_str).desired_width(ui.available_width()))
-            .changed()
-        {}
+        ui.add(egui::TextEdit::singleline(&mut dir_str).desired_width(ui.available_width()));
 
         ui.add_space(4.0);
-        if ui.button("Browse…").clicked() {
-            if let Some(_dir) = rfd::FileDialog::new().pick_folder() {
-                // would persist to settings if field exists
-            }
+        if ui.button("Browse…").clicked()
+            && let Some(_dir) = rfd::FileDialog::new().pick_folder()
+        {
+            // would persist to settings if field exists
         }
     });
 }

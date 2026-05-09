@@ -174,11 +174,11 @@ pub fn color_swatch_input(ui: &mut Ui, hex: &mut String, color: &mut [u8; 3]) ->
                 .desired_width(ui.available_width())
                 .font(egui::FontId::monospace(11.5)),
         );
-        if text_resp.changed() {
-            if let Some(c) = parse_hex_color(hex) {
-                *color = c;
-                changed = true;
-            }
+        if text_resp.changed()
+            && let Some(c) = parse_hex_color(hex)
+        {
+            *color = c;
+            changed = true;
         }
     });
     changed
@@ -255,11 +255,7 @@ pub fn panel_header(ui: &mut Ui, num: &str, title: &str, open: bool) -> bool {
 
 pub fn badge(ui: &mut Ui, label: &str) {
     let (bg, fg) = crate::theme::badge_color(label);
-    let display = if label.chars().all(|c| c.is_ascii_digit()) {
-        label.to_string()
-    } else {
-        label.to_string()
-    };
+    let display = label.to_string();
     let font = egui::FontId::monospace(9.5);
     let galley = ui
         .painter()

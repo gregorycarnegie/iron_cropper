@@ -17,10 +17,10 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
         .show_inside(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 // Primary action: Detect
-                if primary_btn(ui, "Detect faces →", P::CYAN, bg_from_cyan()) {
-                    if let Some(path) = app.preview.image_path.clone() {
-                        app.load_image_path(path);
-                    }
+                if primary_btn(ui, "Detect faces →", P::CYAN, bg_from_cyan())
+                    && let Some(path) = app.preview.image_path.clone()
+                {
+                    app.load_image_path(path);
                 }
                 ui.add_space(4.0);
 

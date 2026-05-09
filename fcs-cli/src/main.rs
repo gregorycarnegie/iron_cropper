@@ -612,7 +612,7 @@ fn generate_processed_crops(
     let mut processed = Vec::with_capacity(detections.len());
 
     if let Some(gpu_images) = runtime.crop_faces_gpu(img, detections, core_settings) {
-        for ((idx, det), crop_img) in detections.iter().enumerate().zip(gpu_images.into_iter()) {
+        for ((idx, det), crop_img) in detections.iter().enumerate().zip(gpu_images) {
             processed.push(build_processed_crop(
                 idx,
                 det,

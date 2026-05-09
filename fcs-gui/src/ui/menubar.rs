@@ -24,29 +24,28 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 ui.add_space(6.0);
 
                 menu_item(ui, "File", 180.0, |ui| {
-                    if ui.button("Open Images…").clicked() {
-                        if let Some(paths) = rfd::FileDialog::new()
+                    if ui.button("Open Images…").clicked()
+                        && let Some(paths) = rfd::FileDialog::new()
                             .add_filter(
                                 "Images",
                                 &["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"],
                             )
                             .pick_files()
-                        {
-                            let first = paths.first().cloned();
-                            app.enqueue_batch_paths(paths);
-                            if let Some(path) = first {
-                                app.load_image_path(path);
-                            }
+                    {
+                        let first = paths.first().cloned();
+                        app.enqueue_batch_paths(paths);
+                        if let Some(path) = first {
+                            app.load_image_path(path);
                         }
                     }
-                    if ui.button("Open Folder…").clicked() {
-                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                            let paths = collect_folder_images(&dir);
-                            let first = paths.first().cloned();
-                            app.enqueue_batch_paths(paths);
-                            if let Some(path) = first {
-                                app.load_image_path(path);
-                            }
+                    if ui.button("Open Folder…").clicked()
+                        && let Some(dir) = rfd::FileDialog::new().pick_folder()
+                    {
+                        let paths = collect_folder_images(&dir);
+                        let first = paths.first().cloned();
+                        app.enqueue_batch_paths(paths);
+                        if let Some(path) = first {
+                            app.load_image_path(path);
                         }
                     }
                     ui.separator();
@@ -99,10 +98,10 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 });
 
                 menu_item(ui, "Detect", 180.0, |ui| {
-                    if ui.button("Run Detection").clicked() {
-                        if let Some(path) = app.preview.image_path.clone() {
-                            app.load_image_path(path);
-                        }
+                    if ui.button("Run Detection").clicked()
+                        && let Some(path) = app.preview.image_path.clone()
+                    {
+                        app.load_image_path(path);
                     }
                     ui.separator();
                     if ui.button("Clear Detections").clicked() {

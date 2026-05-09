@@ -492,15 +492,15 @@ impl MappingUiState {
             match inspect_mapping_sources(path, &self.read_options()) {
                 Ok(catalog) => {
                     self.catalog = catalog;
-                    if self.sheet_name.is_empty() {
-                        if let Some(first) = self.catalog.sheets.first() {
-                            self.sheet_name = first.clone();
-                        }
+                    if self.sheet_name.is_empty()
+                        && let Some(first) = self.catalog.sheets.first()
+                    {
+                        self.sheet_name = first.clone();
                     }
-                    if self.sql_table.is_empty() {
-                        if let Some(first) = self.catalog.sql_tables.first() {
-                            self.sql_table = first.clone();
-                        }
+                    if self.sql_table.is_empty()
+                        && let Some(first) = self.catalog.sql_tables.first()
+                    {
+                        self.sql_table = first.clone();
                     }
                 }
                 Err(err) => self.preview_error = Some(err.to_string()),

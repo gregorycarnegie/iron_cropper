@@ -351,13 +351,11 @@ fn file_tree(ui: &mut Ui, app: &mut App2) {
 
     match action {
         Some(TreeAction::Load(path)) => app.load_image_path(path),
-        Some(TreeAction::Remove(idx)) => {
-            if idx < app.batch_files.len() {
-                app.batch_files.remove(idx);
-                app.show_success("Removed image from queue.");
-            }
+        Some(TreeAction::Remove(idx)) if idx < app.batch_files.len() => {
+            app.batch_files.remove(idx);
+            app.show_success("Removed image from queue.");
         }
-        None => {}
+        _ => {}
     }
 }
 
@@ -872,17 +870,16 @@ fn mapping_file_drop_zone(ui: &mut Ui, app: &mut App2) {
     }
     ui.add_space(90.0);
 
-    if resp.clicked() {
-        if let Some(path) = rfd::FileDialog::new()
+    if resp.clicked()
+        && let Some(path) = rfd::FileDialog::new()
             .add_filter(
                 "Mapping files",
                 &["csv", "xlsx", "xls", "db", "sqlite", "sqlite3"],
             )
             .pick_file()
-        {
-            app.mapping.set_file(path);
-            let _ = app.mapping.reload_preview();
-        }
+    {
+        app.mapping.set_file(path);
+        let _ = app.mapping.reload_preview();
     }
 
     if app.mapping.file_path.is_some() {
@@ -955,22 +952,22 @@ fn queue_folder_drop_zone(ui: &mut Ui, app: &mut App2) {
     );
     ui.add_space(80.0);
 
-    if resp.clicked() {
-        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-            let paths = crate::app::collect_folder_images(&folder);
-            let first = paths.first().cloned();
-            let added = app.enqueue_batch_paths(paths);
-            if let Some(path) = first {
-                app.load_image_path(path);
-            }
-            if added > 0 {
-                app.show_success(format!(
-                    "Added {added} image(s) to the queue ({} total)",
-                    app.batch_files.len()
-                ));
-            } else {
-                app.show_success("No new images found in folder.");
-            }
+    if resp.clicked()
+        && let Some(folder) = rfd::FileDialog::new().pick_folder()
+    {
+        let paths = crate::app::collect_folder_images(&folder);
+        let first = paths.first().cloned();
+        let added = app.enqueue_batch_paths(paths);
+        if let Some(path) = first {
+            app.load_image_path(path);
+        }
+        if added > 0 {
+            app.show_success(format!(
+                "Added {added} image(s) to the queue ({} total)",
+                app.batch_files.len()
+            ));
+        } else {
+            app.show_success("No new images found in folder.");
         }
     }
 }
