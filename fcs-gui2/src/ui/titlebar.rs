@@ -9,18 +9,10 @@ const BTN_W: f32 = 46.0;
 pub fn show(ui: &mut Ui, app: &mut App2) {
     egui::Panel::top("titlebar")
         .exact_size(36.0)
+        .show_separator_line(false)
         .frame(Frame::new().fill(P::BG).inner_margin(egui::Margin::ZERO))
         .show_inside(ui, |ui| {
             let full = ui.max_rect();
-
-            // Bottom border
-            ui.painter().line_segment(
-                [
-                    egui::pos2(full.min.x, full.max.y - 1.0),
-                    egui::pos2(full.max.x, full.max.y - 1.0),
-                ],
-                Stroke::new(1.0, P::RULE),
-            );
 
             // Drag region — everything left of the three chrome buttons
             let btns_x = full.max.x - BTN_W * 3.0;

@@ -24,6 +24,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
 
     egui::Panel::bottom("canvas_bottom_bar")
         .exact_size(bottom_bar_h)
+        .show_separator_line(false)
         .frame(Frame::new().fill(P::black_alpha(50)))
         .show_inside(ui, |ui| {
             canvas_bottom_bar(ui, app);

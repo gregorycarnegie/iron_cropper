@@ -3,26 +3,18 @@
 use crate::app::collect_folder_images;
 use crate::theme::P;
 use crate::types::App2;
-use egui::{Frame, Popup, Sense, Stroke, Ui, Vec2};
+use egui::{Frame, Popup, Sense, Ui, Vec2};
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
     egui::Panel::top("menubar")
         .exact_size(32.0)
+        .show_separator_line(false)
         .frame(
             Frame::new()
                 .fill(P::white_alpha(3))
                 .inner_margin(egui::Margin::ZERO),
         )
         .show_inside(ui, |ui| {
-            // Bottom border
-            ui.painter().line_segment(
-                [
-                    egui::pos2(ui.min_rect().min.x, ui.min_rect().max.y - 1.0),
-                    egui::pos2(ui.min_rect().max.x, ui.min_rect().max.y - 1.0),
-                ],
-                Stroke::new(1.0, P::RULE),
-            );
-
             ui.horizontal_centered(|ui| {
                 ui.add_space(6.0);
 

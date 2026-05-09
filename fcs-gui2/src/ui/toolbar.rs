@@ -8,21 +8,13 @@ use egui::{Color32, Frame, Sense, Stroke, Ui, Vec2};
 pub fn show(ui: &mut Ui, app: &mut App2) {
     egui::Panel::top("toolbar")
         .exact_size(52.0)
+        .show_separator_line(false)
         .frame(
             Frame::new()
                 .fill(P::SURFACE.linear_multiply(0.6))
                 .inner_margin(egui::Margin::symmetric(12, 8)),
         )
         .show_inside(ui, |ui| {
-            // Bottom border
-            ui.painter().line_segment(
-                [
-                    egui::pos2(ui.min_rect().min.x, ui.min_rect().max.y - 1.0),
-                    egui::pos2(ui.min_rect().max.x, ui.min_rect().max.y - 1.0),
-                ],
-                Stroke::new(1.0, P::RULE),
-            );
-
             ui.horizontal_centered(|ui| {
                 // Primary action: Detect
                 if primary_btn(ui, "Detect faces →", P::CYAN, bg_from_cyan()) {

@@ -7,16 +7,9 @@ use egui::{Frame, Sense, Stroke, Vec2};
 pub fn show(ui: &mut egui::Ui, app: &mut App2) {
     egui::Panel::bottom("statusbar")
         .exact_size(28.0)
+        .show_separator_line(false)
         .frame(Frame::new().fill(P::BG).inner_margin(egui::Margin::ZERO))
         .show_inside(ui, |ui| {
-            ui.painter().line_segment(
-                [
-                    egui::pos2(ui.min_rect().min.x, ui.min_rect().min.y),
-                    egui::pos2(ui.min_rect().max.x, ui.min_rect().min.y),
-                ],
-                Stroke::new(1.0, P::RULE),
-            );
-
             ui.horizontal_centered(|ui| {
                 // Status dot + label
                 let (ready_dot, ready_text) = if app.is_busy {
