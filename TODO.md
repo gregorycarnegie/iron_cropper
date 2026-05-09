@@ -21,7 +21,8 @@
 - [x] **CI**: Remove static secret-key checks in release.yml to avoid false-positive GitHub Actions editor diagnostics for optional code signing secrets.
 - [x] **CI**: Replace direct signing-secret lookups with computed-key expressions (`secrets[format(...)]`) to suppress remaining IDE false positives on optional secrets.
 - [x] **Release**: Add GitHub artifact provenance attestation (`actions/attest-build-provenance`) so unsigned releases still ship verifiable supply-chain metadata.
-- [x] **CI/Release**: Pin GitHub Actions Rust toolchain to `1.94.1` to match local workspace behavior.
+- [x] **CI/Release**: Pin GitHub Actions Rust toolchain to `1.95.0` to match local workspace behavior.
+- [x] **Release**: Rename the rebuilt GUI package/binary back to `fcs-gui` so release builds produce `fcs-gui.exe`.
 - [x] **NSIS**: Fix uninstall shortcut icon — was pointing to `fcs-gui.exe`, now correctly points to `Uninstall.exe`.
 - [x] **NSIS**: Extract inline PowerShell PATH one-liners — replaced with readable multi-line PS1 scripts written to `$PLUGINSDIR` at runtime.
 - [x] **NSIS**: Add a license page (`MUI_PAGE_LICENSE`) to the installer (uses `LICENSE-MIT` from dist dir).

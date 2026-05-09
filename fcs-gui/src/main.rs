@@ -4,7 +4,7 @@
 )]
 
 use eframe::{NativeOptions, egui};
-use fcs_gui2::App2;
+use fcs_gui::App2;
 use fcs_utils::init_logging;
 use ico::IconDir;
 use log::{LevelFilter, warn};

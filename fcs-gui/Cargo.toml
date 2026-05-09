@@ -1,5 +1,5 @@
 [package]
-name = "fcs-gui2"
+name = "fcs-gui"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
@@ -9,7 +9,7 @@ description = "Face Crop Studio — redesigned egui desktop application."
 path = "src/lib.rs"
 
 [[bin]]
-name = "fcs-gui2"
+name = "fcs-gui"
 path = "src/main.rs"
 
 [dependencies]

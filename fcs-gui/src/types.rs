@@ -1,4 +1,4 @@
-//! Application state types for fcs-gui2.
+//! Application state types for fcs-gui.
 
 use egui::TextureHandle;
 use fcs_core::{BoundingBox, Detection};

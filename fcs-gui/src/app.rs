@@ -1,4 +1,4 @@
-//! eframe::App implementation for fcs-gui2.
+//! eframe::App implementation for fcs-gui.
 
 use crate::core::{detection::build_detector, settings::load_settings};
 use crate::types::*;
