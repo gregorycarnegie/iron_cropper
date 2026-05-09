@@ -71,7 +71,11 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
 
             // Chrome buttons — right to left: Close, Maximize/Restore, Minimize
             let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
-            let max_icon = if maximized { WinIcon::Restore } else { WinIcon::Maximize };
+            let max_icon = if maximized {
+                WinIcon::Restore
+            } else {
+                WinIcon::Maximize
+            };
             for (i, icon) in [WinIcon::Close, max_icon, WinIcon::Minimize]
                 .iter()
                 .enumerate()
@@ -135,9 +139,21 @@ fn win_btn(ui: &mut egui::Ui, rect: egui::Rect, icon: WinIcon) {
             // Two overlapping squares (Windows-style restore icon)
             let back = egui::Rect::from_min_size(c + Vec2::new(-2.0, -4.0), Vec2::splat(8.0));
             let front = egui::Rect::from_min_size(c + Vec2::new(-4.0, -2.0), Vec2::splat(8.0));
-            painter.rect_filled(rect, 0.0, if resp.hovered() { P::white_alpha(15) } else { Color32::TRANSPARENT });
+            painter.rect_filled(
+                rect,
+                0.0,
+                if resp.hovered() {
+                    P::white_alpha(15)
+                } else {
+                    Color32::TRANSPARENT
+                },
+            );
             // Clear the back rect interior so front square appears on top cleanly
-            let bg_fill = if resp.hovered() { P::white_alpha(15) } else { Color32::TRANSPARENT };
+            let bg_fill = if resp.hovered() {
+                P::white_alpha(15)
+            } else {
+                Color32::TRANSPARENT
+            };
             painter.rect_filled(back.shrink(sw.width), 0.0, bg_fill);
             painter.rect_stroke(back, 0.0, sw, egui::StrokeKind::Outside);
             painter.rect_filled(front.shrink(sw.width), 0.0, P::BG);

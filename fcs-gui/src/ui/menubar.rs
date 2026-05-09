@@ -6,8 +6,8 @@ use crate::theme::P;
 use crate::types::App2;
 use egui::{Frame, Popup, RichText, Sense, Ui, Vec2};
 use fcs_utils::{
-    configure_telemetry,
     config::{BatchLogFormat, MetadataMode, ResizeQuality},
+    configure_telemetry,
 };
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
@@ -132,12 +132,9 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                     // ── Detection ──────────────────────────────────────────────
                     section_label(ui, "Detection");
                     let r = ui.add(
-                        egui::Slider::new(
-                            &mut app.settings.detection.nms_threshold,
-                            0.0..=1.0,
-                        )
-                        .text("NMS threshold")
-                        .step_by(0.01),
+                        egui::Slider::new(&mut app.settings.detection.nms_threshold, 0.0..=1.0)
+                            .text("NMS threshold")
+                            .step_by(0.01),
                     );
                     if r.drag_stopped() || (r.changed() && !r.dragged()) {
                         app.needs_detector_rebuild = true;

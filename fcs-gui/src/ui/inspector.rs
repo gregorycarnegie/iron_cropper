@@ -2,13 +2,13 @@
 
 use crate::theme::P;
 use crate::types::{App2, InspectorTab};
-use fcs_core::preset_by_name;
-use fcs_utils::CropShape;
 use crate::ui::shape::shape_controls;
 use crate::ui::widgets::{
     field_label, panel_header, segmented_control, slider_with_label, toggle_row,
 };
 use egui::{Sense, Stroke, Ui, Vec2};
+use fcs_core::preset_by_name;
+use fcs_utils::CropShape;
 
 const BODY_MARGIN_X: i8 = 14;
 
@@ -153,13 +153,13 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
         // Preset dropdown
         field_label(ui, "Preset");
         const PRESETS: &[(&str, &str)] = &[
-            ("LinkedIn",  "LinkedIn (400×400)"),
-            ("Passport",  "Passport (413×531)"),
+            ("LinkedIn", "LinkedIn (400×400)"),
+            ("Passport", "Passport (413×531)"),
             ("Instagram", "Instagram (1080×1080)"),
-            ("Headshot",  "Headshot (600×800)"),
-            ("ID Card",   "ID Card (332×498)"),
-            ("Avatar",    "Avatar (512×512)"),
-            ("Custom",    "Custom…"),
+            ("Headshot", "Headshot (600×800)"),
+            ("ID Card", "ID Card (332×498)"),
+            ("Avatar", "Avatar (512×512)"),
+            ("Custom", "Custom…"),
         ];
         let current_label = PRESETS
             .iter()
@@ -574,7 +574,13 @@ fn output_tab(ui: &mut Ui, app: &mut App2) {
         ui.add_space(12.0);
         field_label(ui, "Format");
         let formats = ["JPEG", "PNG", "WEBP", "AVIF"];
-        let mut fmt_idx = match app.settings.crop.output_format.to_ascii_uppercase().as_str() {
+        let mut fmt_idx = match app
+            .settings
+            .crop
+            .output_format
+            .to_ascii_uppercase()
+            .as_str()
+        {
             "PNG" => 1,
             "WEBP" => 2,
             "AVIF" => 3,

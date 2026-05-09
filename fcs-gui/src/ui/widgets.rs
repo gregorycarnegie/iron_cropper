@@ -54,8 +54,7 @@ pub fn segmented_control(ui: &mut Ui, options: &[&str], selected: &mut usize) ->
     // Allocate the entire control as one painter — this correctly advances the
     // cursor and gives us a stable ID.  Per-button interaction is registered
     // via ui.interact() which does NOT allocate extra space.
-    let (outer_resp, painter) =
-        ui.allocate_painter(Vec2::new(total_w, 28.0), Sense::hover());
+    let (outer_resp, painter) = ui.allocate_painter(Vec2::new(total_w, 28.0), Sense::hover());
     let outer_rect = outer_resp.rect;
 
     painter.rect_filled(outer_rect, 7.0, P::black_alpha(76));

@@ -246,10 +246,8 @@ fn stage(ui: &mut Ui, app: &mut App2) {
             for det in &app.preview.detections {
                 let bbox = det.active_bbox();
                 let region = calculate_crop_region(img_w, img_h, bbox, &crop_settings);
-                let rx = image_rect.min.x
-                    + (region.x as f32 / img_w as f32) * image_rect.width();
-                let ry = image_rect.min.y
-                    + (region.y as f32 / img_h as f32) * image_rect.height();
+                let rx = image_rect.min.x + (region.x as f32 / img_w as f32) * image_rect.width();
+                let ry = image_rect.min.y + (region.y as f32 / img_h as f32) * image_rect.height();
                 let rw = (region.width as f32 / img_w as f32) * image_rect.width();
                 let rh = (region.height as f32 / img_h as f32) * image_rect.height();
                 let crop_rect = egui::Rect::from_min_size(egui::pos2(rx, ry), Vec2::new(rw, rh));

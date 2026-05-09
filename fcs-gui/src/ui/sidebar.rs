@@ -687,11 +687,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
                     }
                 });
                 if !has_queue {
-                    ui.label(
-                        RichText::new("(add images first)")
-                            .size(9.5)
-                            .color(P::INK3),
-                    );
+                    ui.label(RichText::new("(add images first)").size(9.5).color(P::INK3));
                 }
             });
 
@@ -805,7 +801,11 @@ fn mapping_file_drop_zone(ui: &mut Ui, app: &mut App2) {
     let painter = ui.painter();
 
     let has_file = app.mapping.file_path.is_some();
-    let border_color = if resp.hovered() { P::PEACH } else { P::peach_alpha(140) };
+    let border_color = if resp.hovered() {
+        P::PEACH
+    } else {
+        P::peach_alpha(140)
+    };
     let bg_color = if resp.hovered() {
         P::peach_alpha(35)
     } else {
@@ -874,7 +874,10 @@ fn mapping_file_drop_zone(ui: &mut Ui, app: &mut App2) {
 
     if resp.clicked() {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Mapping files", &["csv", "xlsx", "xls", "db", "sqlite", "sqlite3"])
+            .add_filter(
+                "Mapping files",
+                &["csv", "xlsx", "xls", "db", "sqlite", "sqlite3"],
+            )
             .pick_file()
         {
             app.mapping.set_file(path);
@@ -903,7 +906,11 @@ fn queue_folder_drop_zone(ui: &mut Ui, app: &mut App2) {
     let resp = ui.allocate_rect(dz_rect, Sense::click());
     let painter = ui.painter();
 
-    let border_color = if resp.hovered() { P::LIME } else { P::lime_alpha(140) };
+    let border_color = if resp.hovered() {
+        P::LIME
+    } else {
+        P::lime_alpha(140)
+    };
     let bg_color = if resp.hovered() {
         P::lime_alpha(25)
     } else {

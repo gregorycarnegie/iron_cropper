@@ -440,13 +440,10 @@ impl App2 {
                 unsupported += 1;
                 continue;
             };
-            let is_mapping = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| {
-                    let lower = e.to_ascii_lowercase();
-                    MAPPING_EXTS.iter().any(|&m| m == lower.as_str())
-                });
+            let is_mapping = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                let lower = e.to_ascii_lowercase();
+                MAPPING_EXTS.iter().any(|&m| m == lower.as_str())
+            });
             if is_mapping {
                 self.mapping.set_file(path.clone());
                 let _ = self.mapping.reload_preview();
