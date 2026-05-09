@@ -111,17 +111,6 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                     ui.checkbox(&mut app.manual_box_tool_enabled, "Draw Box Tool");
                 });
 
-                menu_item(ui, "Window", |ui| {
-                    if ui.button("Minimize").clicked() {
-                        ui.ctx()
-                            .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                    }
-                    if ui.button("Maximize").clicked() {
-                        ui.ctx()
-                            .send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                    }
-                });
-
                 menu_item(ui, "Help", |ui| {
                     if ui.button("About Face Crop Studio").clicked() {
                         app.status_line =

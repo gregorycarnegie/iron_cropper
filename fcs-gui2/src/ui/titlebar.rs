@@ -77,8 +77,10 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 );
             }
 
-            // Chrome buttons — right to left: Close, Maximize, Minimize
-            for (i, icon) in [WinIcon::Close, WinIcon::Maximize, WinIcon::Minimize]
+            // Chrome buttons — right to left: Close, Maximize/Restore, Minimize
+            let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+            let max_icon = if maximized { WinIcon::Restore } else { WinIcon::Maximize };
+            for (i, icon) in [WinIcon::Close, max_icon, WinIcon::Minimize]
                 .iter()
                 .enumerate()
             {
@@ -95,13 +97,14 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
 enum WinIcon {
     Minimize,
     Maximize,
+    Restore,
     Close,
 }
 
 fn win_btn(ui: &mut egui::Ui, rect: egui::Rect, icon: WinIcon) {
     let id = match icon {
         WinIcon::Minimize => ui.id().with("wb_min"),
-        WinIcon::Maximize => ui.id().with("wb_max"),
+        WinIcon::Maximize | WinIcon::Restore => ui.id().with("wb_max"),
         WinIcon::Close => ui.id().with("wb_close"),
     };
     let resp = ui.interact(rect, id, Sense::click());
@@ -136,6 +139,18 @@ fn win_btn(ui: &mut egui::Ui, rect: egui::Rect, icon: WinIcon) {
             let r = egui::Rect::from_center_size(c, Vec2::splat(10.0));
             painter.rect_stroke(r, 1.0, sw, egui::StrokeKind::Outside);
         }
+        WinIcon::Restore => {
+            // Two overlapping squares (Windows-style restore icon)
+            let back = egui::Rect::from_min_size(c + Vec2::new(-2.0, -4.0), Vec2::splat(8.0));
+            let front = egui::Rect::from_min_size(c + Vec2::new(-4.0, -2.0), Vec2::splat(8.0));
+            painter.rect_filled(rect, 0.0, if resp.hovered() { P::white_alpha(15) } else { Color32::TRANSPARENT });
+            // Clear the back rect interior so front square appears on top cleanly
+            let bg_fill = if resp.hovered() { P::white_alpha(15) } else { Color32::TRANSPARENT };
+            painter.rect_filled(back.shrink(sw.width), 0.0, bg_fill);
+            painter.rect_stroke(back, 0.0, sw, egui::StrokeKind::Outside);
+            painter.rect_filled(front.shrink(sw.width), 0.0, P::BG);
+            painter.rect_stroke(front, 0.0, sw, egui::StrokeKind::Outside);
+        }
         WinIcon::Close => {
             let d = 4.5;
             painter.line_segment([c + Vec2::new(-d, -d), c + Vec2::new(d, d)], sw);
@@ -148,7 +163,7 @@ fn win_btn(ui: &mut egui::Ui, rect: egui::Rect, icon: WinIcon) {
             WinIcon::Minimize => ui
                 .ctx()
                 .send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
-            WinIcon::Maximize => {
+            WinIcon::Maximize | WinIcon::Restore => {
                 let maximized = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
