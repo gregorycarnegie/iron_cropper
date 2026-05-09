@@ -46,7 +46,10 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
         Stroke::new(1.0, P::RULE),
     );
 
-    // Filename + dimensions
+    // Control chips on the right
+    let chips_x = r.max.x - 360.0;
+
+    // Filename + dimensions — clipped so they never overlap with the pills
     let name = app
         .preview
         .image_path
@@ -60,7 +63,13 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
         .map(|(w, h)| format!("{w} × {h}"))
         .unwrap_or_default();
 
-    painter.text(
+    let text_clip = egui::Rect::from_min_max(
+        egui::pos2(r.min.x, r.min.y),
+        egui::pos2(chips_x - 10.0, r.max.y),
+    );
+    let left_painter = painter.with_clip_rect(text_clip);
+
+    left_painter.text(
         egui::pos2(r.min.x + 14.0, r.center().y),
         egui::Align2::LEFT_CENTER,
         name,
@@ -68,11 +77,11 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
         P::INK,
     );
     if !dims.is_empty() {
-        let name_w = painter
+        let name_w = left_painter
             .layout_no_wrap(name.to_string(), egui::FontId::proportional(13.0), P::INK)
             .size()
             .x;
-        painter.text(
+        left_painter.text(
             egui::pos2(r.min.x + 14.0 + name_w + 12.0, r.center().y),
             egui::Align2::LEFT_CENTER,
             &dims,
@@ -80,10 +89,6 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
             P::INK3,
         );
     }
-
-    // Control chips on the right
-    // (These use a child ui positioned on the right)
-    let chips_x = r.max.x - 360.0;
     let clip = egui::Rect::from_min_max(egui::pos2(chips_x, r.min.y), r.max);
     // We draw them inline via a separate child ui
     let mut child = ui.new_child(
