@@ -47,10 +47,35 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
         Stroke::new(1.0, P::RULE),
     );
 
-    // Control chips on the right
-    let chips_x = r.max.x - 360.0;
+    let conf   = app.settings.detection.score_threshold;
+    let preset = app.settings.crop.preset.clone();
+    let face_h = app.settings.crop.face_height_pct;
+    let aspect = format!(
+        "{}:{}",
+        app.settings.crop.output_width, app.settings.crop.output_height
+    );
 
-    // Filename + dimensions — clipped so they never overlap with the pills
+    // Measure the exact width the pills will need so the text clip is always tight enough.
+    // ctl_pill width formula: key_w + val_w + 20  (matches the widget implementation)
+    let pill_font = egui::FontId::monospace(10.5);
+    let measure_pill = |key: &str, val: &str| -> f32 {
+        let kw = painter.layout_no_wrap(key.to_string(), pill_font.clone(), P::INK3).size().x;
+        let vw = painter.layout_no_wrap(val.to_string(), pill_font.clone(), P::INK).size().x;
+        kw + vw + 20.0
+    };
+    let pills_total_w =
+        measure_pill("preset ",  &preset)
+        + measure_pill("conf ",   &format!("{conf:.2}"))
+        + measure_pill("aspect ", &aspect)
+        + measure_pill("face-h ", &format!("{:.0}%", face_h))
+        + 3.0 * 4.0   // three add_space(4) between pills
+        + 12.0         // trailing add_space(12) on the right
+        + 20.0;         // extra breathing room
+
+    // chips_x = left edge of the pills container; text is clipped before it.
+    let chips_x = (r.max.x - pills_total_w).max(r.min.x + 80.0);
+
+    // Filename + dimensions — hard clip at chips_x so they never bleed into the pills.
     let name = app
         .preview
         .image_path
@@ -66,7 +91,7 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
 
     let text_clip = egui::Rect::from_min_max(
         egui::pos2(r.min.x, r.min.y),
-        egui::pos2(chips_x - 10.0, r.max.y),
+        egui::pos2(chips_x - 12.0, r.max.y),
     );
     let left_painter = painter.with_clip_rect(text_clip);
 
@@ -90,22 +115,15 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
             P::INK3,
         );
     }
+
+    // Pills — drawn in a child UI whose max_rect exactly matches what we measured.
     let clip = egui::Rect::from_min_max(egui::pos2(chips_x, r.min.y), r.max);
-    // We draw them inline via a separate child ui
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(clip)
             .layout(egui::Layout::right_to_left(egui::Align::Center)),
     );
     child.add_space(12.0);
-    let conf = app.settings.detection.score_threshold;
-    let preset = app.settings.crop.preset.clone();
-    let face_h = app.settings.crop.face_height_pct;
-    let aspect = format!(
-        "{}:{}",
-        app.settings.crop.output_width, app.settings.crop.output_height
-    );
-
     ctl_pill(&mut child, "preset ", &preset, Some(P::CYAN));
     child.add_space(4.0);
     ctl_pill(&mut child, "conf ", &format!("{conf:.2}"), Some(P::PEACH));
