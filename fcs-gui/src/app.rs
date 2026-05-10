@@ -152,6 +152,7 @@ impl App2 {
             webcam_state: WebcamState::default(),
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
+            canvas_rotation: 0,
             show_about: false,
             needs_detector_rebuild: false,
         }

@@ -639,9 +639,10 @@ pub struct App2 {
     pub clipboard_temp_images: Vec<TempPath>,
     pub webcam_state: WebcamState,
 
-    // Canvas zoom
+    // Canvas zoom / rotation
     pub zoom: f32,
     pub pan: egui::Vec2,
+    pub canvas_rotation: u32, // 0, 90, 180, or 270
 
     // Dialogs
     pub show_about: bool,

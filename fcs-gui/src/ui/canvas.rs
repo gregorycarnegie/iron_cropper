@@ -1,13 +1,13 @@
 //! Centre canvas column — image viewport + face overlays + mini-log.
 
-use crate::interaction::coords::{bbox_to_norm_rect, norm_to_screen};
 use crate::rendering::paint::{
     draw_confidence_badge, draw_drag_handle, draw_face_box, draw_landmark_dot,
 };
 use crate::theme::P;
 use crate::types::{App2, LogKind};
 use crate::ui::widgets::{ctl_pill, face_chip};
-use egui::{Color32, Frame, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Sense, Stroke, Ui, Vec2};
+use egui::epaint::{Mesh, Vertex};
 use fcs_core::calculate_crop_region;
 use fcs_utils::outline_points_for_rect;
 
@@ -115,14 +115,90 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
     ctl_pill(&mut child, "face-h ", &format!("{:.0}%", face_h), None);
 }
 
+/// Maps a normalized image coordinate (0..1) to screen space, accounting for canvas rotation.
+fn norm_to_screen_rotated(nx: f32, ny: f32, rect: egui::Rect, rotation: u32) -> egui::Pos2 {
+    let (rx, ry) = match rotation {
+        90  => (1.0 - ny, nx),
+        180 => (1.0 - nx, 1.0 - ny),
+        270 => (ny, 1.0 - nx),
+        _   => (nx, ny),
+    };
+    egui::pos2(rect.min.x + rx * rect.width(), rect.min.y + ry * rect.height())
+}
+
+/// Converts a BoundingBox in image pixel coords to an axis-aligned screen rect, accounting for rotation.
+fn rotated_bbox_screen_rect(
+    bx: f32, by: f32, bw: f32, bh: f32,
+    iw: f32, ih: f32,
+    rect: egui::Rect,
+    rotation: u32,
+) -> egui::Rect {
+    let corners = [
+        (bx / iw,        by / ih),
+        ((bx + bw) / iw, by / ih),
+        ((bx + bw) / iw, (by + bh) / ih),
+        (bx / iw,        (by + bh) / ih),
+    ];
+    let pts: Vec<egui::Pos2> = corners
+        .iter()
+        .map(|(nx, ny)| norm_to_screen_rotated(*nx, *ny, rect, rotation))
+        .collect();
+    let min_x = pts.iter().map(|p| p.x).fold(f32::INFINITY,     f32::min);
+    let min_y = pts.iter().map(|p| p.y).fold(f32::INFINITY,     f32::min);
+    let max_x = pts.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+    let max_y = pts.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+    egui::Rect::from_min_max(egui::pos2(min_x, min_y), egui::pos2(max_x, max_y))
+}
+
+/// Builds a textured mesh quad that renders `texture_id` into `dest` with the given rotation.
+fn image_shape(texture_id: egui::TextureId, dest: egui::Rect, rotation: u32) -> egui::Shape {
+    // Screen-space quad corners: TL, TR, BR, BL
+    let pos = [
+        dest.min,
+        egui::pos2(dest.max.x, dest.min.y),
+        dest.max,
+        egui::pos2(dest.min.x, dest.max.y),
+    ];
+    // UV corners — what original UV does each display corner sample?
+    // (derived from standard 90°/180°/270° CW rotation math)
+    let uvs: [[f32; 2]; 4] = match rotation {
+        90  => [[0.0, 1.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+        180 => [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
+        270 => [[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]],
+        _   => [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+    };
+    let mut mesh = Mesh::with_texture(texture_id);
+    for (p, uv) in pos.iter().zip(uvs.iter()) {
+        mesh.vertices.push(Vertex {
+            pos: *p,
+            uv: egui::pos2(uv[0], uv[1]),
+            color: Color32::WHITE,
+        });
+    }
+    mesh.indices = vec![0, 1, 2, 0, 2, 3];
+    egui::Shape::mesh(mesh)
+}
+
 fn stage(ui: &mut Ui, app: &mut App2) {
     let avail = ui.available_rect_before_wrap();
     let pad = 18.0;
     let stage_outer = avail.shrink(pad);
 
-    // Centre the image maintaining aspect ratio
-    let image_rect = if let Some((iw, ih)) = app.preview.image_size {
-        let img_ar = iw as f32 / ih as f32;
+    // Scroll-to-zoom (read before allocating sense, so it applies to the whole stage area)
+    let scroll = ui.ctx().input(|i| i.smooth_scroll_delta.y);
+    if scroll.abs() > 0.1 {
+        let factor = (1.0 + scroll * 0.003).clamp(0.85, 1.20_f32);
+        app.zoom = (app.zoom * factor).clamp(0.25, 8.0);
+    }
+
+    // Compute the "fit" rect (zoom = 1, pan = 0), accounting for rotation's effect on aspect ratio
+    let fit_rect = if let Some((iw, ih)) = app.preview.image_size {
+        // For 90°/270° the displayed aspect ratio is the inverse of the image's
+        let (disp_w, disp_h) = match app.canvas_rotation {
+            90 | 270 => (ih as f32, iw as f32),
+            _        => (iw as f32, ih as f32),
+        };
+        let img_ar  = disp_w / disp_h;
         let slot_ar = stage_outer.width() / stage_outer.height();
         if img_ar > slot_ar {
             let w = stage_outer.width();
@@ -137,26 +213,28 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         stage_outer
     };
 
-    // Stage background
+    // Apply zoom and pan relative to the fit rect center
+    let image_rect = egui::Rect::from_center_size(
+        fit_rect.center() + app.pan,
+        fit_rect.size() * app.zoom,
+    );
+
+    // Stage background + border drawn at the fit rect (the "frame")
     let painter = ui.painter();
-    painter.rect_filled(image_rect, 12.0, P::BG);
+    painter.rect_filled(fit_rect, 12.0, P::BG);
     painter.rect_stroke(
-        image_rect,
+        fit_rect,
         12.0,
         Stroke::new(1.0, P::RULE),
         egui::StrokeKind::Outside,
     );
 
-    // Draw image texture if available
+    // Clip all image/overlay painting to the fit rect so zoom overflow is hidden
+    let painter = painter.with_clip_rect(fit_rect);
+
     if let Some(texture) = &app.preview.texture {
-        painter.image(
-            texture.id(),
-            image_rect,
-            Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
+        painter.add(image_shape(texture.id(), image_rect, app.canvas_rotation));
     } else if app.is_busy {
-        // Loading placeholder
         painter.text(
             image_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -165,7 +243,6 @@ fn stage(ui: &mut Ui, app: &mut App2) {
             P::INK3,
         );
     } else {
-        // Empty state
         painter.text(
             image_rect.center() - Vec2::new(0.0, 12.0),
             egui::Align2::CENTER_CENTER,
@@ -186,12 +263,14 @@ fn stage(ui: &mut Ui, app: &mut App2) {
     if let Some((img_w, img_h)) = app.preview.image_size {
         let iw = img_w as f32;
         let ih = img_h as f32;
+        let rot = app.canvas_rotation;
         let dets: Vec<_> = app.preview.detections.iter().enumerate().collect();
 
         for (i, det) in &dets {
             let bbox = det.active_bbox();
-            let norm = bbox_to_norm_rect(bbox.x, bbox.y, bbox.width, bbox.height, iw, ih);
-            let screen_rect = norm_to_screen(norm, image_rect);
+            let screen_rect = rotated_bbox_screen_rect(
+                bbox.x, bbox.y, bbox.width, bbox.height, iw, ih, image_rect, rot,
+            );
 
             let selected = app.selected_faces.contains(i);
             let color = if !selected {
@@ -202,28 +281,20 @@ fn stage(ui: &mut Ui, app: &mut App2) {
                 P::CYAN
             };
 
-            draw_face_box(painter, screen_rect, color, selected);
+            draw_face_box(&painter, screen_rect, color, selected);
 
-            // Confidence badge
             draw_confidence_badge(
-                painter,
+                &painter,
                 &format!("{:.2}", det.detection.score),
                 screen_rect,
                 color,
             );
 
-            // Landmarks
             for lm in &det.detection.landmarks {
-                let nx = lm.x / iw;
-                let ny = lm.y / ih;
-                let lm_pos = egui::pos2(
-                    image_rect.min.x + nx * image_rect.width(),
-                    image_rect.min.y + ny * image_rect.height(),
-                );
-                draw_landmark_dot(painter, lm_pos);
+                let lm_pos = norm_to_screen_rotated(lm.x / iw, lm.y / ih, image_rect, rot);
+                draw_landmark_dot(&painter, lm_pos);
             }
 
-            // Drag handles on selected
             if selected {
                 let corners = [
                     screen_rect.min,
@@ -232,7 +303,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
                     screen_rect.max,
                 ];
                 for corner in corners {
-                    draw_drag_handle(painter, corner, color);
+                    draw_drag_handle(&painter, corner, color);
                 }
             }
         }
@@ -244,41 +315,62 @@ fn stage(ui: &mut Ui, app: &mut App2) {
     {
         let crop_settings = app.build_crop_settings();
         let crop_stroke = Stroke::new(2.0, P::LIME);
+        let iw = img_w as f32;
+        let ih = img_h as f32;
+        let rot = app.canvas_rotation;
         for det in &app.preview.detections {
             let bbox = det.active_bbox();
             let region = calculate_crop_region(img_w, img_h, bbox, &crop_settings);
-            let rx = image_rect.min.x + (region.x as f32 / img_w as f32) * image_rect.width();
-            let ry = image_rect.min.y + (region.y as f32 / img_h as f32) * image_rect.height();
-            let rw = (region.width as f32 / img_w as f32) * image_rect.width();
-            let rh = (region.height as f32 / img_h as f32) * image_rect.height();
-            let crop_rect = egui::Rect::from_min_size(egui::pos2(rx, ry), Vec2::new(rw, rh));
+            let rx = region.x as f32;
+            let ry = region.y as f32;
+            let rw = region.width as f32;
+            let rh = region.height as f32;
 
-            let shape_pts = outline_points_for_rect(rw, rh, &app.settings.crop.shape);
-            if shape_pts.len() >= 2 {
-                let outline: Vec<egui::Pos2> = shape_pts
-                    .iter()
-                    .map(|(x, y)| egui::pos2(crop_rect.min.x + x, crop_rect.min.y + y))
-                    .collect();
-                painter.add(egui::Shape::closed_line(outline, crop_stroke));
+            if rot == 0 {
+                // Full shape-outline support at 0°
+                let sx = image_rect.min.x + (rx / iw) * image_rect.width();
+                let sy = image_rect.min.y + (ry / ih) * image_rect.height();
+                let sw = (rw / iw) * image_rect.width();
+                let sh = (rh / ih) * image_rect.height();
+                let crop_rect = egui::Rect::from_min_size(egui::pos2(sx, sy), Vec2::new(sw, sh));
+                let shape_pts = outline_points_for_rect(sw, sh, &app.settings.crop.shape);
+                if shape_pts.len() >= 2 {
+                    let outline: Vec<egui::Pos2> = shape_pts
+                        .iter()
+                        .map(|(x, y)| egui::pos2(crop_rect.min.x + x, crop_rect.min.y + y))
+                        .collect();
+                    painter.add(egui::Shape::closed_line(outline, crop_stroke));
+                } else {
+                    painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
+                }
             } else {
-                painter.rect_stroke(crop_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
+                // For rotated views draw a simple rect outline via the 4 rotated corners
+                let screen_rect = rotated_bbox_screen_rect(rx, ry, rw, rh, iw, ih, image_rect, rot);
+                painter.rect_stroke(screen_rect, 4.0, crop_stroke, egui::StrokeKind::Inside);
             }
         }
     }
 
-    // Face click interaction
-    let resp = ui.allocate_rect(image_rect, Sense::click());
+    // Allocate the visible stage area for click (face selection) and drag (pan)
+    let resp = ui.allocate_rect(fit_rect, Sense::click_and_drag());
+
+    if resp.dragged() {
+        app.pan += resp.drag_delta();
+    }
+
     if resp.clicked()
         && let Some(pos) = resp.interact_pointer_pos()
         && let Some((img_w, img_h)) = app.preview.image_size
     {
         let iw = img_w as f32;
         let ih = img_h as f32;
+        let rot = app.canvas_rotation;
         let mut clicked_any = false;
         for (i, det) in app.preview.detections.iter().enumerate() {
             let bbox = det.active_bbox();
-            let norm = bbox_to_norm_rect(bbox.x, bbox.y, bbox.width, bbox.height, iw, ih);
-            let sr = norm_to_screen(norm, image_rect);
+            let sr = rotated_bbox_screen_rect(
+                bbox.x, bbox.y, bbox.width, bbox.height, iw, ih, image_rect, rot,
+            );
             if sr.expand(4.0).contains(pos) {
                 if app.selected_faces.contains(&i) {
                     app.selected_faces.remove(&i);
@@ -295,7 +387,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
     }
 
     // Mini-log overlay
-    mini_log_overlay(ui, app, image_rect);
+    mini_log_overlay(ui, app, fit_rect);
 }
 
 fn mini_log_overlay(ui: &mut Ui, app: &App2, image_rect: egui::Rect) {
@@ -405,7 +497,10 @@ fn canvas_bottom_bar(ui: &mut Ui, app: &mut App2) {
         // Zoom controls on right
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(8.0);
-            zoom_btn(ui, "⛶", "Fit");
+            if zoom_btn(ui, "⛶", "Fit") {
+                app.zoom = 1.0;
+                app.pan = egui::Vec2::ZERO;
+            }
             ui.add_space(2.0);
             if zoom_btn(ui, "+", "Zoom in") {
                 app.zoom = (app.zoom * 1.2).min(8.0);
