@@ -46,7 +46,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
             left.label(egui::RichText::new("—").size(12.5).color(P::RULE2));
             left.add_space(6.0);
 
-            if let Some(path) = &app.preview.image_path.clone() {
+            if let Some(path) = app.preview.image_path.as_ref() {
                 let name = path
                     .file_name()
                     .and_then(|n| n.to_str())

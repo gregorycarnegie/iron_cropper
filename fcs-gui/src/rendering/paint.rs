@@ -61,9 +61,9 @@ pub fn draw_drag_handle(painter: &Painter, center: Pos2, color: Color32) {
     painter.rect_stroke(rect, 2.0, Stroke::new(0.5, P::BG), StrokeKind::Outside);
 }
 
-pub fn draw_confidence_badge(painter: &Painter, text: &str, above_rect: Rect, color: Color32) {
+pub fn draw_confidence_badge(painter: &Painter, text: String, above_rect: Rect, color: Color32) {
     let font_id = egui::FontId::monospace(9.5);
-    let galley = painter.layout_no_wrap(text.to_owned(), font_id.clone(), color);
+    let galley = painter.layout_no_wrap(text, font_id, color);
     let pad = egui::Vec2::new(5.0, 2.0);
     let text_rect = Rect::from_min_size(
         Pos2::new(

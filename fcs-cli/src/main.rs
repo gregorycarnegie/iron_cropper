@@ -190,7 +190,7 @@ fn main() -> Result<()> {
         None
     };
     let crop_output_dir = Arc::new(crop_output_dir);
-    let shared_settings = Arc::new(settings.clone());
+    let shared_settings = Arc::new(settings);
     let quality_filter = Arc::new(quality_filter);
     let enhancement_settings = build_enhancement_settings(&args).map(Arc::new);
 
@@ -284,7 +284,7 @@ fn process_single_image(
 ) -> Option<ImageDetections> {
     images_processed.fetch_add(1, Ordering::Relaxed);
     let image_path = &target.source;
-    let override_target = target.output_override.clone();
+    let override_target = target.output_override.as_ref();
     if let Some(row) = target.mapping_row {
         debug!("Mapping row {} -> {}", row, image_path.display());
     }
@@ -313,7 +313,7 @@ fn process_single_image(
                 runtime,
                 args,
                 out_dir,
-                override_target.as_ref(),
+                override_target,
                 crops_saved,
                 crops_skipped_quality,
             );
@@ -543,8 +543,7 @@ fn detection_crop_rect(
 fn detection_quality(image: &DynamicImage, bbox: &BoundingBox) -> Option<(f64, String)> {
     let (image_width, image_height) = image.dimensions();
     let (left, top, width, height) = detection_crop_rect(bbox, image_width, image_height)?;
-    let tmp = image.clone();
-    let sub = image::imageops::crop_imm(&tmp, left, top, width, height).to_image();
+    let sub = image::imageops::crop_imm(image, left, top, width, height).to_image();
     let dynsub = image::DynamicImage::ImageRgba8(sub);
     let (score, quality) = estimate_sharpness(&dynsub);
     Some((score, format!("{:?}", quality)))

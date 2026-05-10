@@ -63,8 +63,9 @@ pub fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
         let normalized = level.trim();
         if !normalized.is_empty() {
             let lower = normalized.to_ascii_lowercase();
-            settings.telemetry.level = lower.clone();
-            if lower == "off" {
+            let disables_telemetry = lower == "off";
+            settings.telemetry.level = lower;
+            if disables_telemetry {
                 settings.telemetry.enabled = false;
             }
         }

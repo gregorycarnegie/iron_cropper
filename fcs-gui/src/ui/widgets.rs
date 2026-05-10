@@ -255,11 +255,8 @@ pub fn panel_header(ui: &mut Ui, num: &str, title: &str, open: bool) -> bool {
 
 pub fn badge(ui: &mut Ui, label: &str) {
     let (bg, fg) = crate::theme::badge_color(label);
-    let display = label.to_string();
     let font = egui::FontId::monospace(9.5);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(display.clone(), font.clone(), fg);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, fg);
     let pad = Vec2::new(5.0, 1.5);
     let (resp, painter) = ui.allocate_painter(galley.size() + pad * 2.0, Sense::hover());
     painter.rect_filled(resp.rect, 3.0, bg);
@@ -268,7 +265,7 @@ pub fn badge(ui: &mut Ui, label: &str) {
 
 // ── Face chip ─────────────────────────────────────────────────────────────────
 
-pub fn face_chip(ui: &mut Ui, label: &str, selected: bool, alt: bool) -> Response {
+pub fn face_chip(ui: &mut Ui, label: String, selected: bool, alt: bool) -> Response {
     let (bg, border, check_bg, text) = if !selected {
         (P::white_alpha(8), P::RULE, Color32::TRANSPARENT, P::INK3)
     } else if alt {
@@ -278,7 +275,7 @@ pub fn face_chip(ui: &mut Ui, label: &str, selected: bool, alt: bool) -> Respons
     };
 
     let font = egui::FontId::monospace(10.5);
-    let galley = ui.painter().layout_no_wrap(label.to_string(), font, text);
+    let galley = ui.painter().layout_no_wrap(label, font, text);
     let check_size = Vec2::splat(12.0);
     let total_w = check_size.x + 6.0 + galley.size().x + 20.0;
     let total_h = 24.0_f32.max(galley.size().y + 8.0);

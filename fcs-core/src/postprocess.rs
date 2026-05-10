@@ -230,7 +230,11 @@ impl From<DetectionSettings> for PostprocessConfig {
 
 impl From<&DetectionSettings> for PostprocessConfig {
     fn from(settings: &DetectionSettings) -> Self {
-        settings.clone().into()
+        PostprocessConfig {
+            score_threshold: settings.score_threshold,
+            nms_threshold: settings.nms_threshold,
+            top_k: settings.top_k,
+        }
     }
 }
 

@@ -309,39 +309,39 @@ fn file_tree(ui: &mut Ui, app: &mut App2) {
 
     let total = app.batch_files.len();
     let mut action = None;
-    let in_progress: Vec<usize> = (0..total)
-        .filter(|&i| {
-            matches!(
-                app.batch_files[i].status,
-                BatchFileStatus::Processing
-                    | BatchFileStatus::Completed { .. }
-                    | BatchFileStatus::Failed { .. }
-            )
-        })
-        .collect();
-    let queued: Vec<usize> = (0..total)
-        .filter(|&i| {
-            !matches!(
-                app.batch_files[i].status,
-                BatchFileStatus::Processing
-                    | BatchFileStatus::Completed { .. }
-                    | BatchFileStatus::Failed { .. }
-            )
-        })
-        .collect();
+    let is_in_progress = |status: &BatchFileStatus| {
+        matches!(
+            status,
+            BatchFileStatus::Processing
+                | BatchFileStatus::Completed { .. }
+                | BatchFileStatus::Failed { .. }
+        )
+    };
+    let in_progress_count = app
+        .batch_files
+        .iter()
+        .filter(|file| is_in_progress(&file.status))
+        .count();
+    let queued_count = total - in_progress_count;
 
-    if !in_progress.is_empty() {
-        tree_group_header(ui, "In progress", in_progress.len(), total);
-        for idx in in_progress {
+    if in_progress_count > 0 {
+        tree_group_header(ui, "In progress", in_progress_count, total);
+        for idx in 0..total {
+            if !is_in_progress(&app.batch_files[idx].status) {
+                continue;
+            }
             let row_action = tree_row(ui, app, idx);
             if action.is_none() {
                 action = row_action;
             }
         }
     }
-    if !queued.is_empty() {
-        tree_group_header(ui, "Queued", queued.len(), 0);
-        for idx in queued {
+    if queued_count > 0 {
+        tree_group_header(ui, "Queued", queued_count, 0);
+        for idx in 0..total {
+            if is_in_progress(&app.batch_files[idx].status) {
+                continue;
+            }
             let row_action = tree_row(ui, app, idx);
             if action.is_none() {
                 action = row_action;
@@ -392,14 +392,10 @@ fn tree_group_header(ui: &mut Ui, label: &str, count: usize, total: usize) {
 }
 
 fn tree_row(ui: &mut Ui, app: &App2, idx: usize) -> Option<TreeAction> {
-    let path = app.batch_files[idx].path.clone();
-    let status = app.batch_files[idx].status.clone();
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("?")
-        .to_string();
-    let status_label = status.badge_label().to_string();
+    let path = &app.batch_files[idx].path;
+    let status = &app.batch_files[idx].status;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+    let status_label = status.badge_label();
     let face_count = status.face_count();
 
     let is_active = app.preview.image_path.as_deref() == Some(path.as_path());
@@ -443,20 +439,16 @@ fn tree_row(ui: &mut Ui, app: &App2, idx: usize) -> Option<TreeAction> {
     painter.text(
         egui::pos2(r.min.x + 46.0, r.center().y),
         egui::Align2::LEFT_CENTER,
-        truncate(&name, avail_w, &egui::FontId::monospace(11.5), &painter),
+        truncate(name, avail_w, &egui::FontId::monospace(11.5), &painter),
         egui::FontId::monospace(11.5),
         text_color,
     );
 
     // Badge on the right
-    let badge_label = if let Some(count) = face_count {
-        count.to_string()
-    } else {
-        status_label.clone()
-    };
-    let (badge_bg, badge_fg) = crate::theme::badge_color(&status_label);
+    let badge_label = face_count.map_or_else(|| status_label.to_owned(), |count| count.to_string());
+    let (badge_bg, badge_fg) = crate::theme::badge_color(status_label);
     let badge_font = egui::FontId::monospace(9.5);
-    let badge_g = painter.layout_no_wrap(badge_label.clone(), badge_font, badge_fg);
+    let badge_g = painter.layout_no_wrap(badge_label, badge_font, badge_fg);
     let bw = badge_g.size().x + 10.0;
     let bh = badge_g.size().y + 4.0;
     let remove_rect = egui::Rect::from_center_size(
@@ -488,7 +480,7 @@ fn tree_row(ui: &mut Ui, app: &App2, idx: usize) -> Option<TreeAction> {
     if remove_clicked {
         Some(TreeAction::Remove(idx))
     } else if load_clicked || resp.clicked() {
-        Some(TreeAction::Load(path))
+        Some(TreeAction::Load(path.clone()))
     } else {
         None
     }
@@ -560,7 +552,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
     }
 
     // ── Error ─────────────────────────────────────────────────────────────────
-    if let Some(err) = app.mapping.preview_error.clone() {
+    if let Some(err) = app.mapping.preview_error.as_deref() {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(pad);
@@ -603,8 +595,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
                 .selected_text(&src_name)
                 .width(avail)
                 .show_ui(ui, |ui| {
-                    let cols = columns.clone();
-                    for (i, name) in cols.iter().enumerate() {
+                    for (i, name) in columns.iter().enumerate() {
                         ui.selectable_value(&mut app.mapping.source_column_idx, Some(i), name);
                     }
                 });
@@ -633,8 +624,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
                 .selected_text(&out_name)
                 .width(avail)
                 .show_ui(ui, |ui| {
-                    let cols = columns.clone();
-                    for (i, name) in cols.iter().enumerate() {
+                    for (i, name) in columns.iter().enumerate() {
                         ui.selectable_value(&mut app.mapping.output_column_idx, Some(i), name);
                     }
                 });
@@ -728,15 +718,11 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
     }
 
     // ── Preview table ─────────────────────────────────────────────────────────
-    let preview_rows: Vec<Vec<String>> = app
-        .mapping
-        .preview
-        .as_ref()
-        .map(|p| p.rows.iter().take(6).cloned().collect())
-        .unwrap_or_default();
-    let preview_cols = columns.clone();
+    let preview_rows = app.mapping.preview.as_ref().map(|p| p.rows.as_slice());
 
-    if !preview_rows.is_empty() {
+    if let Some(preview_rows) = preview_rows
+        && !preview_rows.is_empty()
+    {
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             ui.add_space(pad);
@@ -757,7 +743,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
                     .show(ui, |ui| {
                         // Header
                         ui.label(""); // left-indent cell
-                        for col in &preview_cols {
+                        for col in &columns {
                             ui.label(
                                 RichText::new(col)
                                     .size(9.5)
@@ -767,7 +753,7 @@ fn show_mapping(ui: &mut Ui, app: &mut App2) {
                         }
                         ui.end_row();
                         // Rows
-                        for row in &preview_rows {
+                        for row in preview_rows.iter().take(6) {
                             ui.label(""); // left-indent cell
                             for cell in row {
                                 let display = if cell.len() > 20 {

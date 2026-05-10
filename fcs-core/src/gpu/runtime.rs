@@ -66,8 +66,7 @@ impl GpuYuNet {
         let dims = tensor.shape().to_vec();
         let data = tensor
             .as_slice::<f32>()
-            .context("gpu input must be contiguous f32")?
-            .to_vec();
+            .context("gpu input must be contiguous f32")?;
 
         // 1. Acquire a tensor from the pool or create a new one
         let input_gpu = {
@@ -82,19 +81,19 @@ impl GpuYuNet {
                 // For simplified logic: checks dimensions.
                 if existing.shape().dims() == dims {
                     self.ops
-                        .upload_to_tensor(&existing, &data)
+                        .upload_to_tensor(&existing, data)
                         .context("upload to pooled input tensor")?;
                     existing
                 } else {
                     // Dims changed, allocate new. Old one is dropped (and its buffer goes to GpuBufferPool)
                     self.ops
-                        .upload_tensor(dims.clone(), &data, Some("yunet_gpu_input"))
+                        .upload_tensor(dims, data, Some("yunet_gpu_input"))
                         .context("upload input tensor")?
                 }
             } else {
                 // Pool empty, allocate new
                 self.ops
-                    .upload_tensor(dims.clone(), &data, Some("yunet_gpu_input"))
+                    .upload_tensor(dims, data, Some("yunet_gpu_input"))
                     .context("upload input tensor")?
             }
         };
@@ -241,31 +240,19 @@ fn build_decode_tensors(levels: &[DetectionLevelOutputs; 3]) -> Result<Vec<Tenso
     // The original order was cls×3, obj×3, bbox×3, kps×3 (grouped by type).
     // Currently outputs are interleaved as [cls0, obj0, bbox0, kps0, cls1, ...].
     // Re-group them.
-    let cls: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(0, 4, 3);
-    let obj: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(1, 4, 3);
-    let bbox: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(2, 4, 3);
-    let kps: Vec<Tensor> = outputs.iter().cloned().step_by_with_offset(3, 4, 3);
+    let mut grouped: [Vec<Tensor>; 4] = std::array::from_fn(|_| Vec::with_capacity(3));
+    for (idx, output) in outputs.into_iter().enumerate() {
+        grouped[idx % 4].push(output);
+    }
 
     let mut result = Vec::with_capacity(DET_HEAD_OUTPUTS);
-    result.extend(cls);
-    result.extend(obj);
-    result.extend(bbox);
-    result.extend(kps);
+    for group in grouped {
+        result.extend(group);
+    }
     Ok(result)
 }
 
 const DET_HEAD_OUTPUTS: usize = 12;
-
-// Helper trait to simplify the regrouping above.
-trait StepByWithOffset: Iterator + Sized {
-    fn step_by_with_offset(self, offset: usize, step: usize, count: usize) -> Vec<Self::Item>;
-}
-
-impl<I: Iterator> StepByWithOffset for I {
-    fn step_by_with_offset(self, offset: usize, step: usize, count: usize) -> Vec<Self::Item> {
-        self.skip(offset).step_by(step).take(count).collect()
-    }
-}
 
 /// Download multiple GPU tensors in a single submit + single poll.
 ///

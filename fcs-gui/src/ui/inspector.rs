@@ -427,7 +427,7 @@ fn panel_04_crops_ready(ui: &mut Ui, app: &mut App2) {
         return;
     }
 
-    let selected: Vec<usize> = app.selected_faces.iter().cloned().collect();
+    let selected: Vec<usize> = app.selected_faces.iter().copied().collect();
     let mut save_face = None;
     inspector_body(ui, |ui| {
         for &i in &selected {

@@ -223,7 +223,6 @@ pub fn spawn_detection_job(
     job_id: u64,
     path: PathBuf,
     detector: Option<Arc<YuNetDetector>>,
-    settings: AppSettings,
     rotation_deg: f32,
     job_tx: mpsc::Sender<JobMessage>,
 ) {
@@ -236,7 +235,6 @@ pub fn spawn_detection_job(
     };
 
     rayon::spawn(move || {
-        let _ = settings; // used for future cache-key construction
         let payload = match perform_detection(detector, path.clone(), rotation_deg) {
             Ok(data) => {
                 let cache_key = CacheKey {

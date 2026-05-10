@@ -5,7 +5,7 @@ use crate::{
     types::{App2, BatchFileStatus, JobMessage},
 };
 
-use fcs_core::{YuNetDetector, crop_face_from_image};
+use fcs_core::{Detection, YuNetDetector, crop_face_from_image};
 use fcs_utils::{
     MetadataContext, OutputOptions, append_suffix_to_filename, apply_shape_mask,
     estimate_sharpness, load_image, quality::Quality, save_dynamic_image,
@@ -81,7 +81,7 @@ fn export_preview_faces(app: &mut App2, selected: Vec<usize>, error_title: &str)
         return;
     }
 
-    let Some(source_image) = app.preview.source_image.clone() else {
+    let Some(source_image) = app.preview.source_image.as_ref() else {
         app.show_error(error_title, "No image loaded");
         return;
     };
@@ -98,14 +98,13 @@ fn export_preview_faces(app: &mut App2, selected: Vec<usize>, error_title: &str)
         return;
     }
 
-    let detections = app.preview.detections.clone();
-    let source_path = app.preview.image_path.clone();
-    let settings = app.settings.clone();
+    let detections = &app.preview.detections;
+    let source_path = app.preview.image_path.as_deref();
+    let settings = &app.settings;
     let crop_settings = app.build_crop_settings();
     let output_options = OutputOptions::from_crop_settings(&settings.crop);
     let ext = output_extension(&settings.crop.output_format);
     let source_stem = source_path
-        .as_deref()
         .and_then(Path::file_stem)
         .and_then(|s| s.to_str())
         .unwrap_or("face");
@@ -119,20 +118,23 @@ fn export_preview_faces(app: &mut App2, selected: Vec<usize>, error_title: &str)
             continue;
         };
 
-        let mut detection_for_crop = det.detection.clone();
-        detection_for_crop.bbox = det.active_bbox();
+        let detection_for_crop = Detection {
+            bbox: det.active_bbox(),
+            landmarks: det.detection.landmarks,
+            score: det.detection.score,
+        };
         let raw_crop =
             crop_face_from_image(source_image.as_ref(), &detection_for_crop, &crop_settings);
         let crop = apply_shape_and_fill(raw_crop, &settings.crop);
 
         let mut filename = format!("{source_stem}_face_{:02}.{ext}", face_index + 1);
-        if let Some(suffix) = quality_suffix(&settings, det.quality) {
+        if let Some(suffix) = quality_suffix(settings, det.quality) {
             filename = append_suffix_to_filename(&filename, suffix);
         }
         let output_path = output_dir.join(filename);
 
         let metadata_ctx = MetadataContext {
-            source_path: source_path.as_deref(),
+            source_path,
             crop_settings: Some(&settings.crop),
             detection_score: Some(det.detection.score),
             quality: Some(det.quality),
@@ -207,7 +209,7 @@ pub fn start_batch_export(app: &mut App2) {
         file.status = BatchFileStatus::Pending;
     }
 
-    let settings = app.settings.clone();
+    let settings = Arc::new(app.settings.clone());
     let tx = app.job_tx.clone();
     app.is_busy = true;
     app.show_success(format!("Starting batch export of {} image(s)", tasks.len()));
@@ -223,10 +225,10 @@ pub fn start_batch_export(app: &mut App2) {
             });
 
             let status = run_batch_job(
-                detector.clone(),
+                detector.as_ref(),
                 path,
-                output_dir.clone(),
-                settings.clone(),
+                output_dir.as_path(),
+                settings.as_ref(),
                 output_override,
             );
 
@@ -244,10 +246,10 @@ pub fn start_batch_export(app: &mut App2) {
 }
 
 fn run_batch_job(
-    detector: Arc<YuNetDetector>,
+    detector: &YuNetDetector,
     path: PathBuf,
-    output_dir: PathBuf,
-    settings: fcs_utils::config::AppSettings,
+    output_dir: &Path,
+    settings: &fcs_utils::config::AppSettings,
     output_override: Option<PathBuf>,
 ) -> BatchFileStatus {
     let source_image = match load_image(&path) {
@@ -276,7 +278,7 @@ fn run_batch_job(
         };
     }
 
-    let crop_settings = build_crop_settings_from_app_settings(&settings);
+    let crop_settings = build_crop_settings_from_app_settings(settings);
     let output_options = OutputOptions::from_crop_settings(&settings.crop);
     let mut crops = Vec::with_capacity(detections.len());
     let mut candidates = Vec::with_capacity(detections.len());
@@ -319,10 +321,10 @@ fn run_batch_job(
         };
 
         let output_path = build_output_path(
-            &output_dir,
+            output_dir,
             &path,
             candidate,
-            &settings,
+            settings,
             output_override.as_ref(),
             multi_face,
         );

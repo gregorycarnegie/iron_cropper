@@ -48,7 +48,7 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
     );
 
     let conf = app.settings.detection.score_threshold;
-    let preset = app.settings.crop.preset.clone();
+    let preset = app.settings.crop.preset.as_str();
     let face_h = app.settings.crop.face_height_pct;
     let aspect = format!(
         "{}:{}",
@@ -69,7 +69,7 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
             .x;
         kw + vw + 20.0
     };
-    let pills_total_w = measure_pill("preset ",  &preset)
+    let pills_total_w = measure_pill("preset ",  preset)
         + measure_pill("conf ",   &format!("{conf:.2}"))
         + measure_pill("aspect ", &aspect)
         + measure_pill("face-h ", &format!("{:.0}%", face_h))
@@ -129,7 +129,7 @@ fn canvas_header(ui: &mut Ui, app: &mut App2) {
             .layout(egui::Layout::right_to_left(egui::Align::Center)),
     );
     child.add_space(12.0);
-    ctl_pill(&mut child, "preset ", &preset, Some(P::CYAN));
+    ctl_pill(&mut child, "preset ", preset, Some(P::CYAN));
     child.add_space(4.0);
     ctl_pill(&mut child, "conf ", &format!("{conf:.2}"), Some(P::PEACH));
     child.add_space(4.0);
@@ -170,10 +170,7 @@ fn rotated_bbox_screen_rect(
         ((bx + bw) / iw, (by + bh) / ih),
         (bx / iw, (by + bh) / ih),
     ];
-    let pts: Vec<egui::Pos2> = corners
-        .iter()
-        .map(|(nx, ny)| norm_to_screen_rotated(*nx, *ny, rect, rotation_deg))
-        .collect();
+    let pts = corners.map(|(nx, ny)| norm_to_screen_rotated(nx, ny, rect, rotation_deg));
     let min_x = pts.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
     let min_y = pts.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
     let max_x = pts.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
@@ -337,8 +334,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
             });
         }
         if h_resp.dragged()
-            && let (Some(drag), Some(pos)) =
-                (&app.rotation_drag.clone(), h_resp.interact_pointer_pos())
+            && let (Some(drag), Some(pos)) = (app.rotation_drag, h_resp.interact_pointer_pos())
         {
             let delta = angle_from_center(center, pos) - drag.start_mouse_angle;
             app.canvas_rotation = drag.start_rotation + delta;
@@ -399,9 +395,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         let iw = img_w as f32;
         let ih = img_h as f32;
         let rot = app.canvas_rotation;
-        let dets: Vec<_> = app.preview.detections.iter().enumerate().collect();
-
-        for (i, det) in &dets {
+        for (i, det) in app.preview.detections.iter().enumerate() {
             let bbox = det.active_bbox();
             let screen_rect = rotated_bbox_screen_rect(
                 bbox.x,
@@ -413,7 +407,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
                 rot,
             );
 
-            let selected = app.selected_faces.contains(i);
+            let selected = app.selected_faces.contains(&i);
             let color = if !selected {
                 P::INK3
             } else if i % 2 == 0 {
@@ -425,7 +419,7 @@ fn stage(ui: &mut Ui, app: &mut App2) {
             draw_face_box(&painter, screen_rect, color, selected);
             draw_confidence_badge(
                 &painter,
-                &format!("{:.2}", det.detection.score),
+                format!("{:.2}", det.detection.score),
                 screen_rect,
                 color,
             );
@@ -633,14 +627,12 @@ fn canvas_bottom_bar(ui: &mut Ui, app: &mut App2) {
         ui.add_space(8.0);
 
         // Face chips
-        let _n = app.preview.detections.len();
-        let _selected_faces: Vec<usize> = app.selected_faces.iter().cloned().collect();
         let mut to_toggle: Option<usize> = None;
         for (i, det) in app.preview.detections.iter().enumerate() {
             let label = format!("face_{:03} · {:.2}", i + 1, det.detection.score);
             let selected = app.selected_faces.contains(&i);
             let alt = i % 2 == 1;
-            let resp = face_chip(ui, &label, selected, alt);
+            let resp = face_chip(ui, label, selected, alt);
             if resp.clicked() {
                 to_toggle = Some(i);
             }
@@ -666,7 +658,7 @@ fn canvas_bottom_bar(ui: &mut Ui, app: &mut App2) {
                 app.zoom = (app.zoom * 1.2).min(8.0);
             }
             ui.add_space(2.0);
-            zoom_btn(ui, &format!("{:.0}%", app.zoom * 100.0), "Reset");
+            zoom_btn(ui, format!("{:.0}%", app.zoom * 100.0), "Reset");
             ui.add_space(2.0);
             if zoom_btn(ui, "−", "Zoom out") {
                 app.zoom = (app.zoom / 1.2).max(0.1);
@@ -675,11 +667,9 @@ fn canvas_bottom_bar(ui: &mut Ui, app: &mut App2) {
     });
 }
 
-fn zoom_btn(ui: &mut egui::Ui, label: &str, _tip: &str) -> bool {
+fn zoom_btn(ui: &mut egui::Ui, label: impl Into<String>, _tip: &str) -> bool {
     let font = egui::FontId::monospace(10.5);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_string(), font, P::INK2);
+    let galley = ui.painter().layout_no_wrap(label.into(), font, P::INK2);
     let w = (galley.size().x + 14.0).max(26.0);
     let (resp, painter) = ui.allocate_painter(Vec2::new(w, 26.0), Sense::click());
     let r = resp.rect;

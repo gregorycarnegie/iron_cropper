@@ -428,7 +428,7 @@ impl App2 {
     }
 
     fn handle_dropped_files(&mut self, ctx: &egui::Context) {
-        let dropped: Vec<_> = ctx.input(|i| i.raw.dropped_files.clone());
+        let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
         if dropped.is_empty() {
             return;
         }
@@ -485,8 +485,6 @@ impl App2 {
                 self.show_success("All dropped images were already queued.");
             }
         }
-
-        ctx.input_mut(|i| i.raw.dropped_files.clear());
     }
 
     pub fn push_log(&mut self, message: String, kind: LogKind) {
@@ -521,7 +519,6 @@ impl App2 {
             job_id,
             path,
             self.detector.clone(),
-            self.settings.clone(),
             rotation,
             self.job_tx.clone(),
         );

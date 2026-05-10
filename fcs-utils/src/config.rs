@@ -552,7 +552,11 @@ impl From<GpuSettings> for GpuContextOptions {
 
 impl From<&GpuSettings> for GpuContextOptions {
     fn from(settings: &GpuSettings) -> Self {
-        settings.clone().into()
+        GpuContextOptions {
+            enabled: settings.enabled,
+            respect_env: settings.respect_env,
+            ..Default::default()
+        }
     }
 }
 
