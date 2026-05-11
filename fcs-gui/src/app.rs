@@ -576,6 +576,39 @@ impl App2 {
         build_crop_settings_from_app_settings(&self.settings)
     }
 
+    pub fn delete_selected_faces(&mut self) {
+        let mut i = 0;
+        self.preview.detections.retain(|_| {
+            let keep = !self.selected_faces.contains(&i);
+            i += 1;
+            keep
+        });
+        self.selected_faces.clear();
+        self.crop_preview_cache.clear();
+    }
+
+    pub fn commit_manual_box(&mut self, bbox: fcs_core::BoundingBox) {
+        use fcs_core::{Detection, Landmark};
+        use fcs_utils::quality::Quality;
+        let det = crate::types::DetectionWithQuality {
+            detection: Detection {
+                bbox,
+                landmarks: [Landmark::new(0.0, 0.0); 5],
+                score: 1.0,
+            },
+            quality_score: 1.0,
+            quality: Quality::High,
+            thumbnail: None,
+            current_bbox: bbox,
+            original_bbox: bbox,
+            origin: crate::types::DetectionOrigin::Manual,
+        };
+        let idx = self.preview.detections.len();
+        self.preview.detections.push(det);
+        self.selected_faces.insert(idx);
+        self.crop_preview_cache.clear();
+    }
+
     pub fn quality_suffix(&self, quality: Quality) -> Option<&'static str> {
         if !self.settings.crop.quality_rules.quality_suffix {
             return None;

@@ -76,6 +76,19 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 }
                 tb_sep(ui);
 
+                // Draw tool toggle
+                if toggle_btn(ui, "Draw box", app.manual_box_tool_enabled) {
+                    app.manual_box_tool_enabled = !app.manual_box_tool_enabled;
+                    app.manual_box_draft = None;
+                }
+                // Remove selected (only enabled when something is selected)
+                if !app.selected_faces.is_empty() {
+                    if ghost_btn(ui, "Remove selected") {
+                        app.delete_selected_faces();
+                    }
+                }
+                tb_sep(ui);
+
                 // Clear
                 danger_btn(ui, "Clear", || {
                     app.preview = Default::default();
@@ -173,6 +186,39 @@ fn icon_btn(ui: &mut egui::Ui, icon: &str, tooltip: &str, action: impl FnOnce())
         action();
     }
     clicked
+}
+
+fn toggle_btn(ui: &mut egui::Ui, label: &str, active: bool) -> bool {
+    let font = egui::FontId::proportional(12.5);
+    let color = if active { P::CYAN } else { P::INK };
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, color);
+    let w = galley.size().x + 26.0;
+    let (resp, painter) = ui.allocate_painter(Vec2::new(w, 34.0), Sense::click());
+    let r = resp.rect;
+    if active {
+        painter.rect_filled(r, 7.0, P::cyan_alpha(30));
+        painter.rect_stroke(
+            r,
+            7.0,
+            Stroke::new(1.5, P::CYAN),
+            egui::StrokeKind::Outside,
+        );
+    } else {
+        let bg = if resp.hovered() { P::white_alpha(15) } else { P::white_alpha(5) };
+        painter.rect_filled(r, 7.0, bg);
+        painter.rect_stroke(
+            r,
+            7.0,
+            Stroke::new(1.0, P::RULE2),
+            egui::StrokeKind::Outside,
+        );
+    }
+    painter.galley(
+        r.min + Vec2::new(13.0, (34.0 - galley.size().y) / 2.0),
+        galley,
+        color,
+    );
+    resp.clicked()
 }
 
 fn danger_btn(ui: &mut egui::Ui, label: &str, action: impl FnOnce()) -> bool {

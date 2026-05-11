@@ -4,11 +4,11 @@ use crate::rendering::paint::{
     draw_confidence_badge, draw_drag_handle, draw_face_box, draw_landmark_dot,
 };
 use crate::theme::P;
-use crate::types::{App2, LogKind, RotationDragState};
+use crate::types::{App2, LogKind, ManualBoxDraft, RotationDragState};
 use crate::ui::widgets::{ctl_pill, face_chip};
 use egui::epaint::{Mesh, Vertex};
-use egui::{Color32, Frame, Sense, Stroke, Ui, Vec2};
-use fcs_core::calculate_crop_region;
+use egui::{Color32, Frame, Pos2, Sense, Stroke, Ui, Vec2};
+use fcs_core::{BoundingBox, calculate_crop_region};
 use fcs_utils::outline_points_for_rect;
 
 pub fn show(ui: &mut Ui, app: &mut App2) {
@@ -218,6 +218,28 @@ fn rotation_handle_pos(draw_rect: egui::Rect, rotation_deg: f32) -> egui::Pos2 {
     let (sin, cos) = theta.sin_cos();
     // unit vector pointing "up" through the rotated frame
     draw_rect.center() + egui::vec2(sin * (hh + 32.0), -cos * (hh + 32.0))
+}
+
+/// Converts a screen position back to image-pixel coordinates, inverting the rotation.
+fn screen_to_image_px(screen_pos: Pos2, draw_rect: egui::Rect, img_w: f32, img_h: f32, rotation_deg: f32) -> (f32, f32) {
+    let rx = (screen_pos.x - draw_rect.min.x) / draw_rect.width() - 0.5;
+    let ry = (screen_pos.y - draw_rect.min.y) / draw_rect.height() - 0.5;
+    let theta = rotation_deg.to_radians();
+    let (sin, cos) = theta.sin_cos();
+    let dx = rx * cos + ry * sin;
+    let dy = -rx * sin + ry * cos;
+    ((dx + 0.5) * img_w, (dy + 0.5) * img_h)
+}
+
+/// Converts a ManualBoxDraft (screen positions) to a BoundingBox in image pixel coords.
+fn draft_to_image_bbox(draft: ManualBoxDraft, draw_rect: egui::Rect, img_w: f32, img_h: f32, rotation_deg: f32) -> BoundingBox {
+    let (ax, ay) = screen_to_image_px(draft.start, draw_rect, img_w, img_h, rotation_deg);
+    let (bx, by) = screen_to_image_px(draft.current, draw_rect, img_w, img_h, rotation_deg);
+    let x = ax.min(bx).max(0.0);
+    let y = ay.min(by).max(0.0);
+    let w = (ax - bx).abs().min(img_w - x);
+    let h = (ay - by).abs().min(img_h - y);
+    BoundingBox { x, y, width: w, height: h }
 }
 
 /// Angle (degrees) from image center to mouse position, measuring CW from "up".
@@ -443,6 +465,20 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         }
     }
 
+    // Manual box draft overlay
+    if let Some(draft) = app.manual_box_draft {
+        let draft_rect = egui::Rect::from_two_pos(draft.start, draft.current);
+        if draft_rect.width() > 4.0 || draft_rect.height() > 4.0 {
+            painter.rect_stroke(
+                draft_rect,
+                2.0,
+                Stroke::new(2.0, P::CYAN),
+                egui::StrokeKind::Outside,
+            );
+            painter.rect_filled(draft_rect, 2.0, P::cyan_alpha(20));
+        }
+    }
+
     // Crop region + shape outline overlay
     if app.show_crop_overlay
         && let Some((img_w, img_h)) = app.preview.image_size
@@ -485,44 +521,115 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         }
     }
 
-    // Allocate stage area for click (face selection) and drag (pan)
-    let resp = ui.allocate_rect(fit_rect, Sense::click_and_drag());
-
-    if resp.dragged() && app.rotation_drag.is_none() {
-        app.pan += resp.drag_delta();
+    // Delete key removes selected faces
+    let delete_pressed = ui.ctx().input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace));
+    if delete_pressed && !app.selected_faces.is_empty() {
+        app.delete_selected_faces();
     }
 
-    if resp.clicked()
-        && let Some(pos) = resp.interact_pointer_pos()
-        && let Some((img_w, img_h)) = app.preview.image_size
-    {
-        let iw = img_w as f32;
-        let ih = img_h as f32;
-        let rot = app.canvas_rotation;
-        let mut clicked_any = false;
-        for (i, det) in app.preview.detections.iter().enumerate() {
-            let bbox = det.active_bbox();
-            let sr = rotated_bbox_screen_rect(
-                bbox.x,
-                bbox.y,
-                bbox.width,
-                bbox.height,
-                Vec2::new(iw, ih),
-                draw_rect,
-                rot,
-            );
-            if sr.expand(4.0).contains(pos) {
-                if app.selected_faces.contains(&i) {
-                    app.selected_faces.remove(&i);
-                } else {
-                    app.selected_faces.insert(i);
+    // Allocate stage area for click (face selection/draw) and drag (pan/draw)
+    let resp = ui.allocate_rect(fit_rect, Sense::click_and_drag());
+
+    // Draw-box tool: crosshair cursor + drag to draw
+    if app.manual_box_tool_enabled && app.preview.image_size.is_some() {
+        if resp.hovered() || app.manual_box_draft.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+        if let Some(pos) = resp.interact_pointer_pos() {
+            if resp.drag_started() {
+                app.manual_box_draft = Some(ManualBoxDraft { start: pos, current: pos });
+            }
+            if resp.dragged() && app.manual_box_draft.is_some() {
+                if let Some(draft) = app.manual_box_draft.as_mut() {
+                    draft.current = pos;
                 }
-                clicked_any = true;
-                break;
             }
         }
-        if !clicked_any {
-            app.selected_faces.clear();
+        if resp.drag_stopped() {
+            if let Some(draft) = app.manual_box_draft.take() {
+                let w = (draft.start.x - draft.current.x).abs();
+                let h = (draft.start.y - draft.current.y).abs();
+                if w > 8.0 && h > 8.0 {
+                    if let Some((img_w, img_h)) = app.preview.image_size {
+                        let bbox = draft_to_image_bbox(
+                            draft,
+                            draw_rect,
+                            img_w as f32,
+                            img_h as f32,
+                            app.canvas_rotation,
+                        );
+                        if bbox.width > 1.0 && bbox.height > 1.0 {
+                            app.commit_manual_box(bbox);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Normal mode: pan on drag, select on click
+        if resp.dragged() && app.rotation_drag.is_none() {
+            app.pan += resp.drag_delta();
+        }
+
+        if resp.clicked()
+            && let Some(pos) = resp.interact_pointer_pos()
+            && let Some((img_w, img_h)) = app.preview.image_size
+        {
+            let iw = img_w as f32;
+            let ih = img_h as f32;
+            let rot = app.canvas_rotation;
+            let mut clicked_any = false;
+            for (i, det) in app.preview.detections.iter().enumerate() {
+                let bbox = det.active_bbox();
+                let sr = rotated_bbox_screen_rect(
+                    bbox.x,
+                    bbox.y,
+                    bbox.width,
+                    bbox.height,
+                    Vec2::new(iw, ih),
+                    draw_rect,
+                    rot,
+                );
+                if sr.expand(4.0).contains(pos) {
+                    if app.selected_faces.contains(&i) {
+                        app.selected_faces.remove(&i);
+                    } else {
+                        app.selected_faces.insert(i);
+                    }
+                    clicked_any = true;
+                    break;
+                }
+            }
+            if !clicked_any {
+                app.selected_faces.clear();
+            }
+        }
+
+        // Right-click on a face box to remove it
+        if ui.ctx().input(|i| i.pointer.secondary_clicked())
+            && let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos())
+            && let Some((img_w, img_h)) = app.preview.image_size
+        {
+            let iw = img_w as f32;
+            let ih = img_h as f32;
+            let rot = app.canvas_rotation;
+            let mut hit_idx: Option<usize> = None;
+            for (i, det) in app.preview.detections.iter().enumerate() {
+                let bbox = det.active_bbox();
+                let sr = rotated_bbox_screen_rect(
+                    bbox.x, bbox.y, bbox.width, bbox.height,
+                    Vec2::new(iw, ih), draw_rect, rot,
+                );
+                if sr.expand(4.0).contains(pos) {
+                    hit_idx = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = hit_idx {
+                app.selected_faces.clear();
+                app.selected_faces.insert(i);
+                app.delete_selected_faces();
+            }
         }
     }
 
