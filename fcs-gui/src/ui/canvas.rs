@@ -1,13 +1,14 @@
 //! Centre canvas column — image viewport + face overlays + mini-log.
 
+use crate::interaction::bbox_drag::{apply_drag, hit_test_handle};
 use crate::rendering::paint::{
     draw_confidence_badge, draw_drag_handle, draw_face_box, draw_landmark_dot,
 };
 use crate::theme::P;
-use crate::types::{App2, LogKind, ManualBoxDraft, RotationDragState};
+use crate::types::{ActiveBoxDrag, App2, DragHandle, LogKind, ManualBoxDraft, RotationDragState};
 use crate::ui::widgets::{ctl_pill, face_chip};
 use egui::epaint::{Mesh, Vertex};
-use egui::{Color32, Frame, Pos2, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, CursorIcon, Frame, Pos2, Sense, Stroke, Ui, Vec2};
 use fcs_core::{BoundingBox, calculate_crop_region};
 use fcs_utils::outline_points_for_rect;
 
@@ -220,6 +221,23 @@ fn rotation_handle_pos(draw_rect: egui::Rect, rotation_deg: f32) -> egui::Pos2 {
     draw_rect.center() + egui::vec2(sin * (hh + 32.0), -cos * (hh + 32.0))
 }
 
+/// Converts a screen-space delta to image-pixel-space delta, accounting for scale and rotation.
+fn screen_delta_to_image_delta(screen_delta: Vec2, draw_rect: egui::Rect, img_w: f32, img_h: f32, rotation_deg: f32) -> Vec2 {
+    let sx = screen_delta.x * img_w / draw_rect.width();
+    let sy = screen_delta.y * img_h / draw_rect.height();
+    let theta = rotation_deg.to_radians();
+    let (sin, cos) = theta.sin_cos();
+    Vec2::new(sx * cos + sy * sin, -sx * sin + sy * cos)
+}
+
+fn handle_cursor(handle: DragHandle) -> CursorIcon {
+    match handle {
+        DragHandle::Move => CursorIcon::Grab,
+        DragHandle::NorthWest | DragHandle::SouthEast => CursorIcon::ResizeNwSe,
+        DragHandle::NorthEast | DragHandle::SouthWest => CursorIcon::ResizeNeSw,
+    }
+}
+
 /// Converts a screen position back to image-pixel coordinates, inverting the rotation.
 fn screen_to_image_px(screen_pos: Pos2, draw_rect: egui::Rect, img_w: f32, img_h: f32, rotation_deg: f32) -> (f32, f32) {
     let rx = (screen_pos.x - draw_rect.min.x) / draw_rect.width() - 0.5;
@@ -298,13 +316,6 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         stage_outer.max,
     );
 
-    // Scroll-to-zoom
-    let scroll = ui.ctx().input(|i| i.smooth_scroll_delta.y);
-    if scroll.abs() > 0.1 {
-        let factor = (1.0 + scroll * 0.003).clamp(0.85, 1.20_f32);
-        app.zoom = (app.zoom * factor).clamp(0.25, 8.0);
-    }
-
     // fit_rect: canvas border frame, sized to the AABB of the rotated image, centred in image_slot.
     // draw_rect: original-proportion rect at the same scale — vertices are rotated around its
     //            centre, so the rotated mesh exactly fills fit_rect.
@@ -336,6 +347,18 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         let dr = egui::Rect::from_center_size(fr.center() + app.pan, fr.size() * app.zoom);
         (fr, dr)
     };
+
+    // Scroll-to-zoom — only when the pointer is over the canvas
+    let pointer_over_canvas = ui.ctx().input(|i| {
+        i.pointer.hover_pos().map_or(false, |p| fit_rect.contains(p))
+    });
+    if pointer_over_canvas {
+        let scroll = ui.ctx().input(|i| i.smooth_scroll_delta.y);
+        if scroll.abs() > 0.1 {
+            let factor = (1.0 + scroll * 0.003).clamp(0.85, 1.20_f32);
+            app.zoom = (app.zoom * factor).clamp(0.25, 8.0);
+        }
+    }
 
     // --- Rotation handle ---
     // Allocate the hit-rect first (beats the stage pan allocation below).
@@ -566,29 +589,98 @@ fn stage(ui: &mut Ui, app: &mut App2) {
             }
         }
     } else {
-        // Normal mode: pan on drag, select on click
-        if resp.dragged() && app.rotation_drag.is_none() {
-            app.pan += resp.drag_delta();
+        // Normal mode: bbox resize on handle drag, pan otherwise, select on click.
+        let (iw, ih) = app.preview.image_size
+            .map(|(w, h)| (w as f32, h as f32))
+            .unwrap_or((1.0, 1.0));
+        let rot = app.canvas_rotation;
+
+        // Hover cursor: show resize/grab over handles of selected faces
+        if app.active_bbox_drag.is_none() {
+            if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+                let mut found_handle = false;
+                for &sel_i in &app.selected_faces {
+                    if let Some(det) = app.preview.detections.get(sel_i) {
+                        let bbox = det.active_bbox();
+                        let sr = rotated_bbox_screen_rect(
+                            bbox.x, bbox.y, bbox.width, bbox.height,
+                            Vec2::new(iw, ih), draw_rect, rot,
+                        );
+                        if let Some(h) = hit_test_handle(sr, hover_pos) {
+                            ui.ctx().set_cursor_icon(handle_cursor(h));
+                            found_handle = true;
+                            break;
+                        }
+                    }
+                }
+                let _ = found_handle;
+            }
+        } else {
+            if let Some(drag) = &app.active_bbox_drag {
+                ui.ctx().set_cursor_icon(handle_cursor(drag.handle));
+            }
         }
 
+        // Start a bbox drag when the user presses on a handle of a selected face
+        if resp.drag_started() && app.rotation_drag.is_none() {
+            if let Some(press_pos) = resp.interact_pointer_pos() {
+                let mut started = false;
+                for &sel_i in &app.selected_faces {
+                    if let Some(det) = app.preview.detections.get(sel_i) {
+                        let bbox = det.active_bbox();
+                        let sr = rotated_bbox_screen_rect(
+                            bbox.x, bbox.y, bbox.width, bbox.height,
+                            Vec2::new(iw, ih), draw_rect, rot,
+                        );
+                        if let Some(handle) = hit_test_handle(sr, press_pos) {
+                            app.active_bbox_drag = Some(ActiveBoxDrag {
+                                index: sel_i,
+                                handle,
+                                start_bbox: bbox,
+                                drag_start_screen: press_pos,
+                            });
+                            started = true;
+                            break;
+                        }
+                    }
+                }
+                let _ = started;
+            }
+        }
+
+        // Apply bbox drag or pan
+        if resp.dragged() && app.rotation_drag.is_none() {
+            if let Some(drag) = app.active_bbox_drag {
+                if let Some(cur_pos) = resp.interact_pointer_pos() {
+                    let screen_delta = cur_pos - drag.drag_start_screen;
+                    let image_delta = screen_delta_to_image_delta(
+                        screen_delta, draw_rect, iw, ih, rot,
+                    );
+                    let new_bbox = apply_drag(&drag, image_delta, iw, ih);
+                    if let Some(det) = app.preview.detections.get_mut(drag.index) {
+                        det.set_bbox(new_bbox);
+                    }
+                }
+            } else {
+                app.pan += resp.drag_delta();
+            }
+        }
+
+        if resp.drag_stopped() {
+            app.active_bbox_drag = None;
+        }
+
+        // Click: select / deselect faces
         if resp.clicked()
             && let Some(pos) = resp.interact_pointer_pos()
-            && let Some((img_w, img_h)) = app.preview.image_size
+            && app.preview.image_size.is_some()
         {
-            let iw = img_w as f32;
-            let ih = img_h as f32;
-            let rot = app.canvas_rotation;
             let mut clicked_any = false;
             for (i, det) in app.preview.detections.iter().enumerate() {
                 let bbox = det.active_bbox();
                 let sr = rotated_bbox_screen_rect(
-                    bbox.x,
-                    bbox.y,
-                    bbox.width,
-                    bbox.height,
-                    Vec2::new(iw, ih),
-                    draw_rect,
-                    rot,
+                    bbox.x, bbox.y, bbox.width, bbox.height,
+                    Vec2::new(iw, ih), draw_rect, rot,
                 );
                 if sr.expand(4.0).contains(pos) {
                     if app.selected_faces.contains(&i) {
@@ -608,11 +700,8 @@ fn stage(ui: &mut Ui, app: &mut App2) {
         // Right-click on a face box to remove it
         if ui.ctx().input(|i| i.pointer.secondary_clicked())
             && let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos())
-            && let Some((img_w, img_h)) = app.preview.image_size
+            && app.preview.image_size.is_some()
         {
-            let iw = img_w as f32;
-            let ih = img_h as f32;
-            let rot = app.canvas_rotation;
             let mut hit_idx: Option<usize> = None;
             for (i, det) in app.preview.detections.iter().enumerate() {
                 let bbox = det.active_bbox();

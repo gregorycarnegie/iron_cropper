@@ -316,6 +316,7 @@ pub struct ActiveBoxDrag {
     pub index: usize,
     pub handle: DragHandle,
     pub start_bbox: BoundingBox,
+    pub drag_start_screen: egui::Pos2,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
