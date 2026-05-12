@@ -404,6 +404,14 @@ impl App2 {
                 self.preview.image_size = Some(data.original_size);
                 self.preview.detections = data.detections.clone();
                 self.preview.source_image = Some(data.original_image.clone());
+                for det in &mut self.preview.detections {
+                    crate::core::quality::refresh_thumbnail(
+                        ctx,
+                        det,
+                        &data.original_image,
+                        &mut self.texture_seq,
+                    );
+                }
                 self.active_bbox_drag = None;
                 self.manual_box_tool_enabled = false;
                 self.canvas_rotation = 0.0;
