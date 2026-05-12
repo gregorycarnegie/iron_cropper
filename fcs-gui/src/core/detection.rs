@@ -279,13 +279,14 @@ pub fn spawn_webcam_stream(
     frame_tx: mpsc::Sender<(egui::ColorImage, Arc<DynamicImage>)>,
 ) {
     std::thread::spawn(move || {
-        let mut cam = match fcs_utils::WebcamCapture::with_device_index(device_index, width, height, fps) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Failed to open webcam device {device_index}: {e}");
-                return;
-            }
-        };
+        let mut cam =
+            match fcs_utils::WebcamCapture::with_device_index(device_index, width, height, fps) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!("Failed to open webcam device {device_index}: {e}");
+                    return;
+                }
+            };
         while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
             match cam.capture_frame() {
                 Ok(frame) => {
@@ -336,7 +337,11 @@ pub fn spawn_detection_job_from_image(
                     nms_bits: 0,
                     top_k: 5000,
                 };
-                JobMessage::DetectionFinished { job_id, cache_key, data }
+                JobMessage::DetectionFinished {
+                    job_id,
+                    cache_key,
+                    data,
+                }
             }
             Err(err) => JobMessage::DetectionFailed {
                 job_id,

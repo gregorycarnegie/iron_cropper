@@ -111,12 +111,23 @@ fn webcam_bar(ui: &mut Ui, app: &mut App2) {
     let resp = ui.allocate_rect(row_rect, Sense::hover());
     let painter = ui.painter();
 
-    let bg = if is_live { P::lime_alpha(12) } else { P::white_alpha(6) };
+    let bg = if is_live {
+        P::lime_alpha(12)
+    } else {
+        P::white_alpha(6)
+    };
     painter.rect_filled(row_rect, 8.0, bg);
     painter.rect_stroke(
         row_rect,
         8.0,
-        egui::Stroke::new(1.0, if is_live { P::lime_alpha(80) } else { P::white_alpha(18) }),
+        egui::Stroke::new(
+            1.0,
+            if is_live {
+                P::lime_alpha(80)
+            } else {
+                P::white_alpha(18)
+            },
+        ),
         egui::StrokeKind::Outside,
     );
 
@@ -185,7 +196,11 @@ fn webcam_bar(ui: &mut Ui, app: &mut App2) {
 
         // Close button
         let close_resp = ui.interact(close_rect, resp.id.with("close_btn"), Sense::click());
-        let close_bg = if close_resp.hovered() { P::rose_alpha(60) } else { P::white_alpha(12) };
+        let close_bg = if close_resp.hovered() {
+            P::rose_alpha(60)
+        } else {
+            P::white_alpha(12)
+        };
         painter.rect_filled(close_rect, 6.0, close_bg);
         painter.text(
             close_rect.center(),
@@ -207,7 +222,11 @@ fn webcam_bar(ui: &mut Ui, app: &mut App2) {
             Vec2::new(btn_w, btn_h),
         );
         let btn_resp = ui.interact(btn_rect, resp.id.with("open_btn"), Sense::click());
-        let btn_bg = if btn_resp.hovered() { P::lime_alpha(55) } else { P::lime_alpha(30) };
+        let btn_bg = if btn_resp.hovered() {
+            P::lime_alpha(55)
+        } else {
+            P::lime_alpha(30)
+        };
         painter.rect_filled(btn_rect, 6.0, btn_bg);
         painter.text(
             btn_rect.center(),

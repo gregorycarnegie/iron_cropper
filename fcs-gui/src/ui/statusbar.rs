@@ -5,6 +5,10 @@ use crate::types::App2;
 use egui::{Frame, Sense, Stroke, Vec2};
 
 pub fn show(ui: &mut egui::Ui, app: &mut App2) {
+    // Always repaint once per second so the clock and stats stay live even when idle.
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs(1));
+
     egui::Panel::bottom("statusbar")
         .exact_size(28.0)
         .show_separator_line(false)
@@ -31,7 +35,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
                     .unwrap_or("YuNet 640");
                 status_cell(ui, &format!("{model_name} · ONNX"), None);
 
-                // GPU
+                // GPU adapter name
                 let gpu_label = app
                     .gpu_status
                     .adapter_name
@@ -67,26 +71,33 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
 
                 // Right side
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Clock
-                    let time_str = current_time_str();
-                    status_cell(ui, &time_str, None);
+                    // Clock — local time via Win32 GetLocalTime
+                    status_cell(ui, &local_time_str(), None);
 
-                    // GPU %
+                    // GPU — static label for now (no portable utilisation API)
                     status_cell(ui, "GPU —", None);
 
-                    // RAM
-                    status_cell(ui, "RAM —", None);
+                    // RAM — current process working set
+                    let ram_label = process_ram_mb()
+                        .map(|mb| format!("RAM {mb} MB"))
+                        .unwrap_or_else(|| "RAM —".to_string());
+                    status_cell(ui, &ram_label, None);
 
-                    // Progress bar if busy
+                    // Animated indeterminate progress bar when busy
                     if app.is_busy {
                         let (resp, painter) =
                             ui.allocate_painter(Vec2::new(140.0, 5.0), Sense::hover());
                         painter.rect_filled(resp.rect, 3.0, P::white_alpha(15));
+
+                        // Bounce a 40%-wide block back and forth using egui's time.
+                        let t = ui.ctx().input(|i| i.time) as f32;
+                        let phase = (t * 1.2).sin() * 0.5 + 0.5; // 0..1 smooth bounce
+                        let block_w = resp.rect.width() * 0.4;
+                        let x = resp.rect.min.x + phase * (resp.rect.width() - block_w);
                         let fill = egui::Rect::from_min_max(
-                            resp.rect.min,
-                            egui::pos2(resp.rect.min.x + resp.rect.width() * 0.6, resp.rect.max.y),
+                            egui::pos2(x, resp.rect.min.y),
+                            egui::pos2(x + block_w, resp.rect.max.y),
                         );
-                        // Animated progress — we use time for a simple looping animation
                         painter.rect_filled(fill, 3.0, P::PEACH);
                         ui.add_space(6.0);
                     }
@@ -97,7 +108,6 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
 
 fn status_cell(ui: &mut egui::Ui, text: &str, dot: Option<egui::Color32>) {
     let (_, _painter) = ui.allocate_painter(Vec2::new(1.0, 28.0), Sense::hover());
-    // draw separator
     ui.painter().line_segment(
         [
             egui::pos2(ui.cursor().min.x, ui.min_rect().min.y),
@@ -120,7 +130,6 @@ fn status_cell(ui: &mut egui::Ui, text: &str, dot: Option<egui::Color32>) {
         );
         ui.add_space(10.0);
     });
-    // right separator
     ui.painter().line_segment(
         [
             egui::pos2(ui.cursor().min.x - 1.0, ui.min_rect().min.y),
@@ -153,14 +162,86 @@ fn status_cell_dot(ui: &mut egui::Ui, text: &str, dot_color: egui::Color32, _ani
     });
 }
 
-fn current_time_str() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let h = (secs / 3600) % 24;
-    let m = (secs / 60) % 60;
-    let s = secs % 60;
-    format!("{h:02}:{m:02}:{s:02}")
+/// Returns current local time as HH:MM:SS.
+/// Uses Win32 `GetLocalTime` (kernel32, auto-linked) so the result reflects the
+/// system timezone rather than UTC.
+fn local_time_str() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        #[repr(C)]
+        struct SystemTime {
+            year: u16,
+            month: u16,
+            dow: u16,
+            day: u16,
+            hour: u16,
+            minute: u16,
+            second: u16,
+            ms: u16,
+        }
+        unsafe extern "system" {
+            fn GetLocalTime(lp: *mut SystemTime);
+        }
+        let mut t = SystemTime {
+            year: 0,
+            month: 0,
+            dow: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            ms: 0,
+        };
+        unsafe { GetLocalTime(&mut t) }
+        return format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second);
+    }
+    #[allow(unreachable_code)]
+    {
+        // UTC fallback for non-Windows
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!(
+            "{:02}:{:02}:{:02}",
+            (secs / 3600) % 24,
+            (secs / 60) % 60,
+            secs % 60
+        )
+    }
+}
+
+/// Returns this process's working-set size in MiB, or None if the query fails.
+/// Uses `K32GetProcessMemoryInfo` (kernel32, auto-linked on Windows Vista+).
+fn process_ram_mb() -> Option<u64> {
+    #[cfg(target_os = "windows")]
+    {
+        #[repr(C)]
+        struct Pmc {
+            cb: u32,
+            page_faults: u32,
+            peak_ws: usize,
+            working_set: usize,
+            qpeak_paged: usize,
+            qpaged: usize,
+            qpeak_nonpaged: usize,
+            qnonpaged: usize,
+            pagefile: usize,
+            peak_pagefile: usize,
+        }
+        unsafe extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn K32GetProcessMemoryInfo(proc: *mut std::ffi::c_void, pmc: *mut Pmc, cb: u32) -> i32;
+        }
+        let mut pmc: Pmc = unsafe { std::mem::zeroed() };
+        pmc.cb = std::mem::size_of::<Pmc>() as u32;
+        let ok = unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) };
+        if ok != 0 {
+            return Some(pmc.working_set as u64 / (1024 * 1024));
+        }
+        return None;
+    }
+    #[allow(unreachable_code)]
+    None
 }

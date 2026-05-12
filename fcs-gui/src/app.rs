@@ -7,7 +7,6 @@ use crate::ui;
 use eframe::{App, CreationContext, Frame};
 use egui::{CursorIcon, ResizeDirection, ViewportCommand};
 use fcs_core::{CropSettings as CoreCropSettings, PositioningMode, preset_by_name};
-use image::DynamicImage;
 use fcs_utils::{
     WgpuEnhancer,
     config::default_settings_path,
@@ -15,6 +14,7 @@ use fcs_utils::{
     gpu::{GpuBatchCropper, GpuContext},
     quality::Quality,
 };
+use image::DynamicImage;
 use log::info;
 use lru::LruCache;
 use std::{
@@ -601,7 +601,10 @@ impl App2 {
         self.webcam_state.frame_rx = None;
         self.webcam_state.status = WebcamStatus::Inactive;
         let Some(source_image) = self.preview.source_image.clone() else {
-            self.show_error("No frame", "No webcam frame captured yet — wait a moment after opening the camera");
+            self.show_error(
+                "No frame",
+                "No webcam frame captured yet — wait a moment after opening the camera",
+            );
             return;
         };
         let path = PathBuf::from("webcam://live");
@@ -611,7 +614,13 @@ impl App2 {
         self.job_counter += 1;
         self.current_job = Some(job_id);
         self.push_log("Detecting faces in webcam frame…".into(), LogKind::Info);
-        spawn_detection_job_from_image(job_id, source_image, path, self.detector.clone(), self.job_tx.clone());
+        spawn_detection_job_from_image(
+            job_id,
+            source_image,
+            path,
+            self.detector.clone(),
+            self.job_tx.clone(),
+        );
     }
 
     pub fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> usize {
