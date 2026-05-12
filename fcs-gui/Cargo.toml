@@ -34,5 +34,8 @@ tempfile.workspace = true
 [dev-dependencies]
 sha2.workspace = true
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true
+
 [build-dependencies]
 winresource.workspace = true

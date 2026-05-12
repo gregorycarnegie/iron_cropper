@@ -74,8 +74,11 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
                     // Clock — local time via Win32 GetLocalTime
                     status_cell(ui, &local_time_str(), None);
 
-                    // GPU — static label for now (no portable utilisation API)
-                    status_cell(ui, "GPU —", None);
+                    // GPU — dedicated VRAM usage via DXGI
+                    let vram_label = gpu_vram_mb()
+                        .map(|mb| format!("VRAM {mb} MB"))
+                        .unwrap_or_else(|| "GPU —".to_string());
+                    status_cell(ui, &vram_label, None);
 
                     // RAM — current process working set
                     let ram_label = process_ram_mb()
@@ -241,6 +244,33 @@ fn process_ram_mb() -> Option<u64> {
             return Some(pmc.working_set as u64 / (1024 * 1024));
         }
         return None;
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Returns the dedicated GPU VRAM currently used by this process in MiB.
+/// Uses `IDXGIAdapter3::QueryVideoMemoryInfo` (DXGI, already linked via eframe/wgpu).
+fn gpu_vram_mb() -> Option<u64> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Graphics::Dxgi::{
+            CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+        };
+        use windows::core::Interface as _;
+        unsafe {
+            let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+            let adapter1 = factory.EnumAdapters1(0).ok()?;
+            let adapter3: IDXGIAdapter3 = adapter1.cast().ok()?;
+            let mut info = windows::Win32::Graphics::Dxgi::DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+            adapter3
+                .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut info)
+                .ok()?;
+            if info.Budget == 0 {
+                return None;
+            }
+            return Some(info.CurrentUsage / (1024 * 1024));
+        }
     }
     #[allow(unreachable_code)]
     None
