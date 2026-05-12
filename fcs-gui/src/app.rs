@@ -7,6 +7,7 @@ use crate::ui;
 use eframe::{App, CreationContext, Frame};
 use egui::{CursorIcon, ResizeDirection, ViewportCommand};
 use fcs_core::{CropSettings as CoreCropSettings, PositioningMode, preset_by_name};
+use image::DynamicImage;
 use fcs_utils::{
     WgpuEnhancer,
     config::default_settings_path,
@@ -177,8 +178,9 @@ impl App for App2 {
             self.rebuild_detector();
         }
         self.poll_worker(ctx);
+        self.poll_webcam_frames(ctx);
         self.handle_dropped_files(ctx);
-        if self.is_busy {
+        if self.is_busy || self.webcam_state.status == WebcamStatus::Active {
             ctx.request_repaint();
         }
     }
@@ -340,6 +342,30 @@ impl App2 {
         self.crop_preview_cache.clear();
         if let Some(path) = self.preview.image_path.clone() {
             self.load_image_path(path);
+        }
+    }
+
+    fn poll_webcam_frames(&mut self, ctx: &egui::Context) {
+        if self.webcam_state.frame_rx.is_none() {
+            return;
+        }
+        // Drain the channel, keeping only the most recent frame
+        let mut latest: Option<(egui::ColorImage, Arc<DynamicImage>)> = None;
+        if let Some(rx) = &self.webcam_state.frame_rx {
+            while let Ok(frame) = rx.try_recv() {
+                latest = Some(frame);
+            }
+        }
+        if let Some((color_image, raw)) = latest {
+            self.webcam_state.frames_captured += 1;
+            let tex_name = format!("webcam_{}", self.texture_seq);
+            self.texture_seq += 1;
+            let w = color_image.size[0] as u32;
+            let h = color_image.size[1] as u32;
+            let texture = ctx.load_texture(&tex_name, color_image, egui::TextureOptions::default());
+            self.preview.texture = Some(texture);
+            self.preview.image_size = Some((w, h));
+            self.preview.source_image = Some(raw);
         }
     }
 
@@ -522,6 +548,70 @@ impl App2 {
             rotation,
             self.job_tx.clone(),
         );
+    }
+
+    pub fn open_webcam(&mut self) {
+        use crate::core::detection::spawn_webcam_stream;
+        use std::sync::atomic::Ordering;
+        // Stop any existing stream first
+        if let Some(flag) = &self.webcam_state.stop_flag {
+            flag.store(true, Ordering::Relaxed);
+        }
+        let stop_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (frame_tx, frame_rx) = mpsc::channel();
+        self.webcam_state.stop_flag = Some(stop_flag.clone());
+        self.webcam_state.frame_rx = Some(frame_rx);
+        self.webcam_state.status = WebcamStatus::Active;
+        self.webcam_state.frames_captured = 0;
+        self.webcam_state.error_message = None;
+        // Show webcam in canvas
+        self.preview.image_path = Some(PathBuf::from("webcam://live"));
+        self.preview.texture = None;
+        self.preview.image_size = None;
+        self.preview.detections.clear();
+        self.preview.source_image = None;
+        self.preview.is_loading = false;
+        let idx = self.webcam_state.device_index;
+        let w = self.webcam_state.width;
+        let h = self.webcam_state.height;
+        let fps = self.webcam_state.fps;
+        spawn_webcam_stream(idx, w, h, fps, stop_flag, frame_tx);
+        self.push_log("Webcam opened".into(), LogKind::Info);
+    }
+
+    pub fn close_webcam(&mut self) {
+        use std::sync::atomic::Ordering;
+        if let Some(flag) = &self.webcam_state.stop_flag {
+            flag.store(true, Ordering::Relaxed);
+        }
+        self.webcam_state.stop_flag = None;
+        self.webcam_state.frame_rx = None;
+        self.webcam_state.status = WebcamStatus::Inactive;
+        self.push_log("Webcam closed".into(), LogKind::Info);
+    }
+
+    pub fn detect_webcam_faces(&mut self) {
+        use crate::core::detection::spawn_detection_job_from_image;
+        use std::sync::atomic::Ordering;
+        // Freeze stream
+        if let Some(flag) = &self.webcam_state.stop_flag {
+            flag.store(true, Ordering::Relaxed);
+        }
+        self.webcam_state.stop_flag = None;
+        self.webcam_state.frame_rx = None;
+        self.webcam_state.status = WebcamStatus::Inactive;
+        let Some(source_image) = self.preview.source_image.clone() else {
+            self.show_error("No frame", "No webcam frame captured yet — wait a moment after opening the camera");
+            return;
+        };
+        let path = PathBuf::from("webcam://live");
+        self.is_busy = true;
+        self.preview.is_loading = true;
+        let job_id = self.job_counter;
+        self.job_counter += 1;
+        self.current_job = Some(job_id);
+        self.push_log("Detecting faces in webcam frame…".into(), LogKind::Info);
+        spawn_detection_job_from_image(job_id, source_image, path, self.detector.clone(), self.job_tx.clone());
     }
 
     pub fn enqueue_batch_paths(&mut self, paths: Vec<PathBuf>) -> usize {

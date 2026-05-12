@@ -86,11 +86,142 @@ fn show_queue(ui: &mut Ui, app: &mut App2) {
     // Drop zone
     drop_zone(ui, app);
 
+    // Webcam capture
+    webcam_bar(ui, app);
+
     // Folder browse shortcut
     folder_browse_bar(ui, app);
 
     // File tree
     file_tree(ui, app);
+}
+
+fn webcam_bar(ui: &mut Ui, app: &mut App2) {
+    use crate::types::WebcamStatus;
+    let is_live = app.webcam_state.status == WebcamStatus::Active;
+
+    ui.add_space(4.0);
+    let row_h = 36.0;
+    let margin = 8.0_f32;
+    let avail_w = ui.available_width() - margin * 2.0;
+    let row_rect = egui::Rect::from_min_size(
+        egui::pos2(ui.min_rect().min.x + margin, ui.cursor().min.y),
+        Vec2::new(avail_w, row_h),
+    );
+    let resp = ui.allocate_rect(row_rect, Sense::hover());
+    let painter = ui.painter();
+
+    let bg = if is_live { P::lime_alpha(12) } else { P::white_alpha(6) };
+    painter.rect_filled(row_rect, 8.0, bg);
+    painter.rect_stroke(
+        row_rect,
+        8.0,
+        egui::Stroke::new(1.0, if is_live { P::lime_alpha(80) } else { P::white_alpha(18) }),
+        egui::StrokeKind::Outside,
+    );
+
+    // Dot — green when live
+    let dot_color = if is_live { P::LIME } else { P::INK3 };
+    let dot_center = egui::pos2(row_rect.min.x + 14.0, row_rect.center().y);
+    painter.circle_filled(dot_center, 5.0, dot_color);
+
+    // Labels
+    painter.text(
+        egui::pos2(row_rect.min.x + 26.0, row_rect.center().y - 5.0),
+        egui::Align2::LEFT_CENTER,
+        "Webcam capture",
+        egui::FontId::monospace(10.5),
+        P::INK,
+    );
+    let subtitle = if is_live {
+        format!("Live · {} frames", app.webcam_state.frames_captured)
+    } else {
+        "Default camera".to_string()
+    };
+    painter.text(
+        egui::pos2(row_rect.min.x + 26.0, row_rect.center().y + 8.0),
+        egui::Align2::LEFT_CENTER,
+        subtitle,
+        egui::FontId::monospace(9.0),
+        if is_live { P::LIME } else { P::INK3 },
+    );
+
+    // Right-side buttons
+    if is_live {
+        // "Detect faces" — cyan, left of close
+        let detect_w = 90.0_f32;
+        let detect_h = 24.0_f32;
+        let close_w = 24.0_f32;
+        let close_rect = egui::Rect::from_center_size(
+            egui::pos2(row_rect.max.x - close_w / 2.0 - 4.0, row_rect.center().y),
+            Vec2::new(close_w, detect_h),
+        );
+        let detect_rect = egui::Rect::from_center_size(
+            egui::pos2(close_rect.min.x - detect_w / 2.0 - 4.0, row_rect.center().y),
+            Vec2::new(detect_w, detect_h),
+        );
+
+        // Detect button
+        let detect_resp = ui.interact(detect_rect, resp.id.with("detect_btn"), Sense::click());
+        let detect_bg = if app.is_busy {
+            P::white_alpha(8)
+        } else if detect_resp.hovered() {
+            P::cyan_alpha(60)
+        } else {
+            P::cyan_alpha(35)
+        };
+        painter.rect_filled(detect_rect, 6.0, detect_bg);
+        painter.text(
+            detect_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Detect faces",
+            egui::FontId::monospace(9.5),
+            if app.is_busy { P::INK3 } else { P::CYAN },
+        );
+        if detect_resp.clicked() && !app.is_busy {
+            app.detect_webcam_faces();
+        }
+        detect_resp.on_hover_text("Freeze frame and run face detection");
+
+        // Close button
+        let close_resp = ui.interact(close_rect, resp.id.with("close_btn"), Sense::click());
+        let close_bg = if close_resp.hovered() { P::rose_alpha(60) } else { P::white_alpha(12) };
+        painter.rect_filled(close_rect, 6.0, close_bg);
+        painter.text(
+            close_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "×",
+            egui::FontId::proportional(13.0),
+            P::ROSE,
+        );
+        if close_resp.clicked() {
+            app.close_webcam();
+        }
+        close_resp.on_hover_text("Close camera");
+    } else {
+        // "Open camera" button
+        let btn_w = 86.0_f32;
+        let btn_h = 24.0_f32;
+        let btn_rect = egui::Rect::from_center_size(
+            egui::pos2(row_rect.max.x - btn_w / 2.0 - 4.0, row_rect.center().y),
+            Vec2::new(btn_w, btn_h),
+        );
+        let btn_resp = ui.interact(btn_rect, resp.id.with("open_btn"), Sense::click());
+        let btn_bg = if btn_resp.hovered() { P::lime_alpha(55) } else { P::lime_alpha(30) };
+        painter.rect_filled(btn_rect, 6.0, btn_bg);
+        painter.text(
+            btn_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Open camera",
+            egui::FontId::monospace(9.5),
+            P::LIME,
+        );
+        if btn_resp.clicked() {
+            app.open_webcam();
+        }
+    }
+
+    ui.add_space(4.0);
 }
 
 fn folder_browse_bar(ui: &mut Ui, app: &mut App2) {

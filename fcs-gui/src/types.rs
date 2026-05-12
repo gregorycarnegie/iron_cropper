@@ -279,26 +279,22 @@ pub struct WebcamState {
     pub height: u32,
     pub fps: u32,
     pub frames_captured: u32,
-    pub total_faces: usize,
     pub error_message: Option<String>,
-    pub show_overlay: bool,
-    pub auto_crop: bool,
     pub stop_flag: Option<Arc<AtomicBool>>,
+    pub frame_rx: Option<mpsc::Receiver<(egui::ColorImage, Arc<DynamicImage>)>>,
 }
 impl Default for WebcamState {
     fn default() -> Self {
         Self {
             status: WebcamStatus::Inactive,
             device_index: 0,
-            width: 640,
-            height: 480,
+            width: 1280,
+            height: 720,
             fps: 30,
             frames_captured: 0,
-            total_faces: 0,
             error_message: None,
-            show_overlay: true,
-            auto_crop: false,
             stop_flag: None,
+            frame_rx: None,
         }
     }
 }

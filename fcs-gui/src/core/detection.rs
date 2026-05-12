@@ -219,6 +219,136 @@ pub fn perform_detection(
     })
 }
 
+pub fn perform_detection_from_image(
+    detector: Arc<YuNetDetector>,
+    image: Arc<DynamicImage>,
+    synthetic_path: PathBuf,
+) -> Result<DetectionJobSuccess> {
+    let detection_output = detector
+        .detect_image(&image)
+        .context("webcam detection failed")?;
+
+    let detections: Vec<DetectionWithQuality> = detection_output
+        .detections
+        .into_iter()
+        .map(|det| {
+            let bbox = det.bbox;
+            let x = bbox.x.max(0.0) as u32;
+            let y = bbox.y.max(0.0) as u32;
+            let w = bbox.width.max(1.0) as u32;
+            let h = bbox.height.max(1.0) as u32;
+            let x = x.min(image.width().saturating_sub(1));
+            let y = y.min(image.height().saturating_sub(1));
+            let w = w.min(image.width().saturating_sub(x));
+            let h = h.min(image.height().saturating_sub(y));
+            let face = image.crop_imm(x, y, w, h);
+            let (quality_score, quality) = estimate_sharpness(&face);
+            DetectionWithQuality {
+                detection: det,
+                quality_score,
+                quality,
+                thumbnail: None,
+                current_bbox: bbox,
+                original_bbox: bbox,
+                origin: DetectionOrigin::Detector,
+            }
+        })
+        .collect();
+
+    let rgba = image.to_rgba8();
+    let size = [rgba.width() as usize, rgba.height() as usize];
+    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+
+    Ok(DetectionJobSuccess {
+        path: synthetic_path,
+        color_image,
+        detections,
+        original_size: detection_output.original_size,
+        original_image: image,
+    })
+}
+
+/// Spawns a background thread that continuously captures webcam frames and sends
+/// `(egui::ColorImage, Arc<DynamicImage>)` pairs over `frame_tx` until `stop_flag` is set.
+pub fn spawn_webcam_stream(
+    device_index: u32,
+    width: u32,
+    height: u32,
+    fps: u32,
+    stop_flag: Arc<std::sync::atomic::AtomicBool>,
+    frame_tx: mpsc::Sender<(egui::ColorImage, Arc<DynamicImage>)>,
+) {
+    std::thread::spawn(move || {
+        let mut cam = match fcs_utils::WebcamCapture::with_device_index(device_index, width, height, fps) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to open webcam device {device_index}: {e}");
+                return;
+            }
+        };
+        while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            match cam.capture_frame() {
+                Ok(frame) => {
+                    let rgba = frame.to_rgba8();
+                    let size = [rgba.width() as usize, rgba.height() as usize];
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                    let arc_frame = Arc::new(frame);
+                    if frame_tx.send((color_image, arc_frame)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    warn!("Webcam frame capture error: {e}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// Runs face detection on an already-captured `DynamicImage` in a rayon thread,
+/// sending the result back through `job_tx`.
+pub fn spawn_detection_job_from_image(
+    job_id: u64,
+    image: Arc<DynamicImage>,
+    synthetic_path: PathBuf,
+    detector: Option<Arc<YuNetDetector>>,
+    job_tx: mpsc::Sender<JobMessage>,
+) {
+    let Some(detector) = detector else {
+        let _ = job_tx.send(JobMessage::DetectionFailed {
+            job_id,
+            error: "No detector loaded. Configure model path in settings.".to_owned(),
+        });
+        return;
+    };
+
+    rayon::spawn(move || {
+        let payload = match perform_detection_from_image(detector, image, synthetic_path.clone()) {
+            Ok(data) => {
+                let cache_key = CacheKey {
+                    path: synthetic_path,
+                    model_path: None,
+                    input_width: 640,
+                    input_height: 640,
+                    resize_quality: Default::default(),
+                    score_bits: 0,
+                    nms_bits: 0,
+                    top_k: 5000,
+                };
+                JobMessage::DetectionFinished { job_id, cache_key, data }
+            }
+            Err(err) => JobMessage::DetectionFailed {
+                job_id,
+                error: format!("{err:#}"),
+            },
+        };
+        if job_tx.send(payload).is_err() {
+            error!("GUI dropped webcam detection result");
+        }
+    });
+}
+
 pub fn spawn_detection_job(
     job_id: u64,
     path: PathBuf,
