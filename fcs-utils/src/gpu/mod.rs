@@ -809,7 +809,11 @@ mod tests {
             }
         };
 
-        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(2).unwrap()).expect("pool creation");
+        let pool = GpuContextPool::new(
+            ctx,
+            NonZeroUsize::new(2).expect("test pool size should be non-zero"),
+        )
+        .expect("GPU context pool should be created");
 
         assert_eq!(pool.capacity(), 2);
         assert_eq!(pool.available(), 2);
@@ -838,8 +842,14 @@ mod tests {
                 return;
             }
         };
-        let pool = GpuContextPool::new(ctx, NonZeroUsize::new(1).unwrap()).unwrap();
-        let guard = pool.acquire().unwrap();
+        let pool = GpuContextPool::new(
+            ctx,
+            NonZeroUsize::new(1).expect("test pool size should be non-zero"),
+        )
+        .expect("GPU context pool should be created");
+        let guard = pool
+            .acquire()
+            .expect("GPU context guard should acquire from pool");
         // Deref should give us access to GpuContext methods
         let _ = guard.adapter_info();
     }

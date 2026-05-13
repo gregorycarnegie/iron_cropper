@@ -3,19 +3,12 @@ use fcs_utils::{config::DetectionSettings, point::Point};
 use std::cmp::Ordering;
 use tract_onnx::prelude::{Tensor, tract_ndarray::ArrayView2};
 
-use crate::nms::apply_nms_in_place;
+use crate::{
+    model_config::{DETECTION_OUTPUT_COLS, DETECTION_SCORE_INDEX},
+    nms::apply_nms_in_place,
+};
 
-/// Default minimum confidence score for a detection to be considered valid.
-pub const DEFAULT_SCORE_THRESHOLD: f32 = 0.9;
-/// Default threshold for non-maximum suppression to merge overlapping bounding boxes.
-pub const DEFAULT_NMS_THRESHOLD: f32 = 0.3;
-/// Default maximum number of detections to return after sorting by score.
-pub const DEFAULT_TOP_K: usize = 5_000;
-
-/// Number of columns in YuNet detection output (bbox + landmarks + score).
-const DETECTION_OUTPUT_COLS: usize = 15;
-/// Index of the confidence score in a detection row.
-const DETECTION_SCORE_INDEX: usize = 14;
+pub use crate::model_config::{DEFAULT_NMS_THRESHOLD, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K};
 
 /// Canonical YuNet detection configuration.
 ///
@@ -251,9 +244,10 @@ mod tests {
         }
     }
 
-    fn tensor_from_rows(rows: &[[f32; 15]]) -> Tensor {
+    fn tensor_from_rows(rows: &[[f32; DETECTION_OUTPUT_COLS]]) -> Tensor {
         let flat: Vec<f32> = rows.iter().flatten().copied().collect();
-        Tensor::from_shape(&[rows.len(), 15], &flat).unwrap()
+        Tensor::from_shape(&[rows.len(), DETECTION_OUTPUT_COLS], &flat)
+            .expect("build test tensor from rows")
     }
 
     #[test]
@@ -325,12 +319,12 @@ mod tests {
     #[test]
     fn handles_batched_output_shape() {
         let tensor = Tensor::from_shape(
-            &[1, 1, 15],
+            &[1, 1, DETECTION_OUTPUT_COLS],
             &[
                 0.0f32, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.95,
             ],
         )
-        .unwrap();
+        .expect("build batched test tensor");
 
         let detections = apply_postprocess(&tensor, 1.0, 1.0, &PostprocessConfig::default())
             .expect("postprocess should succeed");
@@ -385,13 +379,17 @@ mod tests {
 
     #[test]
     fn apply_postprocess_rejects_invalid_tensor_shape_and_type() {
-        let wrong_shape = Tensor::from_shape(&[15], &[0.0f32; 15]).unwrap();
+        let wrong_shape =
+            Tensor::from_shape(&[DETECTION_OUTPUT_COLS], &[0.0f32; DETECTION_OUTPUT_COLS])
+                .expect("build wrong-shape test tensor");
         let err = apply_postprocess(&wrong_shape, 1.0, 1.0, &PostprocessConfig::default())
             .unwrap_err()
             .to_string();
         assert!(err.contains("YuNet output must have shape"));
 
-        let wrong_type = Tensor::from_shape(&[1, 15], &[1i32; 15]).unwrap();
+        let wrong_type =
+            Tensor::from_shape(&[1, DETECTION_OUTPUT_COLS], &[1i32; DETECTION_OUTPUT_COLS])
+                .expect("build wrong-type test tensor");
         let err = apply_postprocess(&wrong_type, 1.0, 1.0, &PostprocessConfig::default())
             .unwrap_err()
             .to_string();
@@ -522,7 +520,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("postprocess should succeed");
         assert_eq!(detections.len(), 1);
         assert!((detections[0].score - 0.95).abs() < f32::EPSILON);
     }
@@ -552,7 +550,7 @@ mod tests {
                 ..Default::default()
             },
         )
-        .unwrap();
+        .expect("postprocess should succeed");
         assert_eq!(detections.len(), 1);
         assert!((detections[0].bbox.x - 1.0).abs() < f32::EPSILON);
     }

@@ -1,6 +1,7 @@
-use crate::postprocess::{BoundingBox, Detection};
-
-const GRID_SIZE: usize = 32;
+use crate::{
+    model_config::NMS_GRID_SIZE,
+    postprocess::{BoundingBox, Detection},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct SceneBounds {
@@ -97,14 +98,14 @@ fn grid_cell_index(offset: f32, cell_d: f32, grid_size: usize) -> usize {
 }
 
 fn build_spatial_grid(detections: &[Detection], bounds: SceneBounds) -> SpatialGrid {
-    let mut cells: Vec<Vec<usize>> = (0..GRID_SIZE * GRID_SIZE)
-        .map(|_| Vec::with_capacity(detections.len() / (GRID_SIZE * GRID_SIZE / 4).max(1)))
+    let mut cells: Vec<Vec<usize>> = (0..NMS_GRID_SIZE * NMS_GRID_SIZE)
+        .map(|_| Vec::with_capacity(detections.len() / (NMS_GRID_SIZE * NMS_GRID_SIZE / 4).max(1)))
         .collect();
 
     for (i, detection) in detections.iter().enumerate() {
-        let range = bounds.cell_range_for_bbox(&detection.bbox, GRID_SIZE);
+        let range = bounds.cell_range_for_bbox(&detection.bbox, NMS_GRID_SIZE);
         for row in range.min_row..=range.max_row {
-            let row_offset = row * GRID_SIZE;
+            let row_offset = row * NMS_GRID_SIZE;
             for col in range.min_col..=range.max_col {
                 cells[row_offset + col].push(i);
             }
@@ -112,7 +113,7 @@ fn build_spatial_grid(detections: &[Detection], bounds: SceneBounds) -> SpatialG
     }
 
     SpatialGrid {
-        grid_size: GRID_SIZE,
+        grid_size: NMS_GRID_SIZE,
         bounds,
         cells,
     }

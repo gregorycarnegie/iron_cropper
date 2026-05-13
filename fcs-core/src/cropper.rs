@@ -296,6 +296,150 @@ pub fn calculate_crop_region(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    fn crop_case_strategy() -> impl Strategy<Value = (u32, u32, BoundingBox, CropSettings)> {
+        (
+            1u32..=4096,
+            1u32..=4096,
+            1u32..=4096,
+            1u32..=4096,
+            0u32..=4096,
+            0u32..=4096,
+            1u32..=2048,
+            1u32..=2048,
+            1.0f32..=100.0,
+            prop_oneof![
+                Just(PositioningMode::Center),
+                Just(PositioningMode::RuleOfThirds),
+                Just(PositioningMode::Custom),
+            ],
+            -1.5f32..=1.5,
+            -1.5f32..=1.5,
+        )
+            .prop_map(
+                |(
+                    img_w,
+                    img_h,
+                    bbox_w_seed,
+                    bbox_h_seed,
+                    x_seed,
+                    y_seed,
+                    output_width,
+                    output_height,
+                    face_height_pct,
+                    positioning_mode,
+                    horizontal_offset,
+                    vertical_offset,
+                )| {
+                    let bbox_w = 1 + (bbox_w_seed - 1) % img_w;
+                    let bbox_h = 1 + (bbox_h_seed - 1) % img_h;
+                    let max_x = img_w - bbox_w;
+                    let max_y = img_h - bbox_h;
+                    let x = if max_x == 0 {
+                        0
+                    } else {
+                        x_seed % (max_x + 1)
+                    };
+                    let y = if max_y == 0 {
+                        0
+                    } else {
+                        y_seed % (max_y + 1)
+                    };
+
+                    let face_bbox = BoundingBox {
+                        x: x as f32,
+                        y: y as f32,
+                        width: bbox_w as f32,
+                        height: bbox_h as f32,
+                    };
+                    let settings = CropSettings {
+                        output_width,
+                        output_height,
+                        face_height_pct,
+                        positioning_mode,
+                        horizontal_offset,
+                        vertical_offset,
+                        ..Default::default()
+                    };
+
+                    (img_w, img_h, face_bbox, settings)
+                },
+            )
+    }
+
+    proptest! {
+        #[test]
+        fn crop_dimensions_preserve_output_aspect_ratio(
+            (img_w, img_h, face_bbox, settings) in crop_case_strategy(),
+        ) {
+            let crop = calculate_crop_region(img_w, img_h, face_bbox, &settings);
+            let actual = crop.width as f32 / crop.height as f32;
+            let expected = settings.output_width as f32 / settings.output_height as f32;
+            let rounding_tolerance = ((1.0 + expected) / crop.height as f32).max(1e-5);
+
+            prop_assert!(
+                (actual - expected).abs() <= rounding_tolerance,
+                "crop aspect {actual} should match output aspect {expected} within rounding tolerance {rounding_tolerance}; crop={crop:?}, settings={settings:?}",
+            );
+        }
+
+        #[test]
+        fn in_bounds_crop_coordinates_stay_within_source_image(
+            (img_w, img_h, face_bbox, settings) in crop_case_strategy(),
+        ) {
+            let crop = calculate_crop_region(img_w, img_h, face_bbox, &settings);
+
+            if let Some((x, y, width, height)) = crop.in_bounds_rect(img_w, img_h) {
+                prop_assert!(x <= img_w, "in-bounds x exceeded image width: x={x}, img_w={img_w}, crop={crop:?}");
+                prop_assert!(y <= img_h, "in-bounds y exceeded image height: y={y}, img_h={img_h}, crop={crop:?}");
+                prop_assert!(
+                    x.saturating_add(width) <= img_w,
+                    "in-bounds right edge exceeded image width: x={x}, width={width}, img_w={img_w}, crop={crop:?}",
+                );
+                prop_assert!(
+                    y.saturating_add(height) <= img_h,
+                    "in-bounds bottom edge exceeded image height: y={y}, height={height}, img_h={img_h}, crop={crop:?}",
+                );
+            }
+        }
+
+        #[test]
+        fn padding_keeps_effective_coordinates_non_negative(
+            (img_w, img_h, face_bbox, settings) in crop_case_strategy(),
+        ) {
+            let crop = calculate_crop_region(img_w, img_h, face_bbox, &settings);
+            let effective_left = crop.x as i64 + crop.pad_left as i64;
+            let effective_top = crop.y as i64 + crop.pad_top as i64;
+            let effective_right = crop.x as i64 + crop.width as i64 - crop.pad_right as i64;
+            let effective_bottom = crop.y as i64 + crop.height as i64 - crop.pad_bottom as i64;
+
+            prop_assert!(
+                effective_left >= 0,
+                "left padding produced negative effective x: {effective_left}, crop={crop:?}",
+            );
+            prop_assert!(
+                effective_top >= 0,
+                "top padding produced negative effective y: {effective_top}, crop={crop:?}",
+            );
+            prop_assert!(
+                effective_right >= 0,
+                "right padding produced negative effective right edge: {effective_right}, crop={crop:?}",
+            );
+            prop_assert!(
+                effective_bottom >= 0,
+                "bottom padding produced negative effective bottom edge: {effective_bottom}, crop={crop:?}",
+            );
+            prop_assert!(
+                effective_left <= img_w as i64,
+                "effective x exceeded image width: {effective_left}, img_w={img_w}, crop={crop:?}",
+            );
+            prop_assert!(
+                effective_top <= img_h as i64,
+                "effective y exceeded image height: {effective_top}, img_h={img_h}, crop={crop:?}",
+            );
+        }
+    }
 
     #[test]
     fn center_crop_basic() {

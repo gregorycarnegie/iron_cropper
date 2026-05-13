@@ -717,13 +717,13 @@ mod tests {
     fn parse_args(args: &[&str]) -> DetectArgs {
         let mut full = vec!["fcs-cli"];
         full.extend_from_slice(args);
-        DetectArgs::try_parse_from(full).unwrap()
+        DetectArgs::try_parse_from(full).expect("test CLI arguments should parse")
     }
 
     fn no_gpu_runtime() -> Arc<gpu::CliGpuRuntime> {
         let mut settings = AppSettings::default();
         settings.gpu.enabled = false;
-        Arc::new(init_cli_gpu_runtime(&settings).unwrap())
+        Arc::new(init_cli_gpu_runtime(&settings).expect("disabled GPU runtime should initialize"))
     }
 
     fn crop_settings_app() -> Arc<AppSettings> {
@@ -758,7 +758,9 @@ mod tests {
     }
 
     fn write_sample_png(path: &Path) {
-        sample_image(32, 32).save(path).unwrap();
+        sample_image(32, 32)
+            .save(path)
+            .expect("sample PNG should be written");
     }
 
     #[test]
@@ -860,7 +862,7 @@ mod tests {
         let Some(detector) = build_test_detector() else {
             return;
         };
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let image_path = dir.path().join("sample.png");
         write_sample_png(&image_path);
 
@@ -869,7 +871,7 @@ mod tests {
 
     #[test]
     fn load_source_image_handles_success_and_failure() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let valid = dir.path().join("ok.png");
         write_sample_png(&valid);
         let missing = dir.path().join("missing.png");
@@ -880,7 +882,7 @@ mod tests {
 
     #[test]
     fn annotate_image_if_requested_covers_none_success_and_failure() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let image_path = dir.path().join("annotate.png");
         write_sample_png(&image_path);
         let detections = vec![sample_detection(4.0, 4.0, 12.0, 12.0, 0.9)];
@@ -900,7 +902,7 @@ mod tests {
         );
 
         let blocked_file = dir.path().join("blocked");
-        fs::write(&blocked_file, b"not a dir").unwrap();
+        fs::write(&blocked_file, b"not a dir").expect("blocked path file should be written");
         let blocked_dir = Arc::new(Some(blocked_file));
         assert_eq!(
             annotate_image_if_requested(&image_path, &detections, &blocked_dir),
@@ -961,7 +963,7 @@ mod tests {
         let runtime = no_gpu_runtime();
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
 
@@ -982,7 +984,12 @@ mod tests {
 
         assert_eq!(saved.load(Ordering::Relaxed), 0);
         assert_eq!(skipped.load(Ordering::Relaxed), 0);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .expect("temp output directory should be readable")
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -997,7 +1004,7 @@ mod tests {
             suffix_enabled: false,
         });
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
@@ -1019,7 +1026,12 @@ mod tests {
 
         assert_eq!(saved.load(Ordering::Relaxed), 0);
         assert_eq!(skipped.load(Ordering::Relaxed), 1);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .expect("temp output directory should be readable")
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -1028,7 +1040,7 @@ mod tests {
         let runtime = no_gpu_runtime();
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg", "--face-index", "0"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![
@@ -1067,7 +1079,7 @@ mod tests {
             suffix_enabled: false,
         });
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
@@ -1097,7 +1109,7 @@ mod tests {
         let runtime = no_gpu_runtime();
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg", "--face-index", "3"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
@@ -1118,7 +1130,12 @@ mod tests {
         );
 
         assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .expect("temp output directory should be readable")
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -1133,7 +1150,7 @@ mod tests {
             suffix_enabled: false,
         });
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
 
@@ -1165,7 +1182,12 @@ mod tests {
         );
 
         assert_eq!(saved.load(Ordering::Relaxed), 1);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .expect("temp output directory should be readable")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1174,7 +1196,7 @@ mod tests {
         let runtime = no_gpu_runtime();
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
@@ -1206,9 +1228,9 @@ mod tests {
         let runtime = no_gpu_runtime();
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg"]);
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let blocked = dir.path().join("blocked");
-        fs::write(&blocked, b"file").unwrap();
+        fs::write(&blocked, b"file").expect("blocked output path should be written");
         let saved = Arc::new(AtomicUsize::new(0));
         let skipped = Arc::new(AtomicUsize::new(0));
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
@@ -1238,7 +1260,7 @@ mod tests {
         let Some(detector) = build_test_detector() else {
             return;
         };
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("temp directory should be created");
         let image_path = dir.path().join("single.png");
         write_sample_png(&image_path);
         let target = input::ProcessingItem {
@@ -1250,7 +1272,12 @@ mod tests {
         let settings = crop_settings_app();
         let quality_filter = Arc::new(QualityFilter::new(None));
         let runtime = no_gpu_runtime();
-        let args = parse_args(&["--input", image_path.to_str().unwrap()]);
+        let args = parse_args(&[
+            "--input",
+            image_path
+                .to_str()
+                .expect("temp image path should be valid UTF-8"),
+        ]);
         let crop_output_dir = Arc::new(None);
         let images_processed = Arc::new(AtomicUsize::new(0));
         let faces_detected = Arc::new(AtomicUsize::new(0));
@@ -1273,7 +1300,7 @@ mod tests {
             &crops_saved,
             &crops_skipped_quality,
         )
-        .unwrap();
+        .expect("processing one test image should succeed");
 
         assert_eq!(images_processed.load(Ordering::Relaxed), 1);
         assert_eq!(result.image, image_path.display().to_string());

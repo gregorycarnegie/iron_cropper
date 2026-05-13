@@ -13,6 +13,8 @@ pub mod face_cropper;
 pub mod gpu;
 /// ONNX model loading and execution.
 pub mod model;
+/// YuNet model-specific constants shared across core modules.
+pub mod model_config;
 /// Non-maximum suppression implementation (spatial grid + naive fallback).
 mod nms;
 /// Detection post-processing (NMS, score filtering).

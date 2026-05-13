@@ -156,7 +156,7 @@ mod tests {
             16,
             image::Rgba([32, 64, 96, 255]),
         ));
-        image.save(path).unwrap();
+        image.save(path).expect("save test image");
     }
 
     #[test]
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn load_benchmark_images_reads_all_sources() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let image_a = dir.path().join("a.png");
         let image_b = dir.path().join("b.png");
         write_image(&image_a);
@@ -219,7 +219,7 @@ mod tests {
             },
         ];
 
-        let images = load_benchmark_images(&items).unwrap();
+        let images = load_benchmark_images(&items).expect("load benchmark images");
         assert_eq!(images.len(), 2);
         assert_eq!(images[0].dimensions(), (16, 16));
         assert_eq!(images[1].dimensions(), (16, 16));
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn load_benchmark_images_adds_path_context_on_error() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let missing = dir.path().join("missing.png");
         let items = vec![ProcessingItem {
             source: missing.clone(),
@@ -248,7 +248,7 @@ mod tests {
         ];
         let summary =
             benchmark_preprocessor("cpu", &CpuPreprocessor, &images, &benchmark_config(), 2)
-                .unwrap();
+                .expect("benchmark_preprocessor should succeed");
 
         assert_eq!(summary.label, "cpu");
         assert_eq!(summary.samples, 2);
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn run_preprocess_benchmark_succeeds_without_gpu_context() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let image = dir.path().join("bench.png");
         write_image(&image);
         let items = vec![ProcessingItem {
@@ -277,6 +277,6 @@ mod tests {
             mapping_row: None,
         }];
 
-        run_preprocess_benchmark(&items, &benchmark_config(), None).unwrap();
+        run_preprocess_benchmark(&items, &benchmark_config(), None).expect("preprocess benchmark should succeed");
     }
 }

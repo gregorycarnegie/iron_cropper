@@ -285,8 +285,10 @@ struct WgpuPreprocessPipeline {
 
 impl WgpuPreprocessPipeline {
     fn new(device: &wgpu::Device) -> Result<Self> {
+        // Panics if WGSL compilation fails; the label appears in the panic message.
+        // If this panics, inspect preprocess.wgsl and verify wgpu feature support.
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_preprocess_shader"),
+            label: Some("preprocess.wgsl shader"),
             source: wgpu::ShaderSource::Wgsl(PREPROCESS_WGSL.into()),
         });
 
@@ -339,7 +341,7 @@ impl WgpuPreprocessPipeline {
         });
 
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_preprocess_pipeline"),
+            label: Some("preprocess.wgsl pipeline — check wgpu feature support if this panics"),
             layout: Some(&pipeline_layout),
             module: &shader,
             entry_point: Some("main"),

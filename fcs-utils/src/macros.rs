@@ -87,11 +87,15 @@ macro_rules! uniform_buffer_entry {
 ///     ]
 /// );
 /// ```
+// Pipeline creation panics if the shader fails to compile.
+// The label (e.g. "bilateral_filter.wgsl shader") is included in the wgpu panic
+// message — look for that label and check the corresponding .wgsl source file.
+// If the device enters a lost state, verify wgpu feature support on this GPU.
 #[macro_export]
 macro_rules! create_gpu_pipeline {
     ($device:expr, $label:literal, $shader_source:expr, [$($entry:expr),* $(,)?]) => {{
         let shader = $device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(concat!("yunet_", $label, "_shader")),
+            label: Some(concat!($label, ".wgsl shader")),
             source: wgpu::ShaderSource::Wgsl($shader_source.into()),
         });
 
@@ -107,7 +111,7 @@ macro_rules! create_gpu_pipeline {
         });
 
         let pipeline = $device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(concat!("yunet_", $label, "_pipeline")),
+            label: Some(concat!($label, ".wgsl pipeline — check wgpu feature support if this panics")),
             layout: Some(&pipeline_layout),
             module: &shader,
             entry_point: Some("main"),

@@ -205,11 +205,11 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let img_path = dir.path().join("input.png");
         let out_dir = dir.path().join("annotated");
-        std::fs::create_dir_all(&out_dir).unwrap();
+        std::fs::create_dir_all(&out_dir).expect("create output dir");
 
         // Save a small RGBA image
         let img = RgbaImage::from_pixel(100, 100, image::Rgba([128, 128, 128, 255]));
-        DynamicImage::ImageRgba8(img).save(&img_path).unwrap();
+        DynamicImage::ImageRgba8(img).save(&img_path).expect("save test image");
 
         let det = make_detection(20.0, 20.0, 40.0, 40.0);
         let result = annotate_image(&img_path, &[det], &out_dir);
@@ -222,10 +222,10 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let img_path = dir.path().join("empty.png");
         let out_dir = dir.path().join("out");
-        std::fs::create_dir_all(&out_dir).unwrap();
+        std::fs::create_dir_all(&out_dir).expect("create output dir");
 
         let img = RgbaImage::from_pixel(50, 50, image::Rgba([255, 0, 0, 255]));
-        DynamicImage::ImageRgba8(img).save(&img_path).unwrap();
+        DynamicImage::ImageRgba8(img).save(&img_path).expect("save test image");
 
         let result = annotate_image(&img_path, &[], &out_dir);
         assert!(result.is_ok());
@@ -237,7 +237,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let missing = dir.path().join("does_not_exist.png");
         let out_dir = dir.path().join("out");
-        std::fs::create_dir_all(&out_dir).unwrap();
+        std::fs::create_dir_all(&out_dir).expect("create output dir");
 
         let result = annotate_image(&missing, &[], &out_dir);
         assert!(result.is_err());

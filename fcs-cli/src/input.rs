@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn collect_images_returns_supported_files_in_sorted_order() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let root = dir.path();
         let nested = root.join("nested");
 
@@ -293,7 +293,7 @@ mod tests {
         write_file(&nested.join("c.webp"));
         write_file(&nested.join("ignore.txt"));
 
-        let images = collect_images(root).unwrap();
+        let images = collect_images(root).expect("collect images from dir");
 
         assert_eq!(
             images,
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn collect_images_errors_for_missing_path() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let err = collect_images(&dir.path().join("missing"))
             .unwrap_err()
             .to_string();
@@ -317,17 +317,17 @@ mod tests {
 
     #[test]
     fn collect_images_returns_single_file_when_input_is_a_file() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let image = dir.path().join("single.jpeg");
         write_file(&image);
 
-        let images = collect_images(&image).unwrap();
+        let images = collect_images(&image).expect("collect single image file");
         assert_eq!(images, vec![image]);
     }
 
     #[test]
     fn collect_standard_targets_errors_when_directory_has_no_images() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         write_file(&dir.path().join("notes.txt"));
 
         let err = collect_standard_targets(dir.path())
@@ -339,14 +339,14 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_requires_source_and_output_columns() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_path = dir.path().join("mapping.csv");
         write_mapping(&mapping_path, "source,output\nimg.jpg,out\n");
 
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-output-col",
             "output",
         ]);
@@ -360,14 +360,14 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_requires_output_column() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_path = dir.path().join("mapping.csv");
         write_mapping(&mapping_path, "source,output\nimg.jpg,out\n");
 
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
         ]);
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_loads_relative_sources_from_mapping_directory() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_dir = dir.path().join("maps");
         let mapping_path = mapping_dir.join("mapping.csv");
         let image_a = mapping_dir.join("images").join("a.jpg");
@@ -396,14 +396,14 @@ mod tests {
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
             "output",
         ]);
 
-        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+        let items = collect_mapping_targets(&mapping_path, &args).expect("collect mapping targets");
 
         assert_eq!(items.len(), 2);
         assert_same_existing_path(&items[0].source, &image_a);
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_skips_absolute_and_missing_source_paths() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_dir = dir.path().join("maps");
         let mapping_path = mapping_dir.join("mapping.csv");
         let valid_image = mapping_dir.join("valid.jpg");
@@ -438,14 +438,14 @@ mod tests {
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
             "output",
         ]);
 
-        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+        let items = collect_mapping_targets(&mapping_path, &args).expect("collect mapping targets");
 
         assert_eq!(items.len(), 1);
         assert_same_existing_path(&items[0].source, &valid_image);
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_skips_parent_directory_escapes() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_dir = dir.path().join("maps");
         let mapping_path = mapping_dir.join("mapping.csv");
         let outside = dir.path().join("outside.jpg");
@@ -471,14 +471,14 @@ mod tests {
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
             "output",
         ]);
 
-        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+        let items = collect_mapping_targets(&mapping_path, &args).expect("collect mapping targets");
 
         assert_eq!(items.len(), 1);
         assert_same_existing_path(&items[0].source, &inside);
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_supports_explicit_text_format_and_delimiter() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_dir = dir.path().join("maps");
         let mapping_path = mapping_dir.join("mapping.txt");
         let image = mapping_dir.join("semi.jpg");
@@ -498,7 +498,7 @@ mod tests {
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
@@ -509,7 +509,7 @@ mod tests {
             ";",
         ]);
 
-        let items = collect_mapping_targets(&mapping_path, &args).unwrap();
+        let items = collect_mapping_targets(&mapping_path, &args).expect("collect mapping targets with text format");
         assert_eq!(items.len(), 1);
         assert_same_existing_path(&items[0].source, &image);
         assert_eq!(items[0].output_override, Some(PathBuf::from("out-name")));
@@ -517,14 +517,14 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_errors_when_mapping_has_no_usable_rows() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_path = dir.path().join("mapping.csv");
         write_mapping(&mapping_path, "source,output\n");
 
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn collect_mapping_targets_errors_when_every_row_is_filtered_out() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let mapping_dir = dir.path().join("maps");
         let mapping_path = mapping_dir.join("mapping.csv");
         write_mapping(&mapping_path, "source,output\nmissing.jpg,out\n");
@@ -548,7 +548,7 @@ mod tests {
         let args = parse_detect_args([
             "fcs-cli",
             "--mapping-file",
-            mapping_path.to_str().unwrap(),
+            mapping_path.to_str().expect("mapping path is valid UTF-8"),
             "--mapping-source-col",
             "source",
             "--mapping-output-col",
@@ -565,23 +565,23 @@ mod tests {
     #[test]
     fn parse_mapping_format_token_accepts_aliases() {
         assert_eq!(
-            parse_mapping_format_token("csv").unwrap(),
+            parse_mapping_format_token("csv").expect("csv token"),
             MappingFormat::Csv
         );
         assert_eq!(
-            parse_mapping_format_token("delimited").unwrap(),
+            parse_mapping_format_token("delimited").expect("delimited token"),
             MappingFormat::Csv
         );
         assert_eq!(
-            parse_mapping_format_token("xlsx").unwrap(),
+            parse_mapping_format_token("xlsx").expect("xlsx token"),
             MappingFormat::Excel
         );
         assert_eq!(
-            parse_mapping_format_token("pq").unwrap(),
+            parse_mapping_format_token("pq").expect("pq token"),
             MappingFormat::Parquet
         );
         assert_eq!(
-            parse_mapping_format_token("db").unwrap(),
+            parse_mapping_format_token("db").expect("db token"),
             MappingFormat::Sqlite
         );
         assert!(parse_mapping_format_token("toml").is_err());
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn resolve_override_output_path_sanitizes_traversal_and_preserves_extension() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let output = resolve_override_output_path(
             dir.path(),
             Path::new("../nested/folder/custom.name.png"),
@@ -609,7 +609,7 @@ mod tests {
 
     #[test]
     fn resolve_override_output_path_appends_face_suffix_for_multi_face_exports() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let output = resolve_override_output_path(
             dir.path(),
             Path::new("gallery/portrait.jpg"),
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn resolve_override_output_path_falls_back_to_default_name_when_override_is_sanitized_away() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let output = resolve_override_output_path(dir.path(), Path::new("../../"), "jpg", 0, false);
 
         assert_eq!(output, dir.path().join("output.jpg"));

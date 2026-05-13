@@ -127,7 +127,7 @@ mod tests {
     fn parse_args(args: &[&str]) -> DetectArgs {
         let mut full = vec!["fcs-cli"];
         full.extend_from_slice(args);
-        DetectArgs::try_parse_from(full).unwrap()
+        DetectArgs::try_parse_from(full).expect("parse test CLI args")
     }
 
     #[test]
@@ -147,7 +147,7 @@ mod tests {
             "unknown",
         ]);
 
-        let settings = build_enhancement_settings(&args).unwrap();
+        let settings = build_enhancement_settings(&args).expect("build enhancement settings");
         assert_eq!(settings.contrast, EnhancementSettings::default().contrast);
         assert_eq!(
             settings.unsharp_amount,
@@ -172,7 +172,7 @@ mod tests {
             "--enhance-background-blur=true",
         ]);
 
-        let settings = build_enhancement_settings(&args).unwrap();
+        let settings = build_enhancement_settings(&args).expect("build enhancement settings with overrides");
         assert!((settings.unsharp_amount - 1.1).abs() < f32::EPSILON);
         assert!((settings.unsharp_radius - 2.5).abs() < f32::EPSILON);
         assert!((settings.skin_smooth_amount - 0.75).abs() < f32::EPSILON);

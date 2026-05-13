@@ -158,11 +158,11 @@ mod tests {
     #[test]
     fn parse_fill_color_spec_accepts_hex_and_comma_separated_rgb() {
         assert_eq!(
-            parse_fill_color_spec("#112233").unwrap(),
+            parse_fill_color_spec("#112233").expect("valid hex color"),
             RgbaColor::opaque(0x11, 0x22, 0x33)
         );
         assert_eq!(
-            parse_fill_color_spec("0x44556677").unwrap(),
+            parse_fill_color_spec("0x44556677").expect("valid 0x hex color with alpha"),
             RgbaColor {
                 red: 0x44,
                 green: 0x55,
@@ -171,7 +171,7 @@ mod tests {
             }
         );
         assert_eq!(
-            parse_fill_color_spec(" 1, 2, 3 ").unwrap(),
+            parse_fill_color_spec(" 1, 2, 3 ").expect("valid comma-separated RGB"),
             RgbaColor::opaque(1, 2, 3)
         );
     }
@@ -179,11 +179,11 @@ mod tests {
     #[test]
     fn parse_fill_color_spec_accepts_rgb_function_with_multiple_alpha_formats() {
         assert_eq!(
-            parse_fill_color_spec("rgb(10, 20, 30)").unwrap(),
+            parse_fill_color_spec("rgb(10, 20, 30)").expect("valid rgb() without alpha"),
             RgbaColor::opaque(10, 20, 30)
         );
         assert_eq!(
-            parse_fill_color_spec("RGB(10, 20, 30, 0.5)").unwrap(),
+            parse_fill_color_spec("RGB(10, 20, 30, 0.5)").expect("valid RGB() with float alpha"),
             RgbaColor {
                 red: 10,
                 green: 20,
@@ -192,7 +192,7 @@ mod tests {
             }
         );
         assert_eq!(
-            parse_fill_color_spec("rgb(10, 20, 30, 50%)").unwrap(),
+            parse_fill_color_spec("rgb(10, 20, 30, 50%)").expect("valid rgb() with percent alpha"),
             RgbaColor {
                 red: 10,
                 green: 20,
@@ -201,7 +201,7 @@ mod tests {
             }
         );
         assert_eq!(
-            parse_fill_color_spec("rgb(10, 20, 30, 128)").unwrap(),
+            parse_fill_color_spec("rgb(10, 20, 30, 128)").expect("valid rgb() with integer alpha"),
             RgbaColor {
                 red: 10,
                 green: 20,
@@ -214,11 +214,11 @@ mod tests {
     #[test]
     fn parse_fill_color_spec_accepts_hsv_function() {
         assert_eq!(
-            parse_fill_color_spec("hsv(0deg, 100%, 100%)").unwrap(),
+            parse_fill_color_spec("hsv(0deg, 100%, 100%)").expect("valid hsv() with deg suffix"),
             RgbaColor::opaque(255, 0, 0)
         );
         assert_eq!(
-            parse_fill_color_spec("HSV(240°, 100, 100)").unwrap(),
+            parse_fill_color_spec("HSV(240°, 100, 100)").expect("valid HSV() with degree symbol"),
             RgbaColor::opaque(0, 0, 255)
         );
     }
@@ -238,14 +238,14 @@ mod tests {
     #[test]
     fn parse_fill_color_spec_hsv_plain_hue_number() {
         // parse_hue_value: no deg/° suffix — plain f32
-        let result = parse_fill_color_spec("hsv(0, 100%, 100%)").unwrap();
+        let result = parse_fill_color_spec("hsv(0, 100%, 100%)").expect("valid hsv() with plain hue number");
         assert_eq!(result, RgbaColor::opaque(255, 0, 0));
     }
 
     #[test]
     fn parse_fill_color_spec_hsv_fractional_percentage() {
         // parse_percentage_value: value ≤ 1.0 — treated as a direct fraction
-        let result = parse_fill_color_spec("hsv(0, 1.0, 1.0)").unwrap();
+        let result = parse_fill_color_spec("hsv(0, 1.0, 1.0)").expect("valid hsv() with fractional percentage");
         assert_eq!(result, RgbaColor::opaque(255, 0, 0));
     }
 

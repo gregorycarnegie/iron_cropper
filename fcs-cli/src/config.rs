@@ -240,26 +240,26 @@ mod tests {
 
     #[test]
     fn load_settings_reads_explicit_config_path() {
-        let dir = tempdir().unwrap();
+        let dir = tempdir().expect("tempdir");
         let path = dir.path().join("settings.json");
         let mut expected = AppSettings::default();
         expected.crop.output_width = 777;
-        expected.save_to_path(&path).unwrap();
+        expected.save_to_path(&path).expect("save settings");
 
-        let loaded = load_settings(Some(&path)).unwrap();
+        let loaded = load_settings(Some(&path)).expect("load settings from explicit path");
         assert_eq!(loaded.crop.output_width, 777);
     }
 
     #[test]
     fn load_settings_returns_defaults_when_default_config_is_missing() {
-        let _lock = cwd_lock().lock().unwrap();
-        let original_dir = env::current_dir().unwrap();
-        let dir = tempdir().unwrap();
-        env::set_current_dir(dir.path()).unwrap();
+        let _lock = cwd_lock().lock().expect("cwd lock");
+        let original_dir = env::current_dir().expect("get current dir");
+        let dir = tempdir().expect("tempdir");
+        env::set_current_dir(dir.path()).expect("set current dir");
 
-        let loaded = load_settings(None).unwrap();
+        let loaded = load_settings(None).expect("load default settings");
 
-        env::set_current_dir(original_dir).unwrap();
+        env::set_current_dir(original_dir).expect("restore current dir");
         assert_eq!(
             loaded.crop.output_width,
             AppSettings::default().crop.output_width
@@ -268,35 +268,35 @@ mod tests {
 
     #[test]
     fn load_settings_reads_default_config_from_current_directory() {
-        let _lock = cwd_lock().lock().unwrap();
-        let original_dir = env::current_dir().unwrap();
-        let dir = tempdir().unwrap();
+        let _lock = cwd_lock().lock().expect("cwd lock");
+        let original_dir = env::current_dir().expect("get current dir");
+        let dir = tempdir().expect("tempdir");
         let default_path = dir.path().join("config").join("gui_settings.json");
-        fs::create_dir_all(default_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(default_path.parent().expect("parent dir")).expect("create config dir");
 
         let mut expected = AppSettings::default();
         expected.crop.output_height = 654;
-        expected.save_to_path(&default_path).unwrap();
+        expected.save_to_path(&default_path).expect("save settings");
 
-        env::set_current_dir(dir.path()).unwrap();
-        let loaded = load_settings(None).unwrap();
-        env::set_current_dir(original_dir).unwrap();
+        env::set_current_dir(dir.path()).expect("set current dir");
+        let loaded = load_settings(None).expect("load default settings from cwd");
+        env::set_current_dir(original_dir).expect("restore current dir");
 
         assert_eq!(loaded.crop.output_height, 654);
     }
 
     #[test]
     fn load_settings_surfaces_context_when_default_config_is_invalid() {
-        let _lock = cwd_lock().lock().unwrap();
-        let original_dir = env::current_dir().unwrap();
-        let dir = tempdir().unwrap();
+        let _lock = cwd_lock().lock().expect("cwd lock");
+        let original_dir = env::current_dir().expect("get current dir");
+        let dir = tempdir().expect("tempdir");
         let default_path = dir.path().join("config").join("gui_settings.json");
-        fs::create_dir_all(default_path.parent().unwrap()).unwrap();
-        fs::write(&default_path, "{not-json").unwrap();
+        fs::create_dir_all(default_path.parent().expect("parent dir")).expect("create config dir");
+        fs::write(&default_path, "{not-json").expect("write invalid config");
 
-        env::set_current_dir(dir.path()).unwrap();
+        env::set_current_dir(dir.path()).expect("set current dir");
         let err = load_settings(None).unwrap_err().to_string();
-        env::set_current_dir(original_dir).unwrap();
+        env::set_current_dir(original_dir).expect("restore current dir");
 
         assert!(err.contains("failed to load default settings"));
         assert!(err.contains("gui_settings.json"));

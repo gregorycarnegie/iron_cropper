@@ -109,7 +109,8 @@ fn reference_tensor(model_path: &Path, node: &str, input: &[f32]) -> (Vec<f32>, 
         .expect("optimize reference")
         .into_runnable()
         .expect("plan reference graph");
-    let arr = tract_ndarray::Array4::from_shape_vec((1, 3, 640, 640), input.to_vec()).unwrap();
+    let arr = tract_ndarray::Array4::from_shape_vec((1, 3, 640, 640), input.to_vec())
+        .expect("reference input tensor shape should be valid");
     let tensor = plan
         .run(tvec!(arr.into_tensor().into()))
         .expect("run reference graph")
@@ -295,7 +296,7 @@ fn run_stage0_block(
         SpatialDims::new(0, 0),
         Conv2dOptions::new(1, None),
     )
-    .unwrap();
+    .expect("stage0 pointwise conv config should be valid");
     let point = ops
         .conv2d_tensor(&relu0, &pw_weight, &pw_bias, &point_cfg)
         .expect("stage0 pw");
@@ -309,7 +310,7 @@ fn run_stage0_block(
         SpatialDims::new(1, 1),
         Conv2dOptions::new(16, Some(ActivationKind::Relu)),
     )
-    .unwrap();
+    .expect("stage0 depthwise conv config should be valid");
     ops.conv2d_tensor(&point, &dw_weight, &dw_bias, &depth_cfg)
 }
 
@@ -558,11 +559,15 @@ fn activation_matches_cpu() {
         return;
     };
     let tensor: Vec<f32> = (0..32).map(|i| i as f32 - 16.0).collect();
-    let relu_gpu = ops.activation(&tensor, ActivationKind::Relu).unwrap();
+    let relu_gpu = ops
+        .activation(&tensor, ActivationKind::Relu)
+        .expect("ReLU activation should run on GPU");
     let relu_cpu: Vec<f32> = tensor.iter().map(|v| v.max(0.0)).collect();
     assert_eq!(relu_gpu, relu_cpu);
 
-    let sigmoid_gpu = ops.activation(&tensor, ActivationKind::Sigmoid).unwrap();
+    let sigmoid_gpu = ops
+        .activation(&tensor, ActivationKind::Sigmoid)
+        .expect("sigmoid activation should run on GPU");
     let sigmoid_cpu: Vec<f32> = tensor.iter().map(|v| 1.0 / (1.0 + (-v).exp())).collect();
     assert!(
         sigmoid_gpu
@@ -579,7 +584,8 @@ fn batch_norm_matches_cpu() {
         eprintln!("Skipping batch-norm GPU test (no adapter)");
         return;
     };
-    let config = BatchNormConfig::new(4, 2, 3, 1e-5).unwrap();
+    let config =
+        BatchNormConfig::new(4, 2, 3, 1e-5).expect("batch norm test config should be valid");
     let tensor: Vec<f32> = (0..24).map(|i| (i % 7) as f32 * 0.25).collect();
     let gamma: Vec<f32> = vec![1.0, 0.75, 1.25];
     let beta: Vec<f32> = vec![0.0, 0.1, -0.1];
@@ -587,7 +593,7 @@ fn batch_norm_matches_cpu() {
     let variance: Vec<f32> = vec![0.2, 0.3, 0.1];
     let gpu = ops
         .batch_norm(&tensor, &gamma, &beta, &mean, &variance, &config)
-        .unwrap();
+        .expect("batch norm should run on GPU");
     let cpu = batch_norm_cpu(&tensor, &gamma, &beta, &mean, &variance, &config);
     assert!(
         gpu.iter()
@@ -612,7 +618,7 @@ fn conv2d_matches_cpu_groups() {
         SpatialDims::new(1, 1),
         Conv2dOptions::new(2, None),
     )
-    .unwrap();
+    .expect("grouped conv2d test config should be valid");
     let input: Vec<f32> = (0..64).map(|i| ((i * 13 % 17) as f32) * 0.1).collect();
     let weights_len = (config.output_channels as usize)
         * ((config.input_channels / config.groups) as usize)
@@ -624,7 +630,9 @@ fn conv2d_matches_cpu_groups() {
     let bias: Vec<f32> = (0..config.output_channels)
         .map(|i| i as f32 * 0.1 - 0.2)
         .collect();
-    let gpu = ops.conv2d(&input, &weights, &bias, &config).unwrap();
+    let gpu = ops
+        .conv2d(&input, &weights, &bias, &config)
+        .expect("grouped conv2d should run on GPU");
     let cpu = conv2d_cpu(&input, &weights, &bias, &config);
     assert!(
         gpu.iter()
@@ -729,7 +737,7 @@ fn gpu_tensor_chain_remains_on_device() {
         SpatialDims::new(1, 1),
         Conv2dOptions::new(2, None),
     )
-    .unwrap();
+    .expect("chained conv2d test config should be valid");
     let input: Vec<f32> = (0..(4 * 4 * 4))
         .map(|i| ((i * 17 % 23) as f32) * 0.05)
         .collect();
@@ -746,21 +754,23 @@ fn gpu_tensor_chain_remains_on_device() {
 
     let input_tensor = ops
         .upload_tensor(config.input_shape_dims(), &input, Some("chain_input"))
-        .unwrap();
+        .expect("chain input tensor should upload");
     let weight_tensor = ops
         .upload_tensor(config.weight_shape_dims(), &weights, Some("chain_weights"))
-        .unwrap();
+        .expect("chain weight tensor should upload");
     let bias_tensor = ops
         .upload_tensor(config.bias_shape_dims(), &bias, Some("chain_bias"))
-        .unwrap();
+        .expect("chain bias tensor should upload");
 
     let conv_gpu = ops
         .conv2d_tensor(&input_tensor, &weight_tensor, &bias_tensor, &config)
-        .unwrap();
+        .expect("chained conv2d should run on GPU");
     let relu_gpu = ops
         .activation_tensor(&conv_gpu, ActivationKind::Relu)
-        .unwrap();
-    let gpu_output = relu_gpu.to_vec().unwrap();
+        .expect("chained ReLU should run on GPU");
+    let gpu_output = relu_gpu
+        .to_vec()
+        .expect("chained GPU output should download");
 
     let cpu_conv = conv2d_cpu(&input, &weights, &bias, &config);
     let relu_cpu: Vec<f32> = cpu_conv.into_iter().map(|v| v.max(0.0)).collect();
@@ -1060,27 +1070,31 @@ fn conv2d_vec4_matches_standard() {
         SpatialDims::new(pad, pad),
         Conv2dOptions::new(1, Some(ActivationKind::Relu)),
     )
-    .unwrap();
+    .expect("vec4 comparison conv2d config should be valid");
 
     let input_gpu = ops
         .upload_tensor(config.input_shape_dims(), &input, Some("input"))
-        .unwrap();
+        .expect("vec4 comparison input tensor should upload");
     let weight_gpu = ops
         .upload_tensor(config.weight_shape_dims(), &weights, Some("weights"))
-        .unwrap();
+        .expect("vec4 comparison weight tensor should upload");
     let bias_gpu = ops
         .upload_tensor(config.bias_shape_dims(), &bias, Some("bias"))
-        .unwrap();
+        .expect("vec4 comparison bias tensor should upload");
 
     let standard_out = ops
         .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-        .unwrap();
+        .expect("standard conv2d should run on GPU");
     let vec4_out = ops
         .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-        .unwrap();
+        .expect("vec4 conv2d should run on GPU");
 
-    let standard_vec = standard_out.to_vec().unwrap();
-    let vec4_vec = vec4_out.to_vec().unwrap();
+    let standard_vec = standard_out
+        .to_vec()
+        .expect("standard conv2d output should download");
+    let vec4_vec = vec4_out
+        .to_vec()
+        .expect("vec4 conv2d output should download");
 
     assert_eq!(standard_vec.len(), vec4_vec.len(), "Output length mismatch");
 
@@ -1151,23 +1165,23 @@ fn benchmark_conv2d_performance() {
             SpatialDims::new(pad, pad),
             Conv2dOptions::new(groups, Some(ActivationKind::Relu)),
         )
-        .unwrap();
+        .expect("benchmark conv2d config should be valid");
 
         let input_gpu = ops
             .upload_tensor(config.input_shape_dims(), &input, None)
-            .unwrap();
+            .expect("benchmark input tensor should upload");
         let weight_gpu = ops
             .upload_tensor(config.weight_shape_dims(), &weights, None)
-            .unwrap();
+            .expect("benchmark weight tensor should upload");
         let bias_gpu = ops
             .upload_tensor(config.bias_shape_dims(), &bias, None)
-            .unwrap();
+            .expect("benchmark bias tensor should upload");
 
         // Warmup
         for _ in 0..5 {
             let _ = ops
                 .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-                .unwrap();
+                .expect("standard conv2d warmup should run on GPU");
         }
 
         // Benchmark standard
@@ -1176,8 +1190,10 @@ fn benchmark_conv2d_performance() {
         for _ in 0..iterations {
             let output = ops
                 .conv2d_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-                .unwrap();
-            let _ = output.to_vec().unwrap();
+                .expect("standard conv2d benchmark should run on GPU");
+            let _ = output
+                .to_vec()
+                .expect("standard conv2d benchmark output should download");
         }
         let standard_avg = start.elapsed().as_micros() as f64 / iterations as f64;
 
@@ -1185,7 +1201,7 @@ fn benchmark_conv2d_performance() {
         for _ in 0..5 {
             let _ = ops
                 .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-                .unwrap();
+                .expect("vec4 conv2d warmup should run on GPU");
         }
 
         // Benchmark vec4
@@ -1193,8 +1209,10 @@ fn benchmark_conv2d_performance() {
         for _ in 0..iterations {
             let output = ops
                 .conv2d_vec4_tensor(&input_gpu, &weight_gpu, &bias_gpu, &config)
-                .unwrap();
-            let _ = output.to_vec().unwrap();
+                .expect("vec4 conv2d benchmark should run on GPU");
+            let _ = output
+                .to_vec()
+                .expect("vec4 conv2d benchmark output should download");
         }
         let vec4_avg = start.elapsed().as_micros() as f64 / iterations as f64;
 

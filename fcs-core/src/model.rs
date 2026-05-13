@@ -1,4 +1,9 @@
-use crate::preprocess::InputSize;
+use crate::{
+    model_config::{
+        DETECTION_OUTPUT_COLS, DETECTION_SCORE_INDEX, OUTPUTS_PER_STRIDE, STRIDE_ALIGNMENT, STRIDES,
+    },
+    preprocess::InputSize,
+};
 
 use anyhow::{Context, Result};
 use log::{debug, warn};
@@ -8,10 +13,6 @@ use tract_onnx::prelude::{
 };
 
 type RunnableModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
-
-const STRIDES: [usize; 3] = [8, 16, 32];
-const OUTPUTS_PER_STRIDE: usize = 4; // cls, obj, bbox, kps
-const OUTPUT_COLS: usize = 15; // bbox (4) + landmarks (10) + score (1)
 
 #[derive(Clone, Copy)]
 struct StrideMeta {
@@ -185,20 +186,20 @@ pub(crate) fn decode_yunet_outputs(outputs: &[Tensor], input_size: InputSize) ->
     let mut fused = vec![0f32; layout.total_capacity];
 
     for meta in layout.metas.iter() {
-        let dst = &mut fused[meta.offset..meta.offset + meta.cell_count * OUTPUT_COLS];
+        let dst = &mut fused[meta.offset..meta.offset + meta.cell_count * DETECTION_OUTPUT_COLS];
         decode_stride_outputs(outputs, meta, dst)?;
     }
 
-    let rows = fused.len() / OUTPUT_COLS;
-    Tensor::from_shape(&[rows, OUTPUT_COLS], &fused)
+    let rows = fused.len() / DETECTION_OUTPUT_COLS;
+    Tensor::from_shape(&[rows, DETECTION_OUTPUT_COLS], &fused)
         .map_err(|e| anyhow::anyhow!("failed to build fused YuNet tensor: {e}"))
 }
 
 fn build_stride_layout(input_size: InputSize) -> Result<StrideLayout> {
     let input_w = input_size.width as usize;
     let input_h = input_size.height as usize;
-    let pad_w = align_to(input_w, 32);
-    let pad_h = align_to(input_h, 32);
+    let pad_w = align_to(input_w, STRIDE_ALIGNMENT);
+    let pad_h = align_to(input_h, STRIDE_ALIGNMENT);
 
     let mut metas = Vec::with_capacity(STRIDES.len());
     let mut total_cells = 0usize;
@@ -223,7 +224,7 @@ fn build_stride_layout(input_size: InputSize) -> Result<StrideLayout> {
         let cols = pad_w / stride;
         let rows = pad_h / stride;
         let cell_count = rows * cols;
-        let len = cell_count * OUTPUT_COLS;
+        let len = cell_count * DETECTION_OUTPUT_COLS;
         metas.push(StrideMeta {
             stride_index,
             stride,
@@ -236,7 +237,7 @@ fn build_stride_layout(input_size: InputSize) -> Result<StrideLayout> {
         offset += len;
     }
 
-    let total_capacity = total_cells * OUTPUT_COLS;
+    let total_capacity = total_cells * DETECTION_OUTPUT_COLS;
     debug_assert_eq!(offset, total_capacity);
 
     Ok(StrideLayout {
@@ -295,7 +296,7 @@ fn validate_stride_outputs<'a>(
     })
 }
 
-fn decode_stride_cell(input: CellDecodeInput) -> [f32; OUTPUT_COLS] {
+fn decode_stride_cell(input: CellDecodeInput) -> [f32; DETECTION_OUTPUT_COLS] {
     let CellDecodeInput {
         row,
         col,
@@ -320,7 +321,7 @@ fn decode_stride_cell(input: CellDecodeInput) -> [f32; OUTPUT_COLS] {
     let x = (-0.5f32).mul_add(w, cx);
     let y = (-0.5f32).mul_add(h, cy);
 
-    let mut row_out = [0.0f32; OUTPUT_COLS];
+    let mut row_out = [0.0f32; DETECTION_OUTPUT_COLS];
     row_out[0] = x;
     row_out[1] = y;
     row_out[2] = w;
@@ -333,7 +334,7 @@ fn decode_stride_cell(input: CellDecodeInput) -> [f32; OUTPUT_COLS] {
         write_kps += 2;
     }
 
-    row_out[14] = score;
+    row_out[DETECTION_SCORE_INDEX] = score;
     row_out
 }
 
@@ -372,8 +373,8 @@ fn decode_stride_outputs(outputs: &[Tensor], meta: &StrideMeta, dst: &mut [f32])
                     stride_outputs.kps[kps_offset + 9],
                 ],
             });
-            dst[write..write + OUTPUT_COLS].copy_from_slice(&decoded);
-            write += OUTPUT_COLS;
+            dst[write..write + DETECTION_OUTPUT_COLS].copy_from_slice(&decoded);
+            write += DETECTION_OUTPUT_COLS;
         }
     }
 
@@ -437,7 +438,7 @@ mod tests {
         .expect("layout should be valid");
 
         assert_eq!(layout.metas.len(), STRIDES.len());
-        assert_eq!(layout.total_capacity, 84 * OUTPUT_COLS);
+        assert_eq!(layout.total_capacity, 84 * DETECTION_OUTPUT_COLS);
 
         assert_eq!(layout.metas[0].stride, 8);
         assert_eq!(layout.metas[0].cell_count, 64);
@@ -459,10 +460,10 @@ mod tests {
             let cols = input_w / stride;
             let rows = input_h / stride;
             let n = rows * cols;
-            cls_t.push(Tensor::from_shape(&[n], &vec![0.9f32; n]).unwrap());
-            obj_t.push(Tensor::from_shape(&[n], &vec![0.8f32; n]).unwrap());
-            bbox_t.push(Tensor::from_shape(&[n, 4], &vec![0.0f32; n * 4]).unwrap());
-            kps_t.push(Tensor::from_shape(&[n, 10], &vec![0.0f32; n * 10]).unwrap());
+            cls_t.push(Tensor::from_shape(&[n], &vec![0.9f32; n]).expect("cls tensor"));
+            obj_t.push(Tensor::from_shape(&[n], &vec![0.8f32; n]).expect("obj tensor"));
+            bbox_t.push(Tensor::from_shape(&[n, 4], &vec![0.0f32; n * 4]).expect("bbox tensor"));
+            kps_t.push(Tensor::from_shape(&[n, 10], &vec![0.0f32; n * 10]).expect("kps tensor"));
         }
 
         cls_t
@@ -482,10 +483,14 @@ mod tests {
         let outputs = mock_outputs(size);
         let result = decode_yunet_outputs(&outputs, size).expect("decode should succeed");
         assert_eq!(result.shape().len(), 2);
-        assert_eq!(result.shape()[1], OUTPUT_COLS);
+        assert_eq!(result.shape()[1], DETECTION_OUTPUT_COLS);
         // Verify scores are in [0, 1]
-        let data = result.as_slice::<f32>().unwrap();
-        for score in data.iter().skip(14).step_by(OUTPUT_COLS) {
+        let data = result.as_slice::<f32>().expect("output tensor is f32");
+        for score in data
+            .iter()
+            .skip(DETECTION_SCORE_INDEX)
+            .step_by(DETECTION_OUTPUT_COLS)
+        {
             assert!(
                 *score >= 0.0 && *score <= 1.0,
                 "score out of range: {score}"
@@ -512,7 +517,7 @@ mod tests {
             height: 64,
         };
         let outputs = mock_outputs(size);
-        let result = decode_yunet_outputs(&outputs, size).unwrap();
+        let result = decode_yunet_outputs(&outputs, size).expect("decode should succeed");
         // stride 8 → 8×8=64 cells, stride 16 → 4×4=16, stride 32 → 2×2=4 → total 84 rows
         assert_eq!(result.shape()[0], 84);
     }
@@ -523,10 +528,11 @@ mod tests {
             width: 64,
             height: 64,
         };
-        let layout = build_stride_layout(size).unwrap();
+        let layout = build_stride_layout(size).expect("build stride layout");
         let mut outputs = mock_outputs(size);
         outputs[0] =
-            Tensor::from_shape(&[layout.metas[0].cell_count - 1], &vec![0.0f32; 63]).unwrap();
+            Tensor::from_shape(&[layout.metas[0].cell_count - 1], &vec![0.0f32; 63])
+                .expect("build malformed cls tensor");
 
         let err = validate_stride_outputs(&outputs, &layout.metas[0])
             .unwrap_err()
@@ -552,7 +558,7 @@ mod tests {
         assert!((decoded[3] - 8.0).abs() < f32::EPSILON);
         assert!((decoded[4] - 16.0).abs() < f32::EPSILON);
         assert!((decoded[5] - 8.0).abs() < f32::EPSILON);
-        assert!((decoded[14] - 0.8).abs() < f32::EPSILON);
+        assert!((decoded[DETECTION_SCORE_INDEX] - 0.8).abs() < f32::EPSILON);
     }
 }
 
@@ -566,8 +572,8 @@ mod benches {
     fn decode_yunet_outputs_baseline(outputs: &[Tensor], input_size: InputSize) -> Result<Tensor> {
         let input_w = input_size.width as usize;
         let input_h = input_size.height as usize;
-        let pad_w = align_to(input_w, 32);
-        let pad_h = align_to(input_h, 32);
+        let pad_w = align_to(input_w, STRIDE_ALIGNMENT);
+        let pad_h = align_to(input_h, STRIDE_ALIGNMENT);
 
         let mut total_cells = 0;
         for &stride in STRIDES.iter() {
@@ -587,7 +593,7 @@ mod benches {
             );
             total_cells += (pad_w / stride) * (pad_h / stride);
         }
-        let total_capacity = total_cells * OUTPUT_COLS;
+        let total_capacity = total_cells * DETECTION_OUTPUT_COLS;
 
         let stride_results: Result<Vec<Vec<f32>>> = STRIDES
             .par_iter()
@@ -636,7 +642,7 @@ mod benches {
                     kps_slice.len()
                 );
 
-                let mut stride_data = Vec::with_capacity(cell_count * OUTPUT_COLS);
+                let mut stride_data = Vec::with_capacity(cell_count * DETECTION_OUTPUT_COLS);
 
                 for row in 0..rows {
                     for col in 0..cols {
@@ -688,8 +694,8 @@ mod benches {
             fused.extend_from_slice(&vec);
         }
 
-        let rows = fused.len() / OUTPUT_COLS;
-        Tensor::from_shape(&[rows, OUTPUT_COLS], &fused)
+        let rows = fused.len() / DETECTION_OUTPUT_COLS;
+        Tensor::from_shape(&[rows, DETECTION_OUTPUT_COLS], &fused)
             .map_err(|e| anyhow::anyhow!("failed to build fused YuNet tensor: {e}"))
     }
 
@@ -715,10 +721,10 @@ mod benches {
                 .map(|idx| ((idx % 7) as f32 * 0.015) - 0.05)
                 .collect();
 
-            cls_tensors.push(Tensor::from_shape(&[cell_count], &cls).unwrap());
-            obj_tensors.push(Tensor::from_shape(&[cell_count], &obj).unwrap());
-            bbox_tensors.push(Tensor::from_shape(&[cell_count, 4], &bbox).unwrap());
-            kps_tensors.push(Tensor::from_shape(&[cell_count, 10], &kps).unwrap());
+            cls_tensors.push(Tensor::from_shape(&[cell_count], &cls).expect("cls tensor"));
+            obj_tensors.push(Tensor::from_shape(&[cell_count], &obj).expect("obj tensor"));
+            bbox_tensors.push(Tensor::from_shape(&[cell_count, 4], &bbox).expect("bbox tensor"));
+            kps_tensors.push(Tensor::from_shape(&[cell_count, 10], &kps).expect("kps tensor"));
         }
 
         cls_tensors
@@ -739,20 +745,20 @@ mod benches {
         let tensors = mock_outputs(input_size);
 
         for _ in 0..3 {
-            let _ = decode_yunet_outputs(&tensors, input_size).unwrap();
-            let _ = decode_yunet_outputs_baseline(&tensors, input_size).unwrap();
+            let _ = decode_yunet_outputs(&tensors, input_size).expect("warmup decode");
+            let _ = decode_yunet_outputs_baseline(&tensors, input_size).expect("warmup baseline");
         }
 
         let iterations = 20;
         let start_new = Instant::now();
         for _ in 0..iterations {
-            let _ = decode_yunet_outputs(&tensors, input_size).unwrap();
+            let _ = decode_yunet_outputs(&tensors, input_size).expect("bench decode");
         }
         let new_time = start_new.elapsed();
 
         let start_old = Instant::now();
         for _ in 0..iterations {
-            let _ = decode_yunet_outputs_baseline(&tensors, input_size).unwrap();
+            let _ = decode_yunet_outputs_baseline(&tensors, input_size).expect("bench baseline");
         }
         let old_time = start_old.elapsed();
 

@@ -24,6 +24,7 @@ wgpu.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+proptest = "1.11.0"
 tempfile.workspace = true
 
 [[bench]]

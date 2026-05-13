@@ -34,8 +34,10 @@ pub struct GpuHistogramEqualizer {
 impl GpuHistogramEqualizer {
     pub fn new(context: Arc<GpuContext>) -> Result<Self> {
         let device = context.device();
+        // Panics if WGSL compilation fails; the label appears in the panic message.
+        // If this panics, inspect hist_equalize.wgsl and verify wgpu feature support.
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("yunet_hist_equalize_shader"),
+            label: Some("hist_equalize.wgsl shader"),
             source: wgpu::ShaderSource::Wgsl(HIST_EQUALIZE_WGSL.into()),
         });
 
@@ -81,7 +83,7 @@ impl GpuHistogramEqualizer {
         });
 
         let histogram_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_histogram_pipeline"),
+            label: Some("hist_equalize.wgsl build_histogram pipeline — check wgpu feature support if this panics"),
             layout: Some(&histogram_layout),
             module: &module,
             entry_point: Some("build_histogram"),
@@ -89,7 +91,7 @@ impl GpuHistogramEqualizer {
             cache: None,
         });
         let cdf_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_hist_cdf_pipeline"),
+            label: Some("hist_equalize.wgsl compute_lut pipeline — check wgpu feature support if this panics"),
             layout: Some(&cdf_layout),
             module: &module,
             entry_point: Some("compute_lut"),
@@ -97,7 +99,7 @@ impl GpuHistogramEqualizer {
             cache: None,
         });
         let apply_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("yunet_hist_apply_pipeline"),
+            label: Some("hist_equalize.wgsl apply_equalization pipeline — check wgpu feature support if this panics"),
             layout: Some(&apply_layout),
             module: &module,
             entry_point: Some("apply_equalization"),
