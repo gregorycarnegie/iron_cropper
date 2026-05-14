@@ -1,6 +1,11 @@
 # ONNX Runtime Options
 
-Phase 12 calls for exploring accelerators beyond the current `tract-onnx` CPU backend. This note captures the practical options we can integrate from Rust today, their maturity, and what it would take to adopt them inside Iron Cropper.
+> **Phase 12 outcome:** We shipped Phase 12 Option C — a custom WGPU/WGSL YuNet inference graph
+> that keeps tensors resident on GPU without an external runtime dependency. The `ort` path below
+> remains the best route to DirectML/CoreML acceleration if we ever want full ONNX op coverage or
+> hardware-vendor-optimised kernels without maintaining our own shaders.
+
+Phase 12 explored accelerators beyond the current `tract-onnx` CPU backend. This note captures the practical options we can integrate from Rust today, their maturity, and what it would take to adopt them inside Iron Cropper.
 
 ## Comparison Summary
 

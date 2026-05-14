@@ -1,4 +1,6 @@
-# WebGPU ONNX Inference — Research & Implementation Notes (Batteries‑Included)
+# WebGPU ONNX Inference — Research & Implementation Notes
+
+> **Status: Implemented (Phase 12 complete).** The custom WGPU YuNet inference graph is shipped. Conv2D, BatchNorm, and Activation layers run as WGSL compute shaders in `fcs-core/src/gpu/`. GPU/CPU parity is validated in `fcs-core/tests/gpu_cpu_parity.rs`. This document is retained as a design reference; the "Next Actions" below are all complete.
 
 > Goal: run the **entire** ONNX graph on the GPU in **pure Rust** using **wgpu + WGSL**, keeping tensors resident on device (no host round‑trips between layers). Target model available: `face_detection_yunet_2023mar_640.onnx`.
 
