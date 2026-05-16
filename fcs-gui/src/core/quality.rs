@@ -3,7 +3,7 @@
 use crate::app::build_crop_settings_from_app_settings;
 use crate::types::DetectionWithQuality;
 use fcs_core::{Detection, crop_face_from_image};
-use fcs_utils::{apply_enhancements, config::AppSettings, quality::Quality};
+use fcs_utils::{config::AppSettings, quality::Quality};
 use image::DynamicImage;
 use std::collections::HashSet;
 
@@ -53,9 +53,9 @@ pub fn refresh_thumbnail(
         score: det.detection.score,
     };
     let raw = crop_face_from_image(source, &detection, &crop_settings);
-    let enhanced = apply_enhancements(&raw, &settings.enhance.to_enhancement_settings(), None);
-
-    let thumb = enhanced.resize(96, 96, image::imageops::FilterType::Triangle);
+    // 96×96 thumbnails skip enhancement (bilateral filter / red-eye / sharpening) —
+    // the effects are imperceptible at this size and dominate the per-detection cost.
+    let thumb = raw.resize(96, 96, image::imageops::FilterType::Triangle);
     let rgba = thumb.to_rgba8();
     let size = [rgba.width() as usize, rgba.height() as usize];
     let img = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());

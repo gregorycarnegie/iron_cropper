@@ -10,7 +10,10 @@ pub fn make_detection_cache() -> LruCache<CacheKey, DetectionCacheEntry> {
 }
 
 pub fn make_preview_cache() -> LruCache<CropPreviewKey, CropPreviewCacheEntry> {
-    LruCache::new(NonZeroUsize::new(500).unwrap())
+    // Each entry holds a full-resolution DynamicImage plus a texture handle; 500 entries
+    // can hit several GB with a few large source images. Key includes float-bit offsets
+    // so slider drags thrash the cache anyway — a small ceiling is enough.
+    LruCache::new(NonZeroUsize::new(64).unwrap())
 }
 
 pub fn make_image_cache() -> LruCache<PathBuf, Arc<DynamicImage>> {

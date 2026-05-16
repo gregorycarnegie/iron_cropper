@@ -12,7 +12,6 @@ use fcs_utils::{
     config::default_settings_path,
     configure_telemetry,
     gpu::{GpuBatchCropper, GpuContext},
-    quality::Quality,
 };
 use image::DynamicImage;
 use log::info;
@@ -318,10 +317,9 @@ impl App2 {
         let shared = self.gpu_context.clone();
         let (status, new_gpu_ctx, result) = build_detector(&self.settings, shared);
         self.gpu_status = status;
-        if let Some(ctx) = new_gpu_ctx {
-            let enhancer = WgpuEnhancer::new(ctx.clone()).ok().map(Arc::new);
-            let cropper = GpuBatchCropper::new(ctx.clone()).ok().map(Arc::new);
-            self.gpu_context = Some(ctx);
+        if new_gpu_ctx.is_some() {
+            let (ctx, enhancer, cropper) = init_gpu_pipelines(new_gpu_ctx);
+            self.gpu_context = ctx;
             self.gpu_enhancer = enhancer;
             self.gpu_batch_cropper = cropper;
         } else if !self.settings.gpu.enabled {
@@ -721,16 +719,6 @@ impl App2 {
         self.crop_preview_cache.clear();
     }
 
-    pub fn quality_suffix(&self, quality: Quality) -> Option<&'static str> {
-        if !self.settings.crop.quality_rules.quality_suffix {
-            return None;
-        }
-        match quality {
-            Quality::High => Some("_highq"),
-            Quality::Medium => Some("_medq"),
-            Quality::Low => Some("_lowq"),
-        }
-    }
 }
 
 pub(crate) fn build_crop_settings_from_app_settings(
