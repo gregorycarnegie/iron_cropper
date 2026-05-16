@@ -57,7 +57,7 @@ log = "0.4.29"
 lru = "0.18.0"
 metal = "0.33.0"
 ndarray = { version = "0.17.2", features = ["rayon"] }
-nokhwa = { version = "0.10.10", features = ["input-native"] }
+nokhwa = { version = "=0.10.10", features = ["input-native"] } # keep at 0.10.10 for now
 parquet = { version = "58.3.0", default-features = false, features = [
     "arrow",
     "flate2",

@@ -206,6 +206,85 @@ fn log_gpu_status(status: &GpuStatusIndicator, pool: Option<&GpuContextPool>) {
     status.emit_telemetry(pool_capacity, pool_available);
 }
 
+pub fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
+    let options: GpuContextOptions = (&settings.gpu).into();
+    let availability = GpuContext::init_with_fallback(&options);
+
+    let (context, pool, status) = match &availability {
+        GpuAvailability::Available(context) => {
+            let pool_size = NonZeroUsize::new(rayon::current_num_threads())
+                .unwrap_or_else(|| NonZeroUsize::new(1).expect("non-zero pool size fallback"));
+            let pool =
+                GpuContextPool::new(context.clone(), pool_size).map_err(|err| match err {
+                    GpuPoolError::Closed => anyhow!("failed to initialize GPU pool: {err}"),
+                })?;
+
+            let info = context.adapter_info();
+            let status = GpuStatusIndicator::available(
+                info.name.clone(),
+                format!("{:?}", info.backend),
+                Some(info.driver.clone()),
+                Some(info.vendor),
+                Some(info.device),
+            );
+            (Some(context.clone()), Some(pool), status)
+        }
+        GpuAvailability::Disabled { reason } => {
+            (None, None, GpuStatusIndicator::disabled(reason.clone()))
+        }
+        GpuAvailability::Unavailable { error } => {
+            (None, None, GpuStatusIndicator::error(error.to_string()))
+        }
+    };
+
+    let enhancer = match &context {
+        Some(ctx) => match WgpuEnhancer::new(ctx.clone()) {
+            Ok(enhancer) => {
+                info!(
+                    "GPU enhancement pipeline ready on '{}' ({:?})",
+                    ctx.adapter_info().name,
+                    ctx.adapter_info().backend
+                );
+                Some(Arc::new(enhancer))
+            }
+            Err(err) => {
+                warn!("GPU enhancer initialization failed: {err}");
+                None
+            }
+        },
+        None => None,
+    };
+
+    let cropper = match &context {
+        Some(ctx) => match GpuBatchCropper::new(ctx.clone()) {
+            Ok(cropper) => {
+                info!(
+                    "GPU batch cropper ready on '{}' ({:?})",
+                    ctx.adapter_info().name,
+                    ctx.adapter_info().backend
+                );
+                Some(Arc::new(cropper))
+            }
+            Err(err) => {
+                warn!("GPU batch cropper initialization failed: {err}");
+                None
+            }
+        },
+        None => None,
+    };
+
+    let runtime = CliGpuRuntime {
+        context,
+        pool,
+        status,
+        enhancer,
+        cropper,
+    };
+    runtime.log_status();
+    runtime.log_pool_state();
+    Ok(runtime)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,83 +442,4 @@ mod tests {
         assert_eq!(result.width(), 30);
         assert_eq!(result.height(), 30);
     }
-}
-
-pub fn init_cli_gpu_runtime(settings: &AppSettings) -> Result<CliGpuRuntime> {
-    let options: GpuContextOptions = (&settings.gpu).into();
-    let availability = GpuContext::init_with_fallback(&options);
-
-    let (context, pool, status) = match &availability {
-        GpuAvailability::Available(context) => {
-            let pool_size = NonZeroUsize::new(rayon::current_num_threads())
-                .unwrap_or_else(|| NonZeroUsize::new(1).expect("non-zero pool size fallback"));
-            let pool =
-                GpuContextPool::new(context.clone(), pool_size).map_err(|err| match err {
-                    GpuPoolError::Closed => anyhow!("failed to initialize GPU pool: {err}"),
-                })?;
-
-            let info = context.adapter_info();
-            let status = GpuStatusIndicator::available(
-                info.name.clone(),
-                format!("{:?}", info.backend),
-                Some(info.driver.clone()),
-                Some(info.vendor),
-                Some(info.device),
-            );
-            (Some(context.clone()), Some(pool), status)
-        }
-        GpuAvailability::Disabled { reason } => {
-            (None, None, GpuStatusIndicator::disabled(reason.clone()))
-        }
-        GpuAvailability::Unavailable { error } => {
-            (None, None, GpuStatusIndicator::error(error.to_string()))
-        }
-    };
-
-    let enhancer = match &context {
-        Some(ctx) => match WgpuEnhancer::new(ctx.clone()) {
-            Ok(enhancer) => {
-                info!(
-                    "GPU enhancement pipeline ready on '{}' ({:?})",
-                    ctx.adapter_info().name,
-                    ctx.adapter_info().backend
-                );
-                Some(Arc::new(enhancer))
-            }
-            Err(err) => {
-                warn!("GPU enhancer initialization failed: {err}");
-                None
-            }
-        },
-        None => None,
-    };
-
-    let cropper = match &context {
-        Some(ctx) => match GpuBatchCropper::new(ctx.clone()) {
-            Ok(cropper) => {
-                info!(
-                    "GPU batch cropper ready on '{}' ({:?})",
-                    ctx.adapter_info().name,
-                    ctx.adapter_info().backend
-                );
-                Some(Arc::new(cropper))
-            }
-            Err(err) => {
-                warn!("GPU batch cropper initialization failed: {err}");
-                None
-            }
-        },
-        None => None,
-    };
-
-    let runtime = CliGpuRuntime {
-        context,
-        pool,
-        status,
-        enhancer,
-        cropper,
-    };
-    runtime.log_status();
-    runtime.log_pool_state();
-    Ok(runtime)
 }

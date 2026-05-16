@@ -136,11 +136,11 @@ impl App2 {
             sidebar_tab: SidebarTab::Queue,
             inspector_tab: InspectorTab::Crop,
             panel_state: PanelState::default(),
-            log_lines: vec![LogLine {
+            log_lines: VecDeque::from([LogLine {
                 timestamp: "—".into(),
                 message: "Waiting for image…".into(),
                 kind: LogKind::Info,
-            }],
+            }]),
             status_line,
             last_error: None,
             is_busy: false,
@@ -533,13 +533,13 @@ impl App2 {
         let h = (secs / 3600) % 24;
         let m = (secs / 60) % 60;
         let s = secs % 60;
-        self.log_lines.push(LogLine {
+        self.log_lines.push_back(LogLine {
             timestamp: format!("{h:02}:{m:02}:{s:02}"),
             message,
             kind,
         });
         if self.log_lines.len() > 100 {
-            self.log_lines.remove(0);
+            self.log_lines.pop_front();
         }
     }
 

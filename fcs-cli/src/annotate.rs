@@ -4,21 +4,21 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 use fcs_core::{BoundingBox, Detection};
-use image::Rgba;
+use image::{DynamicImage, Rgba};
 use imageproc::{
     drawing::{draw_filled_circle_mut, draw_hollow_rect_mut},
     rect::Rect,
 };
 
-/// Draw detections on an image and save it to a directory.
+/// Draw detections on an already-decoded image and save it to a directory.
+/// `image_path` is used only to derive the output filename and for error messages.
 pub fn annotate_image(
+    image: &DynamicImage,
     image_path: &Path,
     detections: &[Detection],
     output_dir: &Path,
 ) -> Result<std::path::PathBuf> {
-    let mut image = image::open(image_path)
-        .with_context(|| format!("failed to open image {}", image_path.display()))?
-        .to_rgba8();
+    let mut image = image.to_rgba8();
     let (img_w, img_h) = image.dimensions();
 
     if img_w == 0 || img_h == 0 {
@@ -207,14 +207,14 @@ mod tests {
         let out_dir = dir.path().join("annotated");
         std::fs::create_dir_all(&out_dir).expect("create output dir");
 
-        // Save a small RGBA image
-        let img = RgbaImage::from_pixel(100, 100, image::Rgba([128, 128, 128, 255]));
-        DynamicImage::ImageRgba8(img)
-            .save(&img_path)
-            .expect("save test image");
+        let img = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            100,
+            100,
+            image::Rgba([128, 128, 128, 255]),
+        ));
 
         let det = make_detection(20.0, 20.0, 40.0, 40.0);
-        let result = annotate_image(&img_path, &[det], &out_dir);
+        let result = annotate_image(&img, &img_path, &[det], &out_dir);
         assert!(result.is_ok(), "annotate_image failed: {:?}", result.err());
         assert!(out_dir.join("input.png").exists());
     }
@@ -226,24 +226,11 @@ mod tests {
         let out_dir = dir.path().join("out");
         std::fs::create_dir_all(&out_dir).expect("create output dir");
 
-        let img = RgbaImage::from_pixel(50, 50, image::Rgba([255, 0, 0, 255]));
-        DynamicImage::ImageRgba8(img)
-            .save(&img_path)
-            .expect("save test image");
+        let img =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(50, 50, image::Rgba([255, 0, 0, 255])));
 
-        let result = annotate_image(&img_path, &[], &out_dir);
+        let result = annotate_image(&img, &img_path, &[], &out_dir);
         assert!(result.is_ok());
         assert!(out_dir.join("empty.png").exists());
-    }
-
-    #[test]
-    fn annotate_image_returns_err_for_missing_file() {
-        let dir = tempdir().expect("tempdir");
-        let missing = dir.path().join("does_not_exist.png");
-        let out_dir = dir.path().join("out");
-        std::fs::create_dir_all(&out_dir).expect("create output dir");
-
-        let result = annotate_image(&missing, &[], &out_dir);
-        assert!(result.is_err());
     }
 }

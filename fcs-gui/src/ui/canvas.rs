@@ -837,7 +837,7 @@ fn mini_log_overlay(ui: &mut Ui, app: &App2, image_rect: egui::Rect) {
     let msg_painter = painter.with_clip_rect(msg_clip);
 
     let start = app.log_lines.len().saturating_sub(log_max_lines);
-    for (i, line) in app.log_lines[start..].iter().enumerate() {
+    for (i, line) in app.log_lines.iter().skip(start).enumerate() {
         let y = log_rect.min.y + header_h + i as f32 * line_h;
         let msg_color = match line.kind {
             LogKind::Ok => P::LIME,

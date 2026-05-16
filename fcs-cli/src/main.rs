@@ -299,7 +299,12 @@ fn process_single_image(
     );
 
     let img_opt = load_source_image(image_path);
-    let annotated_path = annotate_image_if_requested(image_path, &output.detections, annotate_dir);
+    let annotated_path = annotate_image_if_requested(
+        img_opt.as_ref(),
+        image_path,
+        &output.detections,
+        annotate_dir,
+    );
 
     match (crop_enabled, crop_output_dir.as_ref(), img_opt.as_ref()) {
         (true, Some(out_dir), Some(img)) => {
@@ -499,15 +504,15 @@ fn load_source_image(image_path: &Path) -> Option<DynamicImage> {
 }
 
 fn annotate_image_if_requested(
+    image: Option<&DynamicImage>,
     image_path: &Path,
     detections: &[Detection],
     annotate_dir: &Arc<Option<PathBuf>>,
 ) -> Option<String> {
-    let Some(dir) = annotate_dir.as_ref() else {
-        return None;
-    };
+    let dir = annotate_dir.as_ref().as_ref()?;
+    let image = image?;
 
-    match annotate::annotate_image(image_path, detections, dir) {
+    match annotate::annotate_image(image, image_path, detections, dir) {
         Ok(path) => {
             info!("Annotated image saved to {}", path.display());
             Some(path.display().to_string())
@@ -887,14 +892,17 @@ mod tests {
         write_sample_png(&image_path);
         let detections = vec![sample_detection(4.0, 4.0, 12.0, 12.0, 0.9)];
 
+        let image = sample_image(32, 32);
+
         let none_dir = Arc::new(None);
         assert_eq!(
-            annotate_image_if_requested(&image_path, &detections, &none_dir),
+            annotate_image_if_requested(None, &image_path, &detections, &none_dir),
             None
         );
 
         let annotate_dir = Arc::new(Some(dir.path().join("annotated")));
-        let success = annotate_image_if_requested(&image_path, &detections, &annotate_dir);
+        let success =
+            annotate_image_if_requested(Some(&image), &image_path, &detections, &annotate_dir);
         assert!(
             success
                 .as_ref()
@@ -905,7 +913,7 @@ mod tests {
         fs::write(&blocked_file, b"not a dir").expect("blocked path file should be written");
         let blocked_dir = Arc::new(Some(blocked_file));
         assert_eq!(
-            annotate_image_if_requested(&image_path, &detections, &blocked_dir),
+            annotate_image_if_requested(Some(&image), &image_path, &detections, &blocked_dir),
             None
         );
     }

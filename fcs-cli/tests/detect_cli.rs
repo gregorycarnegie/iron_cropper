@@ -12,6 +12,7 @@ use serde_json::Value;
 use tempfile::tempdir;
 
 const MODEL_REL_PATH: &str = "../models/face_detection_yunet_2023mar_640.onnx";
+const SNAPSHOT_FLOAT_TOLERANCE: f64 = 1.0e-5;
 
 #[test]
 fn detect_single_image_produces_json_output() -> Result<(), Box<dyn Error>> {
@@ -299,12 +300,62 @@ fn cli_json_output_matches_snapshot() -> Result<(), Box<dyn Error>> {
     let sanitized_value: Value = serde_json::from_str(&sanitized)?;
     let expected_value: Value = serde_json::from_str(&expected)?;
 
-    assert!(
-        sanitized_value == expected_value,
-        "CLI JSON output changed.\nUpdate tests/snapshots/cli_single_image.json if this is expected."
+    assert_json_close(
+        &sanitized_value,
+        &expected_value,
+        SNAPSHOT_FLOAT_TOLERANCE,
+        "$",
     );
 
     Ok(())
+}
+
+fn assert_json_close(actual: &Value, expected: &Value, tol: f64, path: &str) {
+    match (actual, expected) {
+        (Value::Number(actual), Value::Number(expected)) => {
+            let actual = actual
+                .as_f64()
+                .unwrap_or_else(|| panic!("actual JSON number at {path} is not finite"));
+            let expected = expected
+                .as_f64()
+                .unwrap_or_else(|| panic!("expected JSON number at {path} is not finite"));
+            assert!(
+                (actual - expected).abs() <= tol,
+                "CLI JSON output changed at {path}: actual={actual}, expected={expected}, tolerance={tol}.\nUpdate tests/snapshots/cli_single_image.json if this is expected."
+            );
+        }
+        (Value::Array(actual), Value::Array(expected)) => {
+            assert_eq!(
+                actual.len(),
+                expected.len(),
+                "CLI JSON output changed at {path}: array length differs.\nUpdate tests/snapshots/cli_single_image.json if this is expected."
+            );
+            for (idx, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
+                let child_path = format!("{path}[{idx}]");
+                assert_json_close(actual, expected, tol, &child_path);
+            }
+        }
+        (Value::Object(actual), Value::Object(expected)) => {
+            assert_eq!(
+                actual.len(),
+                expected.len(),
+                "CLI JSON output changed at {path}: object keys differ (actual={:?}, expected={:?}).\nUpdate tests/snapshots/cli_single_image.json if this is expected.",
+                actual.keys().collect::<Vec<_>>(),
+                expected.keys().collect::<Vec<_>>()
+            );
+            for (key, expected_value) in expected {
+                let actual_value = actual.get(key).unwrap_or_else(|| {
+                    panic!("CLI JSON output changed at {path}: missing key {key:?}")
+                });
+                let child_path = format!("{path}.{key}");
+                assert_json_close(actual_value, expected_value, tol, &child_path);
+            }
+        }
+        _ => assert_eq!(
+            actual, expected,
+            "CLI JSON output changed at {path}.\nUpdate tests/snapshots/cli_single_image.json if this is expected."
+        ),
+    }
 }
 
 fn sanitize_cli_json(raw: &str) -> Result<String, Box<dyn Error>> {

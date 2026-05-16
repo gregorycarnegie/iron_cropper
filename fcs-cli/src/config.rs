@@ -190,7 +190,9 @@ pub fn build_core_crop_settings(cfg: &ConfigCropSettings) -> CropSettings {
 
 fn parse_positioning_mode(value: &str) -> PositioningMode {
     match value.to_ascii_lowercase().as_str() {
-        "rule_of_thirds" | "rule-of-thirds" | "ruleofthirds" => PositioningMode::RuleOfThirds,
+        "rule_of_thirds" | "rule-of-thirds" | "ruleofthirds" | "thirds" => {
+            PositioningMode::RuleOfThirds
+        }
         "custom" => PositioningMode::Custom,
         _ => PositioningMode::Center,
     }
@@ -332,6 +334,11 @@ mod tests {
         ));
         assert!(matches!(
             parse_positioning_mode("ruleofthirds"),
+            PositioningMode::RuleOfThirds
+        ));
+        // GUI inspector writes "thirds"; CLI must round-trip GUI configs.
+        assert!(matches!(
+            parse_positioning_mode("thirds"),
             PositioningMode::RuleOfThirds
         ));
     }
@@ -612,10 +619,12 @@ mod tests {
 
     #[test]
     fn build_core_crop_settings_center() {
-        let mut cfg = fcs_utils::config::CropSettings::default();
-        cfg.output_width = 200;
-        cfg.output_height = 300;
-        cfg.positioning_mode = "center".to_string();
+        let cfg = fcs_utils::config::CropSettings {
+            output_width: 200,
+            output_height: 300,
+            positioning_mode: "center".to_string(),
+            ..Default::default()
+        };
         let core = build_core_crop_settings(&cfg);
         assert_eq!(core.output_width, 200);
         assert_eq!(core.output_height, 300);
@@ -624,8 +633,10 @@ mod tests {
 
     #[test]
     fn build_core_crop_settings_rule_of_thirds() {
-        let mut cfg = fcs_utils::config::CropSettings::default();
-        cfg.positioning_mode = "rule-of-thirds".to_string();
+        let cfg = fcs_utils::config::CropSettings {
+            positioning_mode: "rule-of-thirds".to_string(),
+            ..Default::default()
+        };
         let core = build_core_crop_settings(&cfg);
         assert!(matches!(
             core.positioning_mode,

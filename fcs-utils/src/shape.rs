@@ -1005,6 +1005,14 @@ pub fn outline_points_for_rect(
         .collect()
 }
 
+#[inline]
+fn push_point(points: &mut Vec<Point>, angle: f32, cx: f32, cy: f32, radius: f32) {
+    points.push(Point {
+        x: angle.cos().mul_add(radius, cx),
+        y: angle.sin().mul_add(radius, cy),
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1107,13 +1115,4 @@ mod tests {
             40.0 / 255.0
         );
     }
-}
-
-/// Pushes a point to the vector, scaled to the given rectangle.
-#[inline]
-fn push_point(points: &mut Vec<Point>, angle: f32, cx: f32, cy: f32, radius: f32) {
-    points.push(Point {
-        x: angle.cos().mul_add(radius, cx),
-        y: angle.sin().mul_add(radius, cy),
-    });
 }

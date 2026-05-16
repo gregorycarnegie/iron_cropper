@@ -15,7 +15,7 @@ use fcs_utils::{
 use image::DynamicImage;
 use lru::LruCache;
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool, mpsc},
 };
@@ -629,7 +629,7 @@ pub struct App2 {
     pub sidebar_tab: SidebarTab,
     pub inspector_tab: InspectorTab,
     pub panel_state: PanelState,
-    pub log_lines: Vec<LogLine>,
+    pub log_lines: VecDeque<LogLine>,
 
     // Misc
     pub status_line: String,

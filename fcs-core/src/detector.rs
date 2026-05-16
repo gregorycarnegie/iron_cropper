@@ -123,11 +123,6 @@ impl YuNetDetector {
     pub fn detect_path<P: AsRef<Path>>(&self, path: P) -> Result<DetectionOutput> {
         let _guard = timing_guard("fcs_core::detect_path", log::Level::Debug);
         let path_ref = path.as_ref();
-        anyhow::ensure!(
-            path_ref.exists(),
-            "input image does not exist: {}",
-            path_ref.display()
-        );
         let image = load_image(path_ref)
             .with_context(|| format!("failed to load image from {}", path_ref.display()))?;
         let prep = self.preprocessor.preprocess(&image, &self.preprocess)?;

@@ -35,7 +35,7 @@ pub fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
         );
     }
 
-    let exts = ["jpg", "jpeg", "png", "bmp", "webp"];
+    let exts = ["jpg", "jpeg", "png", "bmp", "webp", "tif", "tiff"];
     let mut images = Vec::new();
     for entry in WalkDir::new(path)
         .follow_links(false)
@@ -60,7 +60,7 @@ pub fn collect_standard_targets(input_path: &Path) -> Result<Vec<ProcessingItem>
     let images = collect_images(input_path)?;
     if images.is_empty() {
         anyhow::bail!(
-            "no images found at {} (supported extensions: jpg, jpeg, png, bmp)",
+            "no images found at {} (supported extensions: jpg, jpeg, png, bmp, webp, tif, tiff)",
             input_path.display()
         );
     }
@@ -152,26 +152,27 @@ pub fn collect_mapping_targets(
         let resolved_source = mapping_dir.join(&raw_source);
 
         // Verify the resolved path does not escape the mapping directory via `..`.
-        if let (Ok(canon_source), Ok(canon_dir)) =
-            (resolved_source.canonicalize(), mapping_dir.canonicalize())
-            && !canon_source.starts_with(&canon_dir)
-        {
-            warn!(
-                "Skipping mapping row {}: source path escapes the mapping directory ({})",
-                row_no,
-                raw_source.display()
-            );
-            continue;
+        // canonicalize() also fails for non-existent paths, so a missing source is reported here.
+        match (resolved_source.canonicalize(), mapping_dir.canonicalize()) {
+            (Ok(canon_source), Ok(canon_dir)) if !canon_source.starts_with(&canon_dir) => {
+                warn!(
+                    "Skipping mapping row {}: source path escapes the mapping directory ({})",
+                    row_no,
+                    raw_source.display()
+                );
+                continue;
+            }
+            (Err(_), _) => {
+                warn!(
+                    "Skipping mapping row {}: source {} was not found",
+                    row_no,
+                    resolved_source.display()
+                );
+                continue;
+            }
+            _ => {}
         }
 
-        if !resolved_source.exists() {
-            warn!(
-                "Skipping mapping row {}: source {} was not found",
-                row_no,
-                resolved_source.display()
-            );
-            continue;
-        }
         items.push(ProcessingItem {
             source: resolved_source,
             output_override: Some(PathBuf::from(entry.output_name)),

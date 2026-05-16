@@ -1385,7 +1385,7 @@ mod tests {
             format_excel_cell(&ExcelData::String("  hello  ".to_string())),
             "hello"
         );
-        assert_eq!(format_excel_cell(&ExcelData::Float(3.14_f64)), "3.14");
+        assert_eq!(format_excel_cell(&ExcelData::Float(2.5_f64)), "2.5");
         assert_eq!(format_excel_cell(&ExcelData::Float(5.0_f64)), "5");
         assert_eq!(format_excel_cell(&ExcelData::Int(42)), "42");
         assert_eq!(format_excel_cell(&ExcelData::Bool(true)), "true");
