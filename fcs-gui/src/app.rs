@@ -744,17 +744,7 @@ pub(crate) fn build_crop_settings_from_app_settings(
     }
 }
 
-pub(crate) fn is_supported_image_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|ext| {
-            matches!(
-                ext.to_ascii_lowercase().as_str(),
-                "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff"
-            )
-        })
-        .unwrap_or(false)
-}
+pub(crate) use fcs_utils::is_supported_image_path;
 
 fn expand_input_path(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     if path.is_dir() {

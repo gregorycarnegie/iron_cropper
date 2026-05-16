@@ -18,67 +18,58 @@ pub(crate) fn normalized_output_extension(format: ImageFormatHint) -> &'static s
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn build_crop_filename(
-    source_stem: &str,
-    crop_index: usize,
-    output_width: u32,
-    output_height: u32,
-    ext: &str,
-    naming_template: Option<&str>,
-    quality_suffix: Option<&str>,
-    timestamp: u64,
-) -> String {
-    let mut out_name = if let Some(tmpl) = naming_template {
+/// Inputs that determine a crop's output filename and directory placement.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CropFilenameSpec<'a> {
+    pub source_stem: &'a str,
+    pub crop_index: usize,
+    pub output_width: u32,
+    pub output_height: u32,
+    pub ext: &'a str,
+    pub naming_template: Option<&'a str>,
+    pub quality_suffix: Option<&'a str>,
+    pub timestamp: u64,
+}
+
+pub(crate) fn build_crop_filename(spec: CropFilenameSpec<'_>) -> String {
+    let mut out_name = if let Some(tmpl) = spec.naming_template {
         let mut name = tmpl.to_string();
-        name = name.replace("{original}", source_stem);
-        name = name.replace("{index}", &(crop_index + 1).to_string());
-        name = name.replace("{width}", &output_width.to_string());
-        name = name.replace("{height}", &output_height.to_string());
-        name = name.replace("{ext}", ext);
-        name = name.replace("{timestamp}", &timestamp.to_string());
+        name = name.replace("{original}", spec.source_stem);
+        name = name.replace("{index}", &(spec.crop_index + 1).to_string());
+        name = name.replace("{width}", &spec.output_width.to_string());
+        name = name.replace("{height}", &spec.output_height.to_string());
+        name = name.replace("{ext}", spec.ext);
+        name = name.replace("{timestamp}", &spec.timestamp.to_string());
         if !tmpl.contains("{ext}") {
-            format!("{}.{}", name, ext)
+            format!("{}.{}", name, spec.ext)
         } else {
             name
         }
     } else {
-        format!("{}_face{}.{}", source_stem, crop_index + 1, ext)
+        format!("{}_face{}.{}", spec.source_stem, spec.crop_index + 1, spec.ext)
     };
 
-    if let Some(suffix) = quality_suffix {
+    if let Some(suffix) = spec.quality_suffix {
         out_name = append_suffix_to_filename(&out_name, suffix);
     }
 
     out_name
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_crop_output_path(
     out_dir: &Path,
     source_path: &Path,
-    crop_index: usize,
-    output_width: u32,
-    output_height: u32,
-    ext: &str,
-    naming_template: Option<&str>,
-    quality_suffix: Option<&str>,
-    timestamp: u64,
+    spec: CropFilenameSpec<'_>,
 ) -> PathBuf {
     let source_stem = source_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("image");
-    out_dir.join(build_crop_filename(
+    let spec = CropFilenameSpec {
         source_stem,
-        crop_index,
-        output_width,
-        output_height,
-        ext,
-        naming_template,
-        quality_suffix,
-        timestamp,
-    ))
+        ..spec
+    };
+    out_dir.join(build_crop_filename(spec))
 }
 
 pub(crate) fn save_processed_crop(
@@ -104,50 +95,64 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    fn spec<'a>(
+        source_stem: &'a str,
+        crop_index: usize,
+        ext: &'a str,
+        naming_template: Option<&'a str>,
+        quality_suffix: Option<&'a str>,
+        timestamp: u64,
+    ) -> CropFilenameSpec<'a> {
+        CropFilenameSpec {
+            source_stem,
+            crop_index,
+            output_width: 512,
+            output_height: 640,
+            ext,
+            naming_template,
+            quality_suffix,
+            timestamp,
+        }
+    }
+
     #[test]
     fn build_crop_filename_applies_template_and_quality_suffix() {
-        let name = build_crop_filename(
+        let name = build_crop_filename(spec(
             "portrait",
             1,
-            512,
-            640,
             "jpg",
             Some("{original}_{index}_{width}x{height}_{timestamp}"),
             Some("_highq"),
             1234,
-        );
+        ));
 
         assert_eq!(name, "portrait_2_512x640_1234_highq.jpg");
     }
 
     #[test]
     fn build_crop_filename_appends_extension_when_template_omits_it() {
-        let name = build_crop_filename(
+        let name = build_crop_filename(spec(
             "portrait",
             0,
-            512,
-            640,
             "png",
             Some("{original}_face{index}"),
             None,
             0,
-        );
+        ));
 
         assert_eq!(name, "portrait_face1.png");
     }
 
     #[test]
     fn build_crop_filename_keeps_template_extension_placeholder() {
-        let name = build_crop_filename(
+        let name = build_crop_filename(spec(
             "portrait",
             0,
-            512,
-            640,
             "webp",
             Some("{original}_{index}.{ext}"),
             None,
             0,
-        );
+        ));
 
         assert_eq!(name, "portrait_1.webp");
     }
@@ -165,13 +170,7 @@ mod tests {
         let out = build_crop_output_path(
             dir.path(),
             Path::new("/tmp/portrait.jpg"),
-            0,
-            512,
-            640,
-            "png",
-            None,
-            Some("_lowq"),
-            0,
+            spec("", 0, "png", None, Some("_lowq"), 0),
         );
 
         assert_eq!(
@@ -183,8 +182,15 @@ mod tests {
     #[test]
     fn build_crop_output_path_uses_default_name_when_source_stem_is_missing() {
         let dir = tempdir().unwrap();
-        let out =
-            build_crop_output_path(dir.path(), Path::new(""), 0, 256, 256, "png", None, None, 0);
+        let out = build_crop_output_path(
+            dir.path(),
+            Path::new(""),
+            CropFilenameSpec {
+                output_width: 256,
+                output_height: 256,
+                ..spec("", 0, "png", None, None, 0)
+            },
+        );
 
         assert_eq!(
             out.file_name().and_then(|s| s.to_str()),

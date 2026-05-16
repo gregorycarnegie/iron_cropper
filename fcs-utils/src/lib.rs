@@ -49,8 +49,8 @@ pub use gpu::{
     GpuContextOptions, GpuContextPool, GpuInitError, GpuPoolError, RedEye,
 };
 pub use image_utils::{
-    compute_resize_scales, dynamic_to_bgr_chw, load_image, load_image_raw, resize_image,
-    rgb_to_bgr_chw,
+    SUPPORTED_IMAGE_EXTENSIONS, compute_resize_scales, dynamic_to_bgr_chw,
+    is_supported_image_path, load_image, load_image_raw, resize_image, rgb_to_bgr_chw,
 };
 use log::LevelFilter;
 #[cfg(feature = "mapping")]

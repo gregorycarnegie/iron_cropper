@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use fcs_utils::{
+    SUPPORTED_IMAGE_EXTENSIONS,
     mapping::{
         ColumnSelector, MappingFormat, MappingReadOptions, detect_format as detect_mapping_format,
         load_mapping_entries,
@@ -35,7 +36,6 @@ pub fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
         );
     }
 
-    let exts = ["jpg", "jpeg", "png", "bmp", "webp", "tif", "tiff"];
     let mut images = Vec::new();
     for entry in WalkDir::new(path)
         .follow_links(false)
@@ -45,7 +45,7 @@ pub fn collect_images(path: &Path) -> Result<Vec<PathBuf>> {
     {
         if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
             let ext_lower = ext.to_ascii_lowercase();
-            if exts.contains(&ext_lower.as_str()) {
+            if SUPPORTED_IMAGE_EXTENSIONS.contains(&ext_lower.as_str()) {
                 images.push(entry.path().to_path_buf());
             } else {
                 debug!("Skipping non-image file {}", entry.path().display());

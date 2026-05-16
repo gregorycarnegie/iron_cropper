@@ -37,10 +37,7 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 // Icon buttons
                 icon_btn(ui, "📂", "Open", || {
                     if let Some(paths) = rfd::FileDialog::new()
-                        .add_filter(
-                            "Images",
-                            &["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"],
-                        )
+                        .add_filter("Images", fcs_utils::SUPPORTED_IMAGE_EXTENSIONS)
                         .pick_files()
                     {
                         let first = paths.first().cloned();

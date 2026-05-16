@@ -41,29 +41,45 @@ pub fn apply_drag(
             bbox.y = (bbox.y + delta_px.y).clamp(0.0, img_h - bbox.height);
         }
         DragHandle::NorthWest => {
-            let new_x = (bbox.x + delta_px.x).clamp(0.0, bbox.x + bbox.width - 10.0);
-            let new_y = (bbox.y + delta_px.y).clamp(0.0, bbox.y + bbox.height - 10.0);
-            bbox.width += bbox.x - new_x;
-            bbox.height += bbox.y - new_y;
-            bbox.x = new_x;
-            bbox.y = new_y;
+            move_left_edge(&mut bbox, delta_px.x);
+            move_top_edge(&mut bbox, delta_px.y);
         }
         DragHandle::NorthEast => {
-            let new_y = (bbox.y + delta_px.y).clamp(0.0, bbox.y + bbox.height - 10.0);
-            bbox.height += bbox.y - new_y;
-            bbox.y = new_y;
-            bbox.width = (bbox.width + delta_px.x).clamp(10.0, img_w - bbox.x);
+            move_top_edge(&mut bbox, delta_px.y);
+            extend_right_edge(&mut bbox, delta_px.x, img_w);
         }
         DragHandle::SouthWest => {
-            let new_x = (bbox.x + delta_px.x).clamp(0.0, bbox.x + bbox.width - 10.0);
-            bbox.width += bbox.x - new_x;
-            bbox.x = new_x;
-            bbox.height = (bbox.height + delta_px.y).clamp(10.0, img_h - bbox.y);
+            move_left_edge(&mut bbox, delta_px.x);
+            extend_bottom_edge(&mut bbox, delta_px.y, img_h);
         }
         DragHandle::SouthEast => {
-            bbox.width = (bbox.width + delta_px.x).clamp(10.0, img_w - bbox.x);
-            bbox.height = (bbox.height + delta_px.y).clamp(10.0, img_h - bbox.y);
+            extend_right_edge(&mut bbox, delta_px.x, img_w);
+            extend_bottom_edge(&mut bbox, delta_px.y, img_h);
         }
     }
     bbox
+}
+
+/// Minimum width/height a corner drag is allowed to produce; corners cannot
+/// cross over to invert the box.
+const MIN_BBOX_EXTENT: f32 = 10.0;
+
+fn move_left_edge(bbox: &mut BoundingBox, delta_x: f32) {
+    let new_x = (bbox.x + delta_x).clamp(0.0, bbox.x + bbox.width - MIN_BBOX_EXTENT);
+    bbox.width += bbox.x - new_x;
+    bbox.x = new_x;
+}
+
+fn move_top_edge(bbox: &mut BoundingBox, delta_y: f32) {
+    let new_y = (bbox.y + delta_y).clamp(0.0, bbox.y + bbox.height - MIN_BBOX_EXTENT);
+    bbox.height += bbox.y - new_y;
+    bbox.y = new_y;
+}
+
+fn extend_right_edge(bbox: &mut BoundingBox, delta_x: f32, img_w: f32) {
+    bbox.width = (bbox.width + delta_x).clamp(MIN_BBOX_EXTENT, img_w - bbox.x);
+}
+
+fn extend_bottom_edge(bbox: &mut BoundingBox, delta_y: f32, img_h: f32) {
+    bbox.height = (bbox.height + delta_y).clamp(MIN_BBOX_EXTENT, img_h - bbox.y);
 }

@@ -3,10 +3,7 @@
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Arc, atomic::Ordering},
     time::SystemTime,
 };
 
@@ -47,7 +44,7 @@ use enhancement::build_enhancement_settings;
 use gpu::init_cli_gpu_runtime;
 use input::{collect_mapping_targets, collect_standard_targets, resolve_override_output_path};
 use quality::build_quality_filter;
-use types::{DetectionRecord, ImageDetections};
+use types::{DetectionRecord, ImageDetections, ProgressCounters};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProcessedCrop {
@@ -194,12 +191,7 @@ fn main() -> Result<()> {
     let quality_filter = Arc::new(quality_filter);
     let enhancement_settings = build_enhancement_settings(&args).map(Arc::new);
 
-    // Process images in parallel
-    // Progress counters (shared across parallel tasks)
-    let images_processed = Arc::new(AtomicUsize::new(0));
-    let faces_detected = Arc::new(AtomicUsize::new(0));
-    let crops_saved = Arc::new(AtomicUsize::new(0));
-    let crops_skipped_quality = Arc::new(AtomicUsize::new(0));
+    let counters = ProgressCounters::default();
 
     let results: Vec<ImageDetections> = processing_items
         .par_iter()
@@ -215,10 +207,7 @@ fn main() -> Result<()> {
                 &args,
                 crop_enabled,
                 &crop_output_dir,
-                &images_processed,
-                &faces_detected,
-                &crops_saved,
-                &crops_skipped_quality,
+                &counters,
             )
         })
         .collect();
@@ -245,22 +234,16 @@ fn main() -> Result<()> {
         println!("{json}");
     }
 
-    // Summary progress report
-    info!(
-        "Summary: images_processed={} faces_detected={} crops_saved={} crops_skipped_quality={}",
-        images_processed.load(Ordering::Relaxed),
-        faces_detected.load(Ordering::Relaxed),
-        crops_saved.load(Ordering::Relaxed),
-        crops_skipped_quality.load(Ordering::Relaxed)
-    );
-    // Also print a concise single-line summary for interactive users
-    println!(
+    let summary = counters.snapshot();
+    let summary_line = format!(
         "images_processed={} faces_detected={} crops_saved={} crops_skipped_quality={}",
-        images_processed.load(Ordering::Relaxed),
-        faces_detected.load(Ordering::Relaxed),
-        crops_saved.load(Ordering::Relaxed),
-        crops_skipped_quality.load(Ordering::Relaxed)
+        summary.images_processed,
+        summary.faces_detected,
+        summary.crops_saved,
+        summary.crops_skipped_quality
     );
+    info!("Summary: {summary_line}");
+    println!("{summary_line}");
 
     Ok(())
 }
@@ -277,12 +260,9 @@ fn process_single_image(
     args: &DetectArgs,
     crop_enabled: bool,
     crop_output_dir: &Arc<Option<std::path::PathBuf>>,
-    images_processed: &Arc<AtomicUsize>,
-    faces_detected: &Arc<AtomicUsize>,
-    crops_saved: &Arc<AtomicUsize>,
-    crops_skipped_quality: &Arc<AtomicUsize>,
+    counters: &ProgressCounters,
 ) -> Option<ImageDetections> {
-    images_processed.fetch_add(1, Ordering::Relaxed);
+    counters.images_processed.fetch_add(1, Ordering::Relaxed);
     let image_path = &target.source;
     let override_target = target.output_override.as_ref();
     if let Some(row) = target.mapping_row {
@@ -290,7 +270,9 @@ fn process_single_image(
     }
 
     let output = detect_image(detector, image_path)?;
-    faces_detected.fetch_add(output.detections.len(), Ordering::Relaxed);
+    counters
+        .faces_detected
+        .fetch_add(output.detections.len(), Ordering::Relaxed);
 
     info!(
         "{} -> {} detection(s)",
@@ -319,8 +301,7 @@ fn process_single_image(
                 args,
                 out_dir,
                 override_target,
-                crops_saved,
-                crops_skipped_quality,
+                counters,
             );
         }
         (true, Some(_), None) => {
@@ -353,8 +334,7 @@ fn process_crops(
     args: &DetectArgs,
     out_dir: &Path,
     override_target: Option<&std::path::PathBuf>,
-    crops_saved: &Arc<AtomicUsize>,
-    crops_skipped_quality: &Arc<AtomicUsize>,
+    counters: &ProgressCounters,
 ) {
     let output_options = OutputOptions::from_crop_settings(&settings.crop);
     let core_settings = build_core_crop_settings(&settings.crop);
@@ -382,45 +362,13 @@ fn process_crops(
             "Skipping exports for {} because no face reached high quality",
             image_path.display()
         );
-        crops_skipped_quality.fetch_add(processed.len().max(1), Ordering::Relaxed);
+        counters
+            .crops_skipped_quality
+            .fetch_add(processed.len().max(1), Ordering::Relaxed);
         return;
     }
 
-    let mut exports = processed;
-
-    if let Some(fidx) = args.face_index {
-        if fidx == 0 {
-            warn!(
-                "--face-index is 1-based; ignoring 0 for {}",
-                image_path.display()
-            );
-            exports.clear();
-        } else {
-            let target = fidx - 1;
-            let available = exports.len();
-            exports = retain_requested_face(exports, target);
-            if exports.is_empty() {
-                warn!(
-                    "Requested face index {} not found for {} ({} detections)",
-                    fidx,
-                    image_path.display(),
-                    available
-                );
-            }
-        }
-    } else if quality_filter.auto_select
-        && exports.len() > 1
-        && let Some(best_rel) = select_best_quality_index(&exports, quality_filter)
-    {
-        let best_idx = exports[best_rel].index;
-        exports = retain_requested_face(exports, best_idx);
-        debug!(
-            "Auto-selected face {} for {} based on quality {:?}",
-            best_idx + 1,
-            image_path.display(),
-            exports.first().map(|c| c.quality)
-        );
-    }
+    let exports = filter_faces_for_export(processed, args, quality_filter, image_path);
 
     let multi_face = exports.len() > 1;
     for crop in exports.into_iter() {
@@ -432,7 +380,7 @@ fn process_crops(
                 crop.quality,
                 crop.quality_score
             );
-            crops_skipped_quality.fetch_add(1, Ordering::Relaxed);
+            counters.crops_skipped_quality.fetch_add(1, Ordering::Relaxed);
             continue;
         }
 
@@ -447,18 +395,21 @@ fn process_crops(
         };
 
         let out_path = if let Some(custom) = override_target {
-            resolve_override_output_path(out_dir, custom, &ext, crop.index, multi_face)
+            resolve_override_output_path(out_dir, custom, ext, crop.index, multi_face)
         } else {
             build_crop_output_path(
                 out_dir,
                 image_path,
-                crop.index,
-                settings.crop.output_width,
-                settings.crop.output_height,
-                &ext,
-                args.naming_template.as_deref(),
-                quality_filter.suffix_for(crop.quality),
-                timestamp,
+                output_path::CropFilenameSpec {
+                    source_stem: "",
+                    crop_index: crop.index,
+                    output_width: settings.crop.output_width,
+                    output_height: settings.crop.output_height,
+                    ext,
+                    naming_template: args.naming_template.as_deref(),
+                    quality_suffix: quality_filter.suffix_for(crop.quality),
+                    timestamp,
+                },
             )
         };
 
@@ -471,7 +422,7 @@ fn process_crops(
         match save_processed_crop(&crop, &out_path, image_path, settings, &output_options) {
             Ok(_) => {
                 info!("Saved crop to {}", out_path.display());
-                crops_saved.fetch_add(1, Ordering::Relaxed);
+                counters.crops_saved.fetch_add(1, Ordering::Relaxed);
             }
             Err(e) => {
                 warn!("Failed to export crop {}: {e:?}", out_path.display());
@@ -650,6 +601,53 @@ fn retain_requested_face(processed: Vec<ProcessedCrop>, face_index: usize) -> Ve
         .into_iter()
         .filter(|crop| crop.index == face_index)
         .collect()
+}
+
+/// Decide which faces survive into the export step based on `--face-index` and
+/// quality-driven auto-selection. Logs the rationale at the corresponding level.
+fn filter_faces_for_export(
+    mut exports: Vec<ProcessedCrop>,
+    args: &DetectArgs,
+    quality_filter: &fcs_utils::QualityFilter,
+    image_path: &Path,
+) -> Vec<ProcessedCrop> {
+    if let Some(fidx) = args.face_index {
+        if fidx == 0 {
+            warn!(
+                "--face-index is 1-based; ignoring 0 for {}",
+                image_path.display()
+            );
+            return Vec::new();
+        }
+        let target = fidx - 1;
+        let available = exports.len();
+        let filtered = retain_requested_face(exports, target);
+        if filtered.is_empty() {
+            warn!(
+                "Requested face index {} not found for {} ({} detections)",
+                fidx,
+                image_path.display(),
+                available
+            );
+        }
+        return filtered;
+    }
+
+    if quality_filter.auto_select
+        && exports.len() > 1
+        && let Some(best_rel) = select_best_quality_index(&exports, quality_filter)
+    {
+        let best_idx = exports[best_rel].index;
+        exports = retain_requested_face(exports, best_idx);
+        debug!(
+            "Auto-selected face {} for {} based on quality {:?}",
+            best_idx + 1,
+            image_path.display(),
+            exports.first().map(|c| c.quality)
+        );
+    }
+
+    exports
 }
 
 fn select_best_quality_index(
@@ -972,8 +970,7 @@ mod tests {
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
 
         process_crops(
             &sample_image(24, 24),
@@ -986,12 +983,11 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 0);
         assert_eq!(
             fs::read_dir(dir.path())
                 .expect("temp output directory should be readable")
@@ -1013,8 +1009,7 @@ mod tests {
         });
         let args = parse_args(&["--input", "x.jpg"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
 
         process_crops(
@@ -1028,12 +1023,11 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(skipped.load(Ordering::Relaxed), 1);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 1);
         assert_eq!(
             fs::read_dir(dir.path())
                 .expect("temp output directory should be readable")
@@ -1049,8 +1043,7 @@ mod tests {
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg", "--face-index", "0"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![
             sample_detection(1.0, 1.0, 8.0, 8.0, 0.9),
             sample_detection(10.0, 10.0, 8.0, 8.0, 0.95),
@@ -1067,12 +1060,11 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -1088,8 +1080,7 @@ mod tests {
         });
         let args = parse_args(&["--input", "x.jpg"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
 
         process_crops(
@@ -1103,12 +1094,11 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(skipped.load(Ordering::Relaxed), 1);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 1);
     }
 
     #[test]
@@ -1118,8 +1108,7 @@ mod tests {
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg", "--face-index", "3"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
 
         process_crops(
@@ -1133,11 +1122,10 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
         assert_eq!(
             fs::read_dir(dir.path())
                 .expect("temp output directory should be readable")
@@ -1159,8 +1147,7 @@ mod tests {
         });
         let args = parse_args(&["--input", "x.jpg"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
 
         let mut image = RgbaImage::from_pixel(40, 20, Rgba([80, 80, 80, 255]));
         for y in 0..20 {
@@ -1185,11 +1172,10 @@ mod tests {
             &args,
             dir.path(),
             None,
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 1);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 1);
         assert_eq!(
             fs::read_dir(dir.path())
                 .expect("temp output directory should be readable")
@@ -1205,8 +1191,7 @@ mod tests {
         let filter = Arc::new(QualityFilter::new(None));
         let args = parse_args(&["--input", "x.jpg"]);
         let dir = tempdir().expect("temp directory should be created");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
         let override_target = PathBuf::from("nested/custom-name.jpg");
 
@@ -1221,12 +1206,11 @@ mod tests {
             &args,
             dir.path(),
             Some(&override_target),
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 1);
-        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 1);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 0);
         assert!(dir.path().join("nested").join("custom-name.png").exists());
     }
 
@@ -1239,8 +1223,7 @@ mod tests {
         let dir = tempdir().expect("temp directory should be created");
         let blocked = dir.path().join("blocked");
         fs::write(&blocked, b"file").expect("blocked output path should be written");
-        let saved = Arc::new(AtomicUsize::new(0));
-        let skipped = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.9)];
         let override_target = PathBuf::from("nested/output.png");
 
@@ -1255,12 +1238,11 @@ mod tests {
             &args,
             &blocked,
             Some(&override_target),
-            &saved,
-            &skipped,
+            &counters,
         );
 
-        assert_eq!(saved.load(Ordering::Relaxed), 0);
-        assert_eq!(skipped.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_saved.load(Ordering::Relaxed), 0);
+        assert_eq!(counters.crops_skipped_quality.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -1287,10 +1269,7 @@ mod tests {
                 .expect("temp image path should be valid UTF-8"),
         ]);
         let crop_output_dir = Arc::new(None);
-        let images_processed = Arc::new(AtomicUsize::new(0));
-        let faces_detected = Arc::new(AtomicUsize::new(0));
-        let crops_saved = Arc::new(AtomicUsize::new(0));
-        let crops_skipped_quality = Arc::new(AtomicUsize::new(0));
+        let counters = ProgressCounters::default();
 
         let result = process_single_image(
             &target,
@@ -1303,14 +1282,11 @@ mod tests {
             &args,
             false,
             &crop_output_dir,
-            &images_processed,
-            &faces_detected,
-            &crops_saved,
-            &crops_skipped_quality,
+            &counters,
         )
         .expect("processing one test image should succeed");
 
-        assert_eq!(images_processed.load(Ordering::Relaxed), 1);
+        assert_eq!(counters.images_processed.load(Ordering::Relaxed), 1);
         assert_eq!(result.image, image_path.display().to_string());
         assert!(
             result

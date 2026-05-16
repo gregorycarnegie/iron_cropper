@@ -12,73 +12,14 @@ pub fn build_enhancement_settings(args: &DetectArgs) -> Option<EnhancementSettin
         return None;
     }
 
-    // Base: defaults or preset
-    let mut base = EnhancementSettings::default();
-    if let Some(pname) = args.enhancement_preset.as_ref() {
-        match pname.as_str() {
-            "natural" => {
-                base = EnhancementSettings {
-                    auto_color: true,
-                    exposure_stops: 0.1,
-                    brightness: 0,
-                    contrast: 1.1,
-                    saturation: 1.05,
-                    unsharp_amount: 0.6,
-                    unsharp_radius: 1.0,
-                    sharpness: 0.2,
-                    skin_smooth_amount: 0.0,
-                    skin_smooth_sigma_space: 3.0,
-                    skin_smooth_sigma_color: 25.0,
-                    red_eye_removal: false,
-                    red_eye_threshold: 1.5,
-                    background_blur: false,
-                    background_blur_radius: 15.0,
-                    background_blur_mask_size: 0.6,
-                }
-            }
-            "vivid" => {
-                base = EnhancementSettings {
-                    auto_color: false,
-                    exposure_stops: 0.3,
-                    brightness: 10,
-                    contrast: 1.25,
-                    saturation: 1.3,
-                    unsharp_amount: 0.9,
-                    unsharp_radius: 1.2,
-                    sharpness: 0.5,
-                    skin_smooth_amount: 0.0,
-                    skin_smooth_sigma_space: 3.0,
-                    skin_smooth_sigma_color: 25.0,
-                    red_eye_removal: false,
-                    red_eye_threshold: 1.5,
-                    background_blur: false,
-                    background_blur_radius: 15.0,
-                    background_blur_mask_size: 0.6,
-                }
-            }
-            "professional" => {
-                base = EnhancementSettings {
-                    auto_color: true,
-                    exposure_stops: 0.2,
-                    brightness: 0,
-                    contrast: 1.15,
-                    saturation: 1.05,
-                    unsharp_amount: 1.2,
-                    unsharp_radius: 1.0,
-                    sharpness: 0.8,
-                    skin_smooth_amount: 0.0,
-                    skin_smooth_sigma_space: 3.0,
-                    skin_smooth_sigma_color: 25.0,
-                    red_eye_removal: false,
-                    red_eye_threshold: 1.5,
-                    background_blur: false,
-                    background_blur_radius: 15.0,
-                    background_blur_mask_size: 0.6,
-                }
-            }
-            other => warn!("unknown enhancement preset '{}', using defaults", other),
-        }
-    }
+    // Base: defaults or named preset.
+    let mut base = match args.enhancement_preset.as_deref() {
+        None => EnhancementSettings::default(),
+        Some(name) => EnhancementSettings::preset_by_name(name).unwrap_or_else(|| {
+            warn!("unknown enhancement preset '{}', using defaults", name);
+            EnhancementSettings::default()
+        }),
+    };
 
     // Apply explicit overrides if provided
     if let Some(v) = args.unsharp_amount {

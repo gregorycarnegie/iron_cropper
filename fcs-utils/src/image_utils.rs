@@ -11,6 +11,22 @@ use ndarray::Array3;
 use rayon::prelude::*;
 use std::{borrow::Cow, cell::RefCell, path::Path};
 
+/// Filename extensions recognized as decodable raster images across CLI and GUI.
+/// Kept in lower-case; callers should normalize input before comparison.
+pub const SUPPORTED_IMAGE_EXTENSIONS: &[&str] =
+    &["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"];
+
+/// Returns `true` if the given path's extension is in [`SUPPORTED_IMAGE_EXTENSIONS`].
+pub fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| {
+            let lower = ext.to_ascii_lowercase();
+            SUPPORTED_IMAGE_EXTENSIONS.contains(&lower.as_str())
+        })
+        .unwrap_or(false)
+}
+
 // Thread-local buffer pool for RGB→BGR→CHW conversion to reduce allocations.
 thread_local! {
     static CONVERSION_BUFFER: RefCell<Vec<f32>> = const { RefCell::new(Vec::new()) };

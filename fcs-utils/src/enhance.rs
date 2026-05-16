@@ -143,6 +143,57 @@ impl Default for EnhancementSettings {
     }
 }
 
+impl EnhancementSettings {
+    /// Gentle preset: light tonal lift with subtle sharpening.
+    pub fn natural() -> Self {
+        Self {
+            auto_color: true,
+            exposure_stops: 0.1,
+            contrast: 1.1,
+            saturation: 1.05,
+            sharpness: 0.2,
+            ..Self::default()
+        }
+    }
+
+    /// Punchier preset: warmer exposure, higher contrast and saturation.
+    pub fn vivid() -> Self {
+        Self {
+            exposure_stops: 0.3,
+            brightness: 10,
+            contrast: 1.25,
+            saturation: 1.3,
+            unsharp_amount: 0.9,
+            unsharp_radius: 1.2,
+            sharpness: 0.5,
+            ..Self::default()
+        }
+    }
+
+    /// Headshot preset: balanced tone with stronger detail enhancement.
+    pub fn professional() -> Self {
+        Self {
+            auto_color: true,
+            exposure_stops: 0.2,
+            contrast: 1.15,
+            saturation: 1.05,
+            unsharp_amount: 1.2,
+            sharpness: 0.8,
+            ..Self::default()
+        }
+    }
+
+    /// Resolve a preset name (case-sensitive lowercase). Returns `None` for unknown names.
+    pub fn preset_by_name(name: &str) -> Option<Self> {
+        match name {
+            "natural" => Some(Self::natural()),
+            "vivid" => Some(Self::vivid()),
+            "professional" => Some(Self::professional()),
+            _ => None,
+        }
+    }
+}
+
 fn identity_lut() -> [u8; 256] {
     let mut lut = [0u8; 256];
     for (i, item) in lut.iter_mut().enumerate() {
