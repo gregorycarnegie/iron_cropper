@@ -38,7 +38,7 @@ mod webcam;
 use output_path::{build_crop_output_path, normalized_output_extension, save_processed_crop};
 
 use args::DetectArgs;
-use config::{apply_cli_overrides, build_core_crop_settings, load_settings};
+use config::{apply_cli_overrides, load_settings};
 use detector::build_cli_detector;
 use enhancement::build_enhancement_settings;
 use gpu::init_cli_gpu_runtime;
@@ -337,7 +337,7 @@ fn process_crops(
     counters: &ProgressCounters,
 ) {
     let output_options = OutputOptions::from_crop_settings(&settings.crop);
-    let core_settings = build_core_crop_settings(&settings.crop);
+    let core_settings: fcs_core::CropSettings = (&settings.crop).into();
     let processed = generate_processed_crops(
         img,
         detections,
@@ -946,7 +946,7 @@ mod tests {
     fn generate_processed_crops_falls_back_to_cpu_when_gpu_runtime_has_no_cropper() {
         let settings = crop_settings_app();
         let runtime = no_gpu_runtime();
-        let core_settings = build_core_crop_settings(&settings.crop);
+        let core_settings: fcs_core::CropSettings = (&settings.crop).into();
         let detections = vec![sample_detection(2.0, 2.0, 10.0, 10.0, 0.95)];
 
         let crops = generate_processed_crops(

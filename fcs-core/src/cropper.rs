@@ -109,6 +109,25 @@ impl Default for CropSettings {
     }
 }
 
+// Stored dimensions win over the preset label: the `preset` field on the config
+// struct is just a UI hint and may disagree with `output_width`/`output_height`
+// for saved configs. The CLI's `apply_cli_overrides` pre-resolves preset → dims
+// when --preset is passed, so consumers always see authoritative dimensions here.
+impl From<&fcs_utils::config::CropSettings> for CropSettings {
+    fn from(cfg: &fcs_utils::config::CropSettings) -> Self {
+        Self {
+            output_width: cfg.output_width,
+            output_height: cfg.output_height,
+            face_height_pct: cfg.face_height_pct,
+            positioning_mode: cfg.positioning_mode,
+            horizontal_offset: cfg.horizontal_offset,
+            vertical_offset: cfg.vertical_offset,
+            fill_color: cfg.fill_color,
+            eye_line_align: cfg.eye_line_align,
+        }
+    }
+}
+
 /// Calculate a crop region in source image coordinates.
 ///
 /// The algorithm proceeds as follows:

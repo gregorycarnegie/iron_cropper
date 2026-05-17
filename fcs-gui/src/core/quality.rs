@@ -1,8 +1,7 @@
 //! Quality helpers — thin wrappers around fcs-utils quality functions.
 
-use crate::app::build_crop_settings_from_app_settings;
 use crate::types::DetectionWithQuality;
-use fcs_core::{Detection, crop_face_from_image};
+use fcs_core::{CropSettings, Detection, crop_face_from_image};
 use fcs_utils::{config::AppSettings, quality::Quality};
 use image::DynamicImage;
 use std::collections::HashSet;
@@ -46,7 +45,7 @@ pub fn refresh_thumbnail(
     settings: &AppSettings,
     texture_seq: &mut u64,
 ) {
-    let crop_settings = build_crop_settings_from_app_settings(settings);
+    let crop_settings: CropSettings = (&settings.crop).into();
     let detection = Detection {
         bbox: det.active_bbox(),
         landmarks: det.detection.landmarks,

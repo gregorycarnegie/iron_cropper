@@ -3,13 +3,11 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::{Context, Result};
+use fcs_core::PositioningMode;
 use fcs_core::preset_by_name;
-use fcs_core::{CropSettings, PositioningMode};
 use fcs_utils::{
     ImageFormatHint, PngCompression, Quality,
-    config::{
-        AppSettings, CropSettings as ConfigCropSettings, MetadataMode, default_settings_path,
-    },
+    config::{AppSettings, MetadataMode, default_settings_path},
     normalize_path,
 };
 use log::{info, warn};
@@ -179,19 +177,6 @@ pub fn apply_cli_overrides(settings: &mut AppSettings, args: &DetectArgs) {
     }
 
     settings.crop.sanitize();
-}
-
-pub fn build_core_crop_settings(cfg: &ConfigCropSettings) -> CropSettings {
-    CropSettings {
-        output_width: cfg.output_width,
-        output_height: cfg.output_height,
-        face_height_pct: cfg.face_height_pct,
-        positioning_mode: cfg.positioning_mode,
-        horizontal_offset: cfg.horizontal_offset,
-        vertical_offset: cfg.vertical_offset,
-        fill_color: cfg.fill_color,
-        eye_line_align: cfg.eye_line_align,
-    }
 }
 
 /// Parse the `--positioning-mode` CLI argument value. Reuses the serde aliases
@@ -621,32 +606,47 @@ mod tests {
         assert_eq!(settings.crop.output_height, 654);
     }
 
-    // --- build_core_crop_settings ---
+    // --- From<&fcs_utils::config::CropSettings> for fcs_core::CropSettings ---
 
     #[test]
-    fn build_core_crop_settings_center() {
+    fn core_crop_settings_from_config_center() {
         let cfg = fcs_utils::config::CropSettings {
             output_width: 200,
             output_height: 300,
             positioning_mode: PositioningMode::Center,
             ..Default::default()
         };
-        let core = build_core_crop_settings(&cfg);
+        let core: fcs_core::CropSettings = (&cfg).into();
         assert_eq!(core.output_width, 200);
         assert_eq!(core.output_height, 300);
         assert!(matches!(core.positioning_mode, PositioningMode::Center));
     }
 
     #[test]
-    fn build_core_crop_settings_rule_of_thirds() {
+    fn core_crop_settings_from_config_rule_of_thirds() {
         let cfg = fcs_utils::config::CropSettings {
             positioning_mode: PositioningMode::RuleOfThirds,
             ..Default::default()
         };
-        let core = build_core_crop_settings(&cfg);
+        let core: fcs_core::CropSettings = (&cfg).into();
         assert!(matches!(
             core.positioning_mode,
             PositioningMode::RuleOfThirds
         ));
+    }
+
+    // Saved configs may have a preset label that disagrees with stored dimensions
+    // (e.g. preset="linkedin" but output_width=999). Verify stored dims always win.
+    #[test]
+    fn core_crop_settings_from_config_uses_stored_dims_over_preset_label() {
+        let cfg = fcs_utils::config::CropSettings {
+            preset: "linkedin".to_string(),
+            output_width: 999,
+            output_height: 888,
+            ..Default::default()
+        };
+        let core: fcs_core::CropSettings = (&cfg).into();
+        assert_eq!(core.output_width, 999);
+        assert_eq!(core.output_height, 888);
     }
 }

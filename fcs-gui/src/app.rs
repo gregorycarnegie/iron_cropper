@@ -674,7 +674,7 @@ impl App2 {
     }
 
     pub fn build_crop_settings(&self) -> CoreCropSettings {
-        build_crop_settings_from_app_settings(&self.settings)
+        (&self.settings.crop).into()
     }
 
     pub fn delete_selected_faces(&mut self) {
@@ -710,21 +710,6 @@ impl App2 {
         self.crop_preview_cache.clear();
     }
 
-}
-
-pub(crate) fn build_crop_settings_from_app_settings(
-    settings: &fcs_utils::config::AppSettings,
-) -> CoreCropSettings {
-    CoreCropSettings {
-        output_width: settings.crop.output_width,
-        output_height: settings.crop.output_height,
-        face_height_pct: settings.crop.face_height_pct,
-        positioning_mode: settings.crop.positioning_mode,
-        horizontal_offset: settings.crop.horizontal_offset,
-        vertical_offset: settings.crop.vertical_offset,
-        fill_color: settings.crop.fill_color,
-        eye_line_align: settings.crop.eye_line_align,
-    }
 }
 
 pub(crate) use fcs_utils::is_supported_image_path;

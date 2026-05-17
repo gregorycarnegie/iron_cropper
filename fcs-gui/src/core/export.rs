@@ -1,9 +1,6 @@
 //! Export / batch crop logic.
 
-use crate::{
-    app::build_crop_settings_from_app_settings,
-    types::{App2, BatchFileStatus, JobMessage},
-};
+use crate::types::{App2, BatchFileStatus, JobMessage};
 
 use fcs_core::{
     CropSettings as CoreCropSettings, Detection, YuNetDetector, calculate_crop_region,
@@ -498,7 +495,7 @@ fn run_batch_job(
         };
     }
 
-    let crop_settings = build_crop_settings_from_app_settings(settings);
+    let crop_settings: CoreCropSettings = (&settings.crop).into();
     let output_options = OutputOptions::from_crop_settings(&settings.crop);
     let mut crops = Vec::with_capacity(detections.len());
     let mut candidates = Vec::with_capacity(detections.len());

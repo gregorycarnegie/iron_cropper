@@ -11,10 +11,7 @@ use fcs_utils::{
 };
 use log::{debug, info, warn};
 
-use crate::{
-    annotate::annotate_image, args::DetectArgs, config::build_core_crop_settings,
-    gpu::CliGpuRuntime,
-};
+use crate::{annotate::annotate_image, args::DetectArgs, gpu::CliGpuRuntime};
 
 /// Process frames from webcam in real-time.
 pub fn run_webcam_mode(
@@ -148,7 +145,7 @@ pub fn run_webcam_mode(
             && !output.detections.is_empty()
             && let Some(out_dir) = crop_output_dir.as_ref()
         {
-            let core_settings = build_core_crop_settings(&settings.crop);
+            let core_settings: fcs_core::CropSettings = (&settings.crop).into();
             let output_options = OutputOptions::from_crop_settings(&settings.crop);
 
             for (idx, det) in output.detections.iter().enumerate() {
