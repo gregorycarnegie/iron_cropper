@@ -3,8 +3,18 @@ name: CI
 on:
   push:
     branches: [ "master" ]
+    paths-ignore:
+      - "**.md"
+      - "screenshots/**"
+      - "docs/**"
+      - "tag-release.bat"
   pull_request:
     branches: [ "master" ]
+    paths-ignore:
+      - "**.md"
+      - "screenshots/**"
+      - "docs/**"
+      - "tag-release.bat"
 
 env:
   CARGO_TERM_COLOR: always
