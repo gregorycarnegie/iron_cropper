@@ -9,7 +9,7 @@ use crate::shape::CropShape;
 use crate::shape::outline_points_for_rect;
 use crate::{create_gpu_pipeline, gpu_readback, storage_buffer_entry, uniform_buffer_entry};
 
-use super::{GpuContext, SHAPE_MASK_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{GpuBufferPool, GpuContext, SHAPE_MASK_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const MAX_POINTS: usize = 512;
 
@@ -31,6 +31,7 @@ pub struct GpuShapeMask {
     context: Arc<GpuContext>,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    pool: Arc<GpuBufferPool>,
 }
 
 impl GpuShapeMask {
@@ -48,11 +49,24 @@ impl GpuShapeMask {
             ]
         );
 
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
+
         Ok(Self {
             context,
             pipeline,
             bind_group_layout,
+            pool,
         })
+    }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.pool.memory_usage()
     }
 
     pub fn apply(
@@ -89,19 +103,18 @@ impl GpuShapeMask {
         let queue = self.context.queue();
         let buffer_size = (pixels_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
-        let storage = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("shape_mask_pixels"),
-            contents: cast_slice(&pixels_u32),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("shape_mask_readback"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let storage_usage = wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST;
+        let readback_usage = wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST;
+
+        let storage = self
+            .pool
+            .acquire(buffer_size, storage_usage, Some("shape_mask_pixels"))?;
+        queue.write_buffer(&storage, 0, cast_slice(&pixels_u32));
+        let readback =
+            self.pool
+                .acquire(buffer_size, readback_usage, Some("shape_mask_readback"))?;
 
         let points_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("shape_mask_points"),
@@ -166,6 +179,9 @@ impl GpuShapeMask {
 
         let out_pixels = gpu_readback!(readback, device, pixels_u32.len(), "shape mask")?;
         let out_bytes = unpack_rgba_pixels(&out_pixels);
+
+        self.pool.recycle(storage, buffer_size, storage_usage);
+        self.pool.recycle(readback, buffer_size, readback_usage);
 
         let masked = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build masked image")?;

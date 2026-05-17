@@ -9,7 +9,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{CROP_WGSL, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{CROP_WGSL, GpuBufferPool, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
 
 gpu_uniforms!(CropUniforms, 0, {
     src_width: u32,
@@ -69,6 +69,7 @@ pub struct GpuBatchCropper {
     context: Arc<GpuContext>,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    pool: Arc<GpuBufferPool>,
 }
 
 impl GpuBatchCropper {
@@ -86,11 +87,24 @@ impl GpuBatchCropper {
             ]
         );
 
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
+
         Ok(Self {
             context,
             pipeline,
             bind_group_layout,
+            pool,
         })
+    }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.pool.memory_usage()
     }
 
     /// Execute the batch crop on the provided image and requests.
@@ -125,11 +139,16 @@ impl GpuBatchCropper {
         let device = self.context.device();
         let queue = self.context.queue();
 
-        let source_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("batch_crop_source"),
-            contents: cast_slice(&source_data),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let source_usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST;
+        let output_usage = wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST;
+        let readback_usage = wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST;
+
+        let source_buffer =
+            self.pool
+                .acquire(source_buffer_size, source_usage, Some("batch_crop_source"))?;
+        queue.write_buffer(&source_buffer, 0, cast_slice(&source_data));
 
         struct JobInfo {
             element_offset: usize,
@@ -168,30 +187,25 @@ impl GpuBatchCropper {
         }
 
         let total_bytes = (total_elements * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("batch_crop_readback"),
-            size: total_bytes,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let readback =
+            self.pool
+                .acquire(total_bytes, readback_usage, Some("batch_crop_readback"))?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("batch_crop_encoder"),
         });
-        let mut _transient_buffers = Vec::with_capacity(requests.len());
+        let mut transient_output_buffers: Vec<(wgpu::Buffer, wgpu::BufferAddress)> =
+            Vec::with_capacity(requests.len());
 
         for (req, job) in requests.iter().zip(jobs.iter()) {
             let buffer_len_bytes =
                 (job.element_count * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
-            let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("batch_crop_output"),
-                size: buffer_len_bytes,
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_SRC
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+            let output_buffer = self.pool.acquire(
+                buffer_len_bytes,
+                output_usage,
+                Some("batch_crop_output"),
+            )?;
 
             let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("batch_crop_uniforms"),
@@ -239,12 +253,19 @@ impl GpuBatchCropper {
                 readback_offset,
                 buffer_len_bytes,
             );
-            _transient_buffers.push(output_buffer);
+            transient_output_buffers.push((output_buffer, buffer_len_bytes));
         }
 
         queue.submit(std::iter::once(encoder.finish()));
 
         let out_pixels = gpu_readback!(readback, device, total_elements, "batch crop")?;
+
+        for (buffer, size) in transient_output_buffers {
+            self.pool.recycle(buffer, size, output_usage);
+        }
+        self.pool
+            .recycle(source_buffer, source_buffer_size, source_usage);
+        self.pool.recycle(readback, total_bytes, readback_usage);
 
         let mut outputs = Vec::with_capacity(requests.len());
         for job in jobs {

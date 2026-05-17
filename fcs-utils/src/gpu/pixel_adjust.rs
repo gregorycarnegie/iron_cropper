@@ -10,7 +10,7 @@ use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
 
-use super::{GpuContext, PIXEL_ADJUST_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{GpuBufferPool, GpuContext, PIXEL_ADJUST_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 
 const EPSILON: f32 = 1e-6;
 const FLAG_EXPOSURE: u32 = 1 << 0;
@@ -32,6 +32,7 @@ pub struct GpuPixelAdjust {
     context: Arc<GpuContext>,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    pool: Arc<GpuBufferPool>,
 }
 
 impl GpuPixelAdjust {
@@ -48,11 +49,24 @@ impl GpuPixelAdjust {
             ]
         );
 
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
+
         Ok(Self {
             context,
             pipeline,
             bind_group_layout,
+            pool,
         })
+    }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.pool.memory_usage()
     }
 
     pub fn needs_adjustment(settings: &EnhancementSettings) -> bool {
@@ -77,13 +91,19 @@ impl GpuPixelAdjust {
         let device = self.context.device();
         let queue = self.context.queue();
 
-        let storage_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("pixel_adjust_storage"),
-            contents: cast_slice(&data_u32),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        });
+        let buffer_size_bytes =
+            (data_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
+        let storage_usage = wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_DST
+            | wgpu::BufferUsages::COPY_SRC;
+        let readback_usage = wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST;
+
+        let storage_buffer = self.pool.acquire(
+            buffer_size_bytes,
+            storage_usage,
+            Some("pixel_adjust_storage"),
+        )?;
+        queue.write_buffer(&storage_buffer, 0, cast_slice(&data_u32));
 
         let uniforms = PixelAdjustUniforms {
             exposure_multiplier: if activity.exposure {
@@ -120,14 +140,11 @@ impl GpuPixelAdjust {
             ],
         });
 
-        let buffer_size_bytes =
-            (data_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pixel_adjust_readback"),
-            size: buffer_size_bytes,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let readback = self.pool.acquire(
+            buffer_size_bytes,
+            readback_usage,
+            Some("pixel_adjust_readback"),
+        )?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("pixel_adjust_encoder"),
@@ -147,6 +164,11 @@ impl GpuPixelAdjust {
 
         let out_pixels = gpu_readback!(readback, device, data_u32.len(), "pixel adjust")?;
         let out_bytes = unpack_rgba_pixels(&out_pixels);
+
+        self.pool
+            .recycle(storage_buffer, buffer_size_bytes, storage_usage);
+        self.pool
+            .recycle(readback, buffer_size_bytes, readback_usage);
 
         let image =
             RgbaImage::from_raw(width, height, out_bytes).context("failed to build RGBA image")?;

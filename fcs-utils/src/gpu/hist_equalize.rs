@@ -5,7 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{GpuContext, HIST_EQUALIZE_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{GpuBufferPool, GpuContext, HIST_EQUALIZE_WGSL, pack_rgba_pixels, unpack_rgba_pixels};
 use crate::{gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry};
 
 gpu_uniforms!(HistogramUniforms, 3, {
@@ -29,6 +29,15 @@ pub struct GpuHistogramEqualizer {
     histogram_bgl: wgpu::BindGroupLayout,
     cdf_bgl: wgpu::BindGroupLayout,
     apply_bgl: wgpu::BindGroupLayout,
+    pool: Arc<GpuBufferPool>,
+}
+
+fn hist_pixel_usage() -> wgpu::BufferUsages {
+    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST
+}
+
+fn hist_readback_usage() -> wgpu::BufferUsages {
+    wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST
 }
 
 impl GpuHistogramEqualizer {
@@ -107,6 +116,8 @@ impl GpuHistogramEqualizer {
             cache: None,
         });
 
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
+
         Ok(Self {
             context,
             histogram_pipeline,
@@ -115,7 +126,18 @@ impl GpuHistogramEqualizer {
             histogram_bgl,
             cdf_bgl,
             apply_bgl,
+            pool,
         })
+    }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.pool.memory_usage()
     }
 
     pub fn equalize(&self, image: &DynamicImage) -> Result<DynamicImage> {
@@ -142,13 +164,11 @@ impl GpuHistogramEqualizer {
         let device = self.context.device();
         let queue = self.context.queue();
 
-        let pixel_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("hist_pixels"),
-            contents: cast_slice(pixels),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
+        let pixel_buffer_size = std::mem::size_of_val(pixels) as wgpu::BufferAddress;
+        let pixel_buffer =
+            self.pool
+                .acquire(pixel_buffer_size, hist_pixel_usage(), Some("hist_pixels"))?;
+        queue.write_buffer(&pixel_buffer, 0, cast_slice(pixels));
         let histogram_size = (256 * 3 * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
         let histogram_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("histogram_buffer"),
@@ -315,18 +335,20 @@ impl GpuHistogramEqualizer {
             pass.dispatch_workgroups(dispatch, 1, 1);
         }
 
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("hist_apply_readback"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let readback =
+            self.pool
+                .acquire(buffer_size, hist_readback_usage(), Some("hist_apply_readback"))?;
         encoder.copy_buffer_to_buffer(&pixel_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 
         let expected_len = pixel_count as usize;
         let packed = gpu_readback!(readback, device, expected_len, "histogram equalization")?;
         let bytes = unpack_rgba_pixels(&packed);
+
+        self.pool
+            .recycle(pixel_buffer, buffer_size, hist_pixel_usage());
+        self.pool
+            .recycle(readback, buffer_size, hist_readback_usage());
 
         let result =
             RgbaImage::from_raw(width, height, bytes).context("failed to build equalized image")?;

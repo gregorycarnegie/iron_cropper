@@ -5,7 +5,7 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{BILATERAL_FILTER_WGSL, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{BILATERAL_FILTER_WGSL, GpuBufferPool, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
@@ -27,6 +27,7 @@ pub struct GpuBilateralFilter {
     context: Arc<GpuContext>,
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
+    pool: Arc<GpuBufferPool>,
 }
 
 impl GpuBilateralFilter {
@@ -44,11 +45,24 @@ impl GpuBilateralFilter {
             ]
         );
 
+        let pool = Arc::new(GpuBufferPool::new(context.clone(), None));
+
         Ok(Self {
             context,
             pipeline,
             bind_group_layout,
+            pool,
         })
+    }
+
+    /// Clear pooled buffers to free up GPU memory.
+    pub fn clear_cache(&self) {
+        self.pool.clear();
+    }
+
+    /// Returns the estimated size in bytes of pooled buffers.
+    pub fn memory_usage(&self) -> u64 {
+        self.pool.memory_usage()
     }
 
     pub fn smooth(
@@ -75,27 +89,25 @@ impl GpuBilateralFilter {
         let queue = self.context.queue();
         let buffer_size = (data_u32.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
-        let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("bilateral_filter_input"),
-            contents: cast_slice(&data_u32),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-        });
-        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bilateral_filter_output"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("bilateral_filter_readback"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let storage_usage = wgpu::BufferUsages::STORAGE
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::COPY_DST;
+        let readback_usage = wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST;
+
+        let input_buffer =
+            self.pool
+                .acquire(buffer_size, storage_usage, Some("bilateral_filter_input"))?;
+        queue.write_buffer(&input_buffer, 0, cast_slice(&data_u32));
+        let output_buffer = self.pool.acquire(
+            buffer_size,
+            storage_usage,
+            Some("bilateral_filter_output"),
+        )?;
+        let readback = self.pool.acquire(
+            buffer_size,
+            readback_usage,
+            Some("bilateral_filter_readback"),
+        )?;
 
         let uniforms = BilateralUniforms {
             width,
@@ -151,6 +163,11 @@ impl GpuBilateralFilter {
 
         let out_pixels = gpu_readback!(readback, device, data_u32.len(), "bilateral filter")?;
         let out_bytes = unpack_rgba_pixels(&out_pixels);
+
+        self.pool.recycle(input_buffer, buffer_size, storage_usage);
+        self.pool
+            .recycle(output_buffer, buffer_size, storage_usage);
+        self.pool.recycle(readback, buffer_size, readback_usage);
 
         let image = RgbaImage::from_raw(width, height, out_bytes)
             .context("failed to build smoothed image")?;
