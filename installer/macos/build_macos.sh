@@ -81,6 +81,10 @@ cp "$BIN_SRC" "$APP_DIR/Contents/MacOS/$BINARY_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$BINARY_NAME"
 cp "$MODEL_FILE" "$APP_DIR/Contents/MacOS/models/"
 
+if [ -d samples ]; then
+    cp -R samples "$APP_DIR/Contents/Resources/samples"
+fi
+
 for license in LICENSE LICENSE-MIT LICENSE-APACHE README.md; do
     [ -f "$license" ] && cp "$license" "$APP_DIR/Contents/Resources/"
 done

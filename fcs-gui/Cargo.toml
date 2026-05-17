@@ -72,5 +72,7 @@ assets = [
         "usr/share/icons/hicolor/256x256/apps/",
         "644",
     ],
+    ["../samples/*.jpg", "usr/share/face-crop-studio/samples/", "644"],
+    ["../samples/*.md", "usr/share/face-crop-studio/samples/", "644"],
     ["../README.md", "usr/share/doc/face-crop-studio/README.md", "644"],
 ]

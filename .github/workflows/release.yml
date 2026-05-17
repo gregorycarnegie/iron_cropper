@@ -168,6 +168,9 @@ jobs:
           Copy-Item target/release/fcs-gui.exe "$DistDir/fcs-gui.exe"
           Copy-Item fcs-gui/assets/app_icon.ico "$DistDir/app_icon.ico"
           Copy-Item models/face_detection_yunet_2023mar_640.onnx "$DistDir/models/face_detection_yunet_2023mar_640.onnx"
+          if (Test-Path samples) {
+            Copy-Item -Recurse samples "$DistDir/samples"
+          }
           if (Test-Path README.md) {
             Copy-Item README.md "$DistDir/README.md"
           }

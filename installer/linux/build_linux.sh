@@ -48,6 +48,11 @@ cp "$MODEL_FILE" "$APPDIR/usr/share/face-crop-studio/models/"
 cp "$DESKTOP_FILE" "$APPDIR/usr/share/applications/"
 cp "$ICON_PNG" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP_NAME.png"
 
+if [ -d samples ]; then
+    mkdir -p "$APPDIR/usr/share/face-crop-studio/samples"
+    cp -R samples/. "$APPDIR/usr/share/face-crop-studio/samples/"
+fi
+
 # AppImage runtime requires .desktop + icon at the AppDir root.
 cp "$DESKTOP_FILE" "$APPDIR/$APP_NAME.desktop"
 cp "$ICON_PNG" "$APPDIR/$APP_NAME.png"

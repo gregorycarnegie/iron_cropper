@@ -145,6 +145,13 @@ Section "Uninstall"
   ; if the user placed additional models there.
   Delete "$INSTDIR\models\face_detection_yunet_2023mar_640.onnx"
   RMDir "$INSTDIR\models"
+  ; Remove bundled sample images and docs; RMDir (no /r) preserves any extra
+  ; files the user dropped into the samples folder.
+  Delete "$INSTDIR\samples\*.jpg"
+  Delete "$INSTDIR\samples\*.png"
+  Delete "$INSTDIR\samples\*.webp"
+  Delete "$INSTDIR\samples\*.md"
+  RMDir "$INSTDIR\samples"
   ; Remove the install directory only if it is now empty.
   RMDir "$INSTDIR"
 
