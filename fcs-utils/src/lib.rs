@@ -107,3 +107,79 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     anyhow::ensure!(path.exists(), "path does not exist: {}", path.display());
     Ok(path.canonicalize()?)
 }
+
+/// Subdirectory under `/usr/share/` (or AppImage `usr/share/`) where Linux
+/// packages install data files alongside the binary in `/usr/bin/`.
+const LINUX_SHARE_DIR: &str = "face-crop-studio";
+
+/// Resolve a (possibly relative) data file path to a usable filesystem path.
+///
+/// Launchers across the supported platforms set CWD inconsistently — macOS
+/// `.app` bundles run with CWD=`/`, AppImages mount under `/tmp/.mount_*`, and
+/// `.deb` installs put the binary in `/usr/bin/` while data goes to
+/// `/usr/share/<app>/`. This helper walks a small list of fallback locations
+/// so a configured relative path resolves the same way on every platform.
+///
+/// Lookup order:
+/// 1. The path as given (relative to CWD).
+/// 2. `<exe_dir>/<path>` — Windows portable zip and macOS `Contents/MacOS/`.
+/// 3. `<exe_dir>/../share/face-crop-studio/<path>` — Linux FHS layout used by
+///    both AppImage and `.deb` installs.
+///
+/// Caller owns error reporting if none of the candidates exist; the original
+/// path is returned so error messages stay informative.
+pub fn resolve_data_path<P: AsRef<Path>>(path: P) -> PathBuf {
+    let path = path.as_ref();
+    if path.exists() {
+        return path.to_path_buf();
+    }
+    if path.is_relative()
+        && let Ok(exe) = std::env::current_exe()
+        && let Some(exe_dir) = exe.parent()
+    {
+        let next_to_exe = exe_dir.join(path);
+        if next_to_exe.exists() {
+            return next_to_exe;
+        }
+        let share = exe_dir.join("../share").join(LINUX_SHARE_DIR).join(path);
+        if share.exists() {
+            return share;
+        }
+    }
+    path.to_path_buf()
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolve_data_path_returns_existing_absolute_path_unchanged() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("real.onnx");
+        fs::write(&file, b"").unwrap();
+        assert_eq!(resolve_data_path(&file), file);
+    }
+
+    #[test]
+    fn resolve_data_path_returns_existing_relative_path_unchanged() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("present.onnx");
+        fs::write(&file, b"").unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let resolved = resolve_data_path(Path::new("present.onnx"));
+        std::env::set_current_dir(prev).unwrap();
+        assert!(resolved.exists());
+        assert_eq!(resolved.file_name().unwrap(), "present.onnx");
+    }
+
+    #[test]
+    fn resolve_data_path_returns_missing_path_unchanged_for_error_messaging() {
+        let path = Path::new("definitely/not/here.onnx");
+        let resolved = resolve_data_path(path);
+        assert_eq!(resolved, path);
+    }
+}

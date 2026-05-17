@@ -12,7 +12,7 @@ use fcs_core::{
 };
 use fcs_utils::{
     GpuAvailability, GpuContext, GpuContextOptions, config::AppSettings, load_image,
-    load_image_raw, quality::estimate_sharpness,
+    load_image_raw, quality::estimate_sharpness, resolve_data_path,
 };
 use log::{error, info, warn};
 use std::{
@@ -36,13 +36,15 @@ pub fn build_detector(
         maybe_build_gpu_preprocessor(settings)
     };
 
-    let Some(model_path) = settings.model_path.as_deref() else {
+    let Some(configured_model_path) = settings.model_path.as_deref() else {
         return (
             gpu_status,
             gpu_context,
             Err(anyhow::anyhow!("no model path configured")),
         );
     };
+    let model_path = resolve_data_path(configured_model_path);
+    let model_path_display = model_path.display().to_string();
 
     let preprocess: PreprocessConfig = settings.input.into();
     let postprocess: PostprocessConfig = (&settings.detection).into();
@@ -51,17 +53,19 @@ pub fn build_detector(
     let build_cpu = || -> Result<YuNetDetector> {
         if let Some(pre) = &preprocessor {
             YuNetDetector::with_preprocessor(
-                model_path,
+                &model_path,
                 preprocess.clone(),
                 postprocess.clone(),
                 Arc::clone(pre),
             )
             .with_context(|| {
-                format!("failed to load YuNet model with GPU preprocessing from {model_path}")
+                format!(
+                    "failed to load YuNet model with GPU preprocessing from {model_path_display}"
+                )
             })
         } else {
-            YuNetDetector::new(model_path, preprocess.clone(), postprocess.clone())
-                .with_context(|| format!("failed to load YuNet model from {model_path}"))
+            YuNetDetector::new(&model_path, preprocess.clone(), postprocess.clone())
+                .with_context(|| format!("failed to load YuNet model from {model_path_display}"))
         }
     };
 
@@ -71,12 +75,12 @@ pub fn build_detector(
             .map(Arc::clone)
             .unwrap_or_else(|| Arc::new(CpuPreprocessor));
         match YuNetDetector::with_gpu_preprocessor(
-            model_path,
+            &model_path,
             preprocess.clone(),
             postprocess.clone(),
             pre,
         )
-        .with_context(|| format!("failed GPU YuNet from {model_path}"))
+        .with_context(|| format!("failed GPU YuNet from {model_path_display}"))
         {
             Ok(d) => {
                 info!("Using GPU inference");

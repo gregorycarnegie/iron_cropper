@@ -623,7 +623,7 @@ Leverage GPU compute for massive performance gains in image processing operation
 - [ ] **Packaging**
   - [x] Windows installer (MSI or NSIS) (v1.0.0 target)
   - [x] macOS app bundle (.app) — Apple Silicon `.dmg` via `installer/macos/build_macos.sh`, wired into `release.yml` as the `macos-release` job. Bundle layout: binary at `Contents/MacOS/fcs-gui`, model at `Contents/MacOS/models/`, icon at `Contents/Resources/AppIcon.icns`. Signing + notarization activate automatically if `APPLE_DEVELOPER_ID_CERT/PASS/NAME` and `APPLE_NOTARIZE_USER/PASS` + `APPLE_TEAM_ID` secrets are present; otherwise ships unsigned with `xattr -dr com.apple.quarantine` workaround documented. Model resolution falls back to exe-parent via new `fcs_utils::resolve_data_path` so `.app` launches with CWD=`/` still find the bundled model.
-  - [ ] Linux AppImage or .deb package (deferred to a future release)
+  - [x] Linux AppImage + `.deb` (x86_64) — `installer/linux/build_linux.sh` builds both formats; wired into `release.yml` as the `linux-release` job on `ubuntu-22.04` (glibc 2.35 baseline). AppImage layout follows FHS (`usr/bin/fcs-gui`, `usr/share/face-crop-studio/models/`); `cargo-deb` produces the `.deb` from `[package.metadata.deb]` in `fcs-gui/Cargo.toml`. `resolve_data_path` extended to look in `<exe_dir>/../share/face-crop-studio/` so the model resolves under either layout. Icon PNG generated at build time from `app_logo.svg` via `rsvg-convert` (gitignored output).
   - [ ] Include sample images and presets
 
 - [x] **Release**

@@ -15,7 +15,7 @@ use fcs_core::{
 };
 use fcs_utils::{
     OutputOptions, Quality, config::AppSettings, configure_telemetry, estimate_sharpness,
-    init_logging, normalize_path,
+    init_logging, normalize_path, resolve_data_path,
 };
 use image::{DynamicImage, GenericImageView};
 use log::{debug, info, warn};
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let model_path = normalize_path(&args.model)?;
+    let model_path = normalize_path(resolve_data_path(&args.model))?;
     let annotate_dir = if let Some(dir) = args.annotate.as_ref() {
         fs::create_dir_all(dir)
             .with_context(|| format!("failed to create annotation directory {}", dir.display()))?;
