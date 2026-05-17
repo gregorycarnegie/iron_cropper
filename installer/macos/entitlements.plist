@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime entitlements for notarization. -->
+	<!-- Webcam access via nokhwa. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<!-- wgpu's Metal backend uses Apple's signed Metal frameworks; no JIT entitlement needed. -->
+	<!-- App is not sandboxed: file pickers via rfd hit the full filesystem the user has access to. -->
+</dict>
+</plist>

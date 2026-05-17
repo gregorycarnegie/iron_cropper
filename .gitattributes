@@ -1,0 +1,4 @@
+# Shell scripts and macOS plists must keep LF endings — macOS chokes on CRLF.
+*.sh text eol=lf
+*.plist text eol=lf
+*.plist.in text eol=lf

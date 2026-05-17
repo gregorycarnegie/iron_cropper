@@ -622,7 +622,7 @@ Leverage GPU compute for massive performance gains in image processing operation
 
 - [ ] **Packaging**
   - [x] Windows installer (MSI or NSIS) (v1.0.0 target)
-  - [ ] macOS app bundle (.app) (deferred to a future release)
+  - [x] macOS app bundle (.app) — Apple Silicon `.dmg` via `installer/macos/build_macos.sh`, wired into `release.yml` as the `macos-release` job. Bundle layout: binary at `Contents/MacOS/fcs-gui`, model at `Contents/MacOS/models/`, icon at `Contents/Resources/AppIcon.icns`. Signing + notarization activate automatically if `APPLE_DEVELOPER_ID_CERT/PASS/NAME` and `APPLE_NOTARIZE_USER/PASS` + `APPLE_TEAM_ID` secrets are present; otherwise ships unsigned with `xattr -dr com.apple.quarantine` workaround documented. Model resolution falls back to exe-parent via new `fcs_utils::resolve_data_path` so `.app` launches with CWD=`/` still find the bundled model.
   - [ ] Linux AppImage or .deb package (deferred to a future release)
   - [ ] Include sample images and presets
 
@@ -632,3 +632,9 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] Write release notes documenting all features
   - [x] Update README with installation instructions
   - [x] Add screenshots/GIFs demonstrating crop features
+
+### Phase 14: Code sigining (deferred)
+- [ ] **Windows**
+  - [ ] Requires CODE_SIGN_PFX (base64-encoded PFX) and CODE_SIGN_PASSWORD. To be set as repository secrets. Skipped silently if absent.
+- [ ] **macOS**
+  - [ ] To activate signing/notarization later, add five repo secrets: APPLE_DEVELOPER_ID_CERT (base64 of the .p12), APPLE_DEVELOPER_ID_PASS (.p12 password), APPLE_DEVELOPER_ID_NAME (the keychain identity string), APPLE_NOTARIZE_USER/APPLE_NOTARIZE_PASS (Apple ID + app-specific password), APPLE_TEAM_ID. No code changes needed.
