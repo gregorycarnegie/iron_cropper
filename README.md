@@ -85,19 +85,37 @@ The release package includes `models/face_detection_yunet_2023mar_640.onnx` by d
 
 ## Screenshots
 
+<p align="center">
+  <a href="screenshots/gui-main.png"><img src="screenshots/gui-main.png" alt="Face Crop Studio desktop workspace with a loaded portrait, face detections, crop preview, queue, and export controls" width="900"/></a><br/>
+  <sub><strong>Desktop workspace</strong> - loaded image, detection overlays, crop preview, queue, and export controls.</sub>
+</p>
+
 <table>
   <tr>
-    <td align="center"><a href="screenshots/gui-main.png"><img src="screenshots/gui-main.png" width="400"/></a><br/><em>Main GUI workspace with loaded image, detections, and export controls</em></td>
-    <td align="center"><a href="screenshots/gui-crop-config.png"><img src="screenshots/gui-crop-config.png" width="400"/></a><br/><em>Crop configuration panel showing presets, sizing, and positioning</em></td>
+    <td width="42%" rowspan="2" align="center" valign="top">
+      <a href="screenshots/gui-crop-config.png"><img src="screenshots/gui-crop-config.png" alt="Crop configuration panel showing presets, sizing, shape, padding, and positioning controls" width="240"/></a><br/>
+      <sub><strong>Crop setup</strong><br/>Presets, target sizing, shape, padding, and positioning.</sub>
+    </td>
+    <td width="58%" align="center" valign="top">
+      <a href="screenshots/gui-enhancement.png"><img src="screenshots/gui-enhancement.png" alt="Enhancement controls for exposure, brightness, contrast, saturation, sharpening, smoothing, and background blur" width="320"/></a><br/>
+      <sub><strong>Enhancement controls</strong><br/>Post-crop color, sharpness, smoothing, and blur tuning.</sub>
+    </td>
   </tr>
   <tr>
-    <td align="center"><a href="screenshots/gui-batch.png"><img src="screenshots/gui-batch.png" width="400"/></a><br/><em>Batch processing workflow with queue management and progress status</em></td>
-    <td align="center"><a href="screenshots/gui-enhancement.png"><img src="screenshots/gui-enhancement.png" width="400"/></a><br/><em>Enhancement controls for post-crop adjustments and quality tuning</em></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><a href="screenshots/cli-example.png"><img src="screenshots/cli-example.png" width="800"/></a><br/><em>Representative CLI run for automation and batch-friendly usage</em></td>
+    <td align="center" valign="top">
+      <a href="screenshots/gui-batch.png"><img src="screenshots/gui-batch.png" alt="Batch processing queue with image status, queue controls, and export buttons" width="320"/></a><br/>
+      <sub><strong>Batch queue</strong><br/>Multi-image queue management and export progress.</sub>
+    </td>
   </tr>
 </table>
+
+<details>
+  <summary><strong>CLI automation example</strong></summary>
+  <p align="center">
+    <a href="screenshots/cli-example.png"><img src="screenshots/cli-example.png" alt="Terminal run showing Face Crop Studio CLI output, detection metadata, crop coordinates, quality score, and summary" width="900"/></a><br/>
+    <sub>Batch-friendly CLI output with detection metadata, crop coordinates, quality scoring, and processing summary.</sub>
+  </p>
+</details>
 
 ## Development Tasks
 
