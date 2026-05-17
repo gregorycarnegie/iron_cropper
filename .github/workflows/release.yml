@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -39,9 +39,9 @@ jobs:
         run: |
           mkdir -p models
           curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+          uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
 
       - name: Verify model checksums
         shell: bash
@@ -307,7 +307,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -317,9 +317,9 @@ jobs:
         run: |
           mkdir -p models
           curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+          uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
 
       - name: Verify model checksums
         shell: bash
@@ -453,7 +453,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -463,9 +463,9 @@ jobs:
         run: |
           mkdir -p models
           curl -L -o models/face_detection_yunet_2023mar.onnx https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
-          uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
-            || uvx --python 3.12 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
+          uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --overwrite-input-shape "1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx --path-to-input-shape="1,3,640,640" \
+            || uvx --python 3.11 --with onnxsim==0.4.36 --with onnxruntime onnxsim models/face_detection_yunet_2023mar.onnx models/face_detection_yunet_2023mar_640.onnx 1,3,640,640
 
       - name: Verify model checksums
         shell: bash
@@ -532,9 +532,9 @@ jobs:
         uses: swatinem/rust-cache@v2
 
       - name: Install cargo-deb
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deb
+        run: |
+          cargo install cargo-deb --locked --version 3.7.0
+          cargo deb --version
 
       - name: Install appimagetool
         # Extract instead of running directly so we don't need FUSE on the runner.
