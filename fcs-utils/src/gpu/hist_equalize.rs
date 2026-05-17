@@ -335,9 +335,11 @@ impl GpuHistogramEqualizer {
             pass.dispatch_workgroups(dispatch, 1, 1);
         }
 
-        let readback =
-            self.pool
-                .acquire(buffer_size, hist_readback_usage(), Some("hist_apply_readback"))?;
+        let readback = self.pool.acquire(
+            buffer_size,
+            hist_readback_usage(),
+            Some("hist_apply_readback"),
+        )?;
         encoder.copy_buffer_to_buffer(&pixel_buffer, 0, &readback, 0, buffer_size);
         queue.submit(std::iter::once(encoder.finish()));
 

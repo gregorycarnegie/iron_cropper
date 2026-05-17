@@ -380,7 +380,9 @@ fn process_crops(
                 crop.quality,
                 crop.quality_score
             );
-            counters.crops_skipped_quality.fetch_add(1, Ordering::Relaxed);
+            counters
+                .crops_skipped_quality
+                .fetch_add(1, Ordering::Relaxed);
             continue;
         }
 

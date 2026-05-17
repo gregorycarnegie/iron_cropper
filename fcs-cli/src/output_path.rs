@@ -46,7 +46,12 @@ pub(crate) fn build_crop_filename(spec: CropFilenameSpec<'_>) -> String {
             name
         }
     } else {
-        format!("{}_face{}.{}", spec.source_stem, spec.crop_index + 1, spec.ext)
+        format!(
+            "{}_face{}.{}",
+            spec.source_stem,
+            spec.crop_index + 1,
+            spec.ext
+        )
     };
 
     if let Some(suffix) = spec.quality_suffix {

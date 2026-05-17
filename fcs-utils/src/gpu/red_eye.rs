@@ -98,9 +98,9 @@ impl GpuRedEyeRemoval {
             .pool
             .acquire(buffer_size, storage_usage, Some("red_eye_storage"))?;
         queue.write_buffer(&storage, 0, cast_slice(&data_u32));
-        let readback =
-            self.pool
-                .acquire(buffer_size, readback_usage, Some("red_eye_readback"))?;
+        let readback = self
+            .pool
+            .acquire(buffer_size, readback_usage, Some("red_eye_readback"))?;
 
         let eyes_slice = eyes.unwrap_or(&[]);
         let (eyes_data, eye_count) = if eyes_slice.is_empty() {

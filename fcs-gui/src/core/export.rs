@@ -309,9 +309,9 @@ pub fn start_batch_export(app: &mut App2) {
         pool.install(move || {
             // `for_each_with` clones the init once per worker thread, so the
             // sender refcount bumps once per worker rather than once per task.
-            tasks.into_par_iter().for_each_with(
-                inner_tx,
-                |tx, (index, path, output_override)| {
+            tasks
+                .into_par_iter()
+                .for_each_with(inner_tx, |tx, (index, path, output_override)| {
                     let _ = tx.send(JobMessage::BatchProgress {
                         index,
                         status: BatchFileStatus::Processing,
@@ -332,8 +332,7 @@ pub fn start_batch_export(app: &mut App2) {
                     }
 
                     let _ = tx.send(JobMessage::BatchProgress { index, status });
-                },
-            );
+                });
         });
 
         let _ = tx.send(JobMessage::BatchComplete {
@@ -447,7 +446,8 @@ fn run_batch_sequential(
             index,
             status: BatchFileStatus::Processing,
         });
-        let status = run_batch_job_panic_safe(detector, path, output_dir, settings, output_override);
+        let status =
+            run_batch_job_panic_safe(detector, path, output_dir, settings, output_override);
         if matches!(status, BatchFileStatus::Failed { .. }) {
             failed.fetch_add(1, AtomicOrdering::Relaxed);
         } else {

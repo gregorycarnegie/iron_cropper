@@ -730,7 +730,6 @@ impl App2 {
         self.selected_faces.insert(idx);
         self.crop_preview_cache.clear();
     }
-
 }
 
 pub(crate) use fcs_utils::is_supported_image_path;

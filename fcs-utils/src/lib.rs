@@ -40,6 +40,7 @@ pub use color::{
     RgbaColor, cmyk_to_rgb, hsl_to_rgb, hsv_to_rgb, parse_hex_color, rgb_to_cmyk, rgb_to_hsl,
     rgb_to_hsv,
 };
+pub use config::PositioningMode;
 pub use enhance::{EnhancementSettings, WgpuEnhancer, apply_enhancements};
 pub use fixtures::{
     fixture_path, fixtures_dir, load_fixture_bytes, load_fixture_image, load_fixture_json,
@@ -49,8 +50,8 @@ pub use gpu::{
     GpuContextOptions, GpuContextPool, GpuInitError, GpuPoolError, RedEye,
 };
 pub use image_utils::{
-    SUPPORTED_IMAGE_EXTENSIONS, compute_resize_scales, dynamic_to_bgr_chw,
-    is_supported_image_path, load_image, load_image_raw, resize_image, rgb_to_bgr_chw,
+    SUPPORTED_IMAGE_EXTENSIONS, compute_resize_scales, dynamic_to_bgr_chw, is_supported_image_path,
+    load_image, load_image_raw, resize_image, rgb_to_bgr_chw,
 };
 use log::LevelFilter;
 #[cfg(feature = "mapping")]
@@ -59,7 +60,6 @@ pub use mapping::{
     MappingReadOptions, detect_format as detect_mapping_format, inspect_mapping_sources,
     list_sqlite_tables, load_mapping_entries, load_mapping_preview,
 };
-pub use config::PositioningMode;
 pub use output::{
     ImageFormatHint, MetadataContext, OutputOptions, PngCompression, append_suffix_to_filename,
     save_dynamic_image,

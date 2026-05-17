@@ -5,7 +5,9 @@ use bytemuck::{bytes_of, cast_slice};
 use image::{DynamicImage, RgbaImage};
 use wgpu::util::DeviceExt;
 
-use super::{BILATERAL_FILTER_WGSL, GpuBufferPool, GpuContext, pack_rgba_pixels, unpack_rgba_pixels};
+use super::{
+    BILATERAL_FILTER_WGSL, GpuBufferPool, GpuContext, pack_rgba_pixels, unpack_rgba_pixels,
+};
 use crate::{
     create_gpu_pipeline, gpu_readback, gpu_uniforms, storage_buffer_entry, uniform_buffer_entry,
 };
@@ -98,11 +100,9 @@ impl GpuBilateralFilter {
             self.pool
                 .acquire(buffer_size, storage_usage, Some("bilateral_filter_input"))?;
         queue.write_buffer(&input_buffer, 0, cast_slice(&data_u32));
-        let output_buffer = self.pool.acquire(
-            buffer_size,
-            storage_usage,
-            Some("bilateral_filter_output"),
-        )?;
+        let output_buffer =
+            self.pool
+                .acquire(buffer_size, storage_usage, Some("bilateral_filter_output"))?;
         let readback = self.pool.acquire(
             buffer_size,
             readback_usage,
@@ -165,8 +165,7 @@ impl GpuBilateralFilter {
         let out_bytes = unpack_rgba_pixels(&out_pixels);
 
         self.pool.recycle(input_buffer, buffer_size, storage_usage);
-        self.pool
-            .recycle(output_buffer, buffer_size, storage_usage);
+        self.pool.recycle(output_buffer, buffer_size, storage_usage);
         self.pool.recycle(readback, buffer_size, readback_usage);
 
         let image = RgbaImage::from_raw(width, height, out_bytes)

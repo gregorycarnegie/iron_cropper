@@ -201,11 +201,9 @@ impl GpuBatchCropper {
             let buffer_len_bytes =
                 (job.element_count * std::mem::size_of::<u32>()) as wgpu::BufferAddress;
 
-            let output_buffer = self.pool.acquire(
-                buffer_len_bytes,
-                output_usage,
-                Some("batch_crop_output"),
-            )?;
+            let output_buffer =
+                self.pool
+                    .acquire(buffer_len_bytes, output_usage, Some("batch_crop_output"))?;
 
             let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("batch_crop_uniforms"),
