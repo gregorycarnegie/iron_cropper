@@ -655,4 +655,9 @@ pub struct App2 {
 
     // Deferred side-effects
     pub needs_detector_rebuild: bool,
+
+    // Cached OS window title; compared each frame to decide whether to emit
+    // ViewportCommand::Title. Drives the taskbar/Alt+Tab label on Windows and
+    // the native title bar on macOS/Linux.
+    pub last_window_title: String,
 }

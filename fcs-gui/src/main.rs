@@ -18,8 +18,7 @@ fn main() -> eframe::Result<()> {
         .with_inner_size([1480.0, 920.0])
         .with_min_inner_size([1000.0, 640.0])
         .with_resizable(true)
-        .with_drag_and_drop(true)
-        .with_decorations(false);
+        .with_drag_and_drop(true);
 
     if let Some(icon) = load_app_icon() {
         options.viewport = options.viewport.with_icon(Arc::new(icon));

@@ -157,6 +157,27 @@ impl App2 {
             rotation_drag: None,
             show_about: false,
             needs_detector_rebuild: false,
+            last_window_title: String::new(),
+        }
+    }
+
+    fn sync_window_title(&mut self, ctx: &egui::Context) {
+        let mut desired = match self
+            .preview
+            .image_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+        {
+            Some(name) => format!("Face Crop Studio — {name}"),
+            None => "Face Crop Studio".to_owned(),
+        };
+        if self.is_busy {
+            desired.push_str(" ●");
+        }
+        if desired != self.last_window_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(desired.clone()));
+            self.last_window_title = desired;
         }
     }
 }
@@ -180,13 +201,13 @@ impl App for App2 {
         self.poll_worker(ctx);
         self.poll_webcam_frames(ctx);
         self.handle_dropped_files(ctx);
+        self.sync_window_title(ctx);
         if self.is_busy || self.webcam_state.status == WebcamStatus::Active {
             ctx.request_repaint();
         }
     }
 
     fn ui(&mut self, root_ui: &mut egui::Ui, _frame: &mut Frame) {
-        ui::titlebar::show(root_ui, self);
         ui::menubar::show(root_ui, self);
         ui::toolbar::show(root_ui, self);
         ui::statusbar::show(root_ui, self);
