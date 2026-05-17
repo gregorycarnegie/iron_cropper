@@ -87,15 +87,15 @@ The release package includes `models/face_detection_yunet_2023mar_640.onnx` by d
 
 <table>
   <tr>
-    <td align="center"><img src="screenshots/gui-main.png" width="400"/><br/><em>Main GUI workspace with loaded image, detections, and export controls</em></td>
-    <td align="center"><img src="screenshots/gui-crop-config.png" width="400"/><br/><em>Crop configuration panel showing presets, sizing, and positioning</em></td>
+    <td align="center"><a href="screenshots/gui-main.png"><img src="screenshots/gui-main.png" width="400"/></a><br/><em>Main GUI workspace with loaded image, detections, and export controls</em></td>
+    <td align="center"><a href="screenshots/gui-crop-config.png"><img src="screenshots/gui-crop-config.png" width="400"/></a><br/><em>Crop configuration panel showing presets, sizing, and positioning</em></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/gui-batch.png" width="400"/><br/><em>Batch processing workflow with queue management and progress status</em></td>
-    <td align="center"><img src="screenshots/gui-enhancement.png" width="400"/><br/><em>Enhancement controls for post-crop adjustments and quality tuning</em></td>
+    <td align="center"><a href="screenshots/gui-batch.png"><img src="screenshots/gui-batch.png" width="400"/></a><br/><em>Batch processing workflow with queue management and progress status</em></td>
+    <td align="center"><a href="screenshots/gui-enhancement.png"><img src="screenshots/gui-enhancement.png" width="400"/></a><br/><em>Enhancement controls for post-crop adjustments and quality tuning</em></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="screenshots/cli-example.png" width="800"/><br/><em>Representative CLI run for automation and batch-friendly usage</em></td>
+    <td colspan="2" align="center"><a href="screenshots/cli-example.png"><img src="screenshots/cli-example.png" width="800"/></a><br/><em>Representative CLI run for automation and batch-friendly usage</em></td>
   </tr>
 </table>
 
