@@ -6,7 +6,7 @@ use crate::ui;
 
 use eframe::{App, CreationContext, Frame};
 use egui::{CursorIcon, ResizeDirection, ViewportCommand};
-use fcs_core::{CropSettings as CoreCropSettings, preset_by_name};
+use fcs_core::CropSettings as CoreCropSettings;
 use fcs_utils::{
     WgpuEnhancer,
     config::default_settings_path,
@@ -667,19 +667,10 @@ impl App2 {
     }
 
     pub fn resolved_output_dimensions(&self) -> (u32, u32) {
-        if self.settings.crop.preset == "custom" {
-            (
-                self.settings.crop.output_width,
-                self.settings.crop.output_height,
-            )
-        } else if let Some(preset) = preset_by_name(&self.settings.crop.preset) {
-            (preset.width, preset.height)
-        } else {
-            (
-                self.settings.crop.output_width,
-                self.settings.crop.output_height,
-            )
-        }
+        (
+            self.settings.crop.output_width,
+            self.settings.crop.output_height,
+        )
     }
 
     pub fn build_crop_settings(&self) -> CoreCropSettings {
@@ -724,17 +715,9 @@ impl App2 {
 pub(crate) fn build_crop_settings_from_app_settings(
     settings: &fcs_utils::config::AppSettings,
 ) -> CoreCropSettings {
-    let (output_width, output_height) = if settings.crop.preset == "custom" {
-        (settings.crop.output_width, settings.crop.output_height)
-    } else if let Some(preset) = preset_by_name(&settings.crop.preset) {
-        (preset.width, preset.height)
-    } else {
-        (settings.crop.output_width, settings.crop.output_height)
-    };
-
     CoreCropSettings {
-        output_width,
-        output_height,
+        output_width: settings.crop.output_width,
+        output_height: settings.crop.output_height,
         face_height_pct: settings.crop.face_height_pct,
         positioning_mode: settings.crop.positioning_mode,
         horizontal_offset: settings.crop.horizontal_offset,

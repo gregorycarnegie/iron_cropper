@@ -12,6 +12,24 @@ use fcs_utils::{CropShape, ImageFormatHint, PositioningMode};
 
 const BODY_MARGIN_X: i8 = 14;
 
+/// Map output dimensions back to the aspect-ratio segmented-control index
+/// (0 = Free, 1 = 1:1, 2 = 4:5, 3 = 3:4). Falls back to Free when nothing matches.
+fn aspect_idx_for(width: u32, height: u32) -> usize {
+    if width == 0 || height == 0 {
+        return 0;
+    }
+    let ratio = width as f32 / height as f32;
+    if (ratio - 1.0).abs() < 0.005 {
+        1
+    } else if (ratio - 4.0 / 5.0).abs() < 0.005 {
+        2
+    } else if (ratio - 3.0 / 4.0).abs() < 0.005 {
+        3
+    } else {
+        0
+    }
+}
+
 pub fn show(ui: &mut Ui, app: &mut App2) {
     ui.set_min_height(ui.available_height());
 
@@ -176,9 +194,13 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
             });
         if selected_key != app.settings.crop.preset {
             app.settings.crop.preset = selected_key.clone();
-            if let Some(p) = preset_by_name(&selected_key) {
+            if let Some(p) = preset_by_name(&selected_key)
+                && p.width > 0
+                && p.height > 0
+            {
                 app.settings.crop.output_width = p.width;
                 app.settings.crop.output_height = p.height;
+                app.aspect_ratio_idx = aspect_idx_for(p.width, p.height);
             }
             app.settings.crop.shape = CropShape::Rectangle;
             let c = &mut app.settings.crop;
@@ -245,6 +267,8 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                 }
                 _ => {} // Free — keep current dimensions
             }
+            app.settings.crop.preset = "Custom".to_string();
+            app.crop_preview_cache.clear();
         }
 
         // Face height (stored as 0-100)
@@ -260,6 +284,7 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
         );
 
         // Width / Height
+        let mut dims_changed = false;
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 ui.set_width((ui.available_width() - 6.0) / 2.0);
@@ -271,6 +296,7 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                     && let Ok(v) = w_str.parse::<u32>()
                 {
                     app.settings.crop.output_width = v;
+                    dims_changed = true;
                 }
             });
             ui.add_space(6.0);
@@ -283,9 +309,15 @@ fn panel_01_crop_framing(ui: &mut Ui, app: &mut App2) {
                     && let Ok(v) = h_str.parse::<u32>()
                 {
                     app.settings.crop.output_height = v;
+                    dims_changed = true;
                 }
             });
         });
+        if dims_changed {
+            app.settings.crop.preset = "Custom".to_string();
+            app.aspect_ratio_idx = 0;
+            app.crop_preview_cache.clear();
+        }
 
         // Crop overlay toggle
         toggle_row(ui, "Show crop overlay", &mut app.show_crop_overlay);

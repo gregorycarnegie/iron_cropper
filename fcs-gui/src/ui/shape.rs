@@ -246,7 +246,19 @@ pub fn shape_controls(ui: &mut Ui, app: &mut App2) -> bool {
                 changed = true;
             }
         }
-        CropShape::Rectangle | CropShape::Ellipse => {}
+        CropShape::Rectangle => {}
+        CropShape::Ellipse => {
+            ui.add_space(2.0);
+            ui.label(
+                egui::RichText::new(
+                    "Tip: ellipse follows the crop aspect ratio. Use the aspect preset or width/height above to make it oval.",
+                )
+                .size(10.0)
+                .color(crate::theme::P::INK3)
+                .italics(),
+            );
+            ui.add_space(2.0);
+        }
     }
 
     if changed {
