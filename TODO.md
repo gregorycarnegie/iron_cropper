@@ -634,6 +634,7 @@ Leverage GPU compute for massive performance gains in image processing operation
   - [x] Add screenshots/GIFs demonstrating crop features
 
 ### Phase 14: Code sigining (deferred)
+
 - [ ] **Windows**
   - [ ] Requires CODE_SIGN_PFX (base64-encoded PFX) and CODE_SIGN_PASSWORD. To be set as repository secrets. Skipped silently if absent.
 - [ ] **macOS**
