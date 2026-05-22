@@ -241,7 +241,7 @@ fn process_ram_mb() -> Option<u64> {
         pmc.cb = std::mem::size_of::<Pmc>() as u32;
         let ok = unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) };
         if ok != 0 {
-            return Some(pmc.working_set as u64 / (1024 * 1024));
+            return Some(pmc.working_set as u64 >> 20); // bytes to MiB
         }
         return None;
     }
@@ -269,7 +269,7 @@ fn gpu_vram_mb() -> Option<u64> {
             if info.Budget == 0 {
                 return None;
             }
-            return Some(info.CurrentUsage / (1024 * 1024));
+            return Some(info.CurrentUsage >> 20); //bytes to MiB
         }
     }
     #[allow(unreachable_code)]

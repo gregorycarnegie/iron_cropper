@@ -202,4 +202,66 @@ mod tests {
         let result = filter.smooth(&image, 0.0, 3.0, 50.0).expect("smooth");
         assert_eq!(result.to_rgba8().as_raw(), image.to_rgba8().as_raw());
     }
+
+    #[test]
+    fn smooth_amount_above_one_is_clamped_and_succeeds() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping bilateral_filter test: no GPU");
+            return;
+        };
+        let filter = GpuBilateralFilter::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            image::Rgba([128, 128, 128, 255]),
+        ));
+        // amount=2.0 clamps to 1.0 — should not error
+        filter.smooth(&image, 2.0, 3.0, 50.0).expect("smooth with clamped amount");
+    }
+
+    #[test]
+    fn smooth_small_sigma_is_clamped_and_succeeds() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping bilateral_filter test: no GPU");
+            return;
+        };
+        let filter = GpuBilateralFilter::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            image::Rgba([64, 128, 192, 255]),
+        ));
+        // sigma_space=0.0 and sigma_color=0.0 are clamped to 0.1
+        filter.smooth(&image, 0.5, 0.0, 0.0).expect("smooth with clamped sigmas");
+    }
+
+    #[test]
+    fn smooth_nonzero_amount_executes_gpu_path() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping bilateral_filter test: no GPU");
+            return;
+        };
+        let filter = GpuBilateralFilter::new(ctx).expect("init");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            8,
+            8,
+            image::Rgba([200, 100, 50, 255]),
+        ));
+        let result = filter.smooth(&image, 0.5, 3.0, 50.0).expect("smooth");
+        let (w, h) = result.to_rgba8().dimensions();
+        assert_eq!((w, h), (8, 8));
+    }
+
+    #[test]
+    fn clear_cache_and_memory_usage() {
+        let Some(ctx) = test_context() else {
+            eprintln!("Skipping bilateral_filter test: no GPU");
+            return;
+        };
+        let filter = GpuBilateralFilter::new(ctx).expect("init");
+        // memory_usage should not panic on a fresh filter
+        let _ = filter.memory_usage();
+        filter.clear_cache();
+        assert_eq!(filter.memory_usage(), 0);
+    }
 }

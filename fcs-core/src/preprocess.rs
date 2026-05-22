@@ -413,7 +413,7 @@ impl GpuResourcePool {
         // Shrink oversized staging buffers to avoid carrying high-water-mark
         // allocations across batch items (a single large image can grow the
         // staging Vec to ~100 MB which is then never freed).
-        const STAGING_SHRINK_THRESHOLD: usize = 16 * 1024 * 1024; // 16 MB
+        const STAGING_SHRINK_THRESHOLD: usize = 1 << 24; // 16 MB
         if buffers.staging.capacity() > STAGING_SHRINK_THRESHOLD {
             buffers.staging = Vec::new();
         }

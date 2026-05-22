@@ -62,9 +62,9 @@ fn get_vram_windows() -> Option<u64> {
         let available = info.Budget.saturating_sub(info.CurrentUsage);
         debug!(
             "DXGI VRAM Budget: {} MB, Usage: {} MB, Available: {} MB",
-            info.Budget / 1024 / 1024,
-            info.CurrentUsage / 1024 / 1024,
-            available / 1024 / 1024
+            info.Budget  >> 20, // bytes to MiB
+            info.CurrentUsage >> 20,
+            available >> 20
         );
         Some(available)
     }
@@ -83,9 +83,9 @@ fn get_vram_macos() -> Option<u64> {
     let available = budget.saturating_sub(used);
     debug!(
         "Metal Memory Budget: {} MB, Usage: {} MB, Available: {} MB",
-        budget / 1024 / 1024,
-        used / 1024 / 1024,
-        available / 1024 / 1024
+        budget >> 20, // bytes to MiB
+        used >> 20,
+        available >> 20
     );
     Some(available)
 }
@@ -100,7 +100,7 @@ mod tests {
         // It's acceptable for it to return None on CI/headless environments.
         let vram = get_available_vram();
         if let Some(bytes) = vram {
-            println!("Detected VRAM: {} MB", bytes / 1024 / 1024);
+            println!("Detected VRAM: {} MB", bytes >> 20); // bytes to MiB
             assert!(bytes > 0, "VRAM should be positive");
         } else {
             println!("VRAM query returned None (expected on some platforms/configs)");

@@ -415,10 +415,10 @@ fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize
 
     // Assume worst case channel depth early on is 64 (standard ResNet is 64, YuNet is fewer but let's be safe)
     // And we need ping-pong buffers, so say 8x capacity to be very safe against fragmentation or held buffers.
-    let activation_heuristic = input_pixels * 64 * 4 * 8; // pixels * channels * copies * f32
+    let activation_heuristic = input_pixels << 11; // pixels * channels(64) * copies(4) * f32(8)
 
     // Add 256MB fixed overhead for driver/fragmentation/mips/etc
-    let fixed_overhead = 256 * 1024 * 1024;
+    let fixed_overhead = 1 << 28; // 256 MB
 
     let required = total_weight_bytes + activation_heuristic + fixed_overhead;
 
@@ -429,21 +429,76 @@ fn estimate_inference_memory(weights: &OnnxInitializerMap, input_size: InputSize
         if hardware_limit < required {
             log::warn!(
                 "Estimated requirement ({} MB) exceeds safe hardware limit ({} MB). Capping at hardware limit.",
-                required / 1024 / 1024,
-                hardware_limit / 1024 / 1024
+                required >> 20, // bytes to MiB
+                hardware_limit >> 20, // bytes to MiB
             );
         } else {
             // Hardware has plenty of space. Use the hardware limit as the cap to strictly avoid
             // "MemoryLimitExceeded" errors on capable hardware, even if our heuristic is slightly off.
             log::info!(
                 "Hardware VRAM ({} MB) allows increasing limit from estimated {} MB to {} MB.",
-                hardware_available / 1024 / 1024,
-                required / 1024 / 1024,
-                hardware_limit / 1024 / 1024
+                hardware_available >> 20, // bytes to MiB
+                required >> 20, // bytes to MiB
+                hardware_limit >> 20 // bytes to MiB
             );
         }
         return hardware_limit;
     }
 
     required
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- sigmoid ---
+
+    #[test]
+    fn sigmoid_zero_is_half() {
+        assert!((sigmoid(0.0) - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sigmoid_large_positive_approaches_one() {
+        assert!(sigmoid(100.0) > 0.9999);
+    }
+
+    #[test]
+    fn sigmoid_large_negative_approaches_zero() {
+        assert!(sigmoid(-100.0) < 0.0001);
+    }
+
+    // --- reorder_hw_major ---
+
+    #[test]
+    fn reorder_hw_major_single_channel_no_sigmoid_is_identity() {
+        // 1 channel, 2x2 → channel-major and HW-major are the same layout
+        let data = vec![1.0f32, 2.0, 3.0, 4.0];
+        let out = reorder_hw_major(&data, 1, 2, 2, false);
+        assert_eq!(out, data);
+    }
+
+    #[test]
+    fn reorder_hw_major_two_channels_transposes_correctly() {
+        // Input is CHW: [c0_y0x0, c0_y0x1, c1_y0x0, c1_y0x1]
+        // Output is HWC: [c0_y0x0, c1_y0x0, c0_y0x1, c1_y0x1]
+        let data = vec![1.0f32, 2.0, 10.0, 20.0];
+        let out = reorder_hw_major(&data, 2, 1, 2, false);
+        assert_eq!(out, vec![1.0, 10.0, 2.0, 20.0]);
+    }
+
+    #[test]
+    fn reorder_hw_major_applies_sigmoid_when_requested() {
+        let data = vec![0.0f32];
+        let out = reorder_hw_major(&data, 1, 1, 1, true);
+        assert!((out[0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reorder_hw_major_no_sigmoid_preserves_values() {
+        let data = vec![0.0f32];
+        let out = reorder_hw_major(&data, 1, 1, 1, false);
+        assert_eq!(out[0], 0.0);
+    }
 }

@@ -540,6 +540,91 @@ mod tests {
     }
 
     #[test]
+    fn decode_stride_cell_nan_score_becomes_zero() {
+        let decoded = decode_stride_cell(CellDecodeInput {
+            row: 0,
+            col: 0,
+            stride_f: 8.0,
+            cls_score: f32::NAN,
+            obj_score: 0.9,
+            bbox: [0.0; 4],
+            kps: [0.0; 10],
+        });
+        assert_eq!(decoded[DETECTION_SCORE_INDEX], 0.0);
+    }
+
+    #[test]
+    fn decode_stride_cell_scores_above_one_are_clamped() {
+        let decoded = decode_stride_cell(CellDecodeInput {
+            row: 0,
+            col: 0,
+            stride_f: 8.0,
+            cls_score: 2.0,
+            obj_score: 2.0,
+            bbox: [0.0; 4],
+            kps: [0.0; 10],
+        });
+        // clamped to 1.0 each → sqrt(1.0 * 1.0) = 1.0
+        assert!((decoded[DETECTION_SCORE_INDEX] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn validate_stride_outputs_rejects_wrong_bbox_length() {
+        let size = InputSize {
+            width: 64,
+            height: 64,
+        };
+        let layout = build_stride_layout(size).expect("build stride layout");
+        let mut outputs = mock_outputs(size);
+        let n = layout.metas[0].cell_count;
+        // bbox should be n*4 elements; give n*3 instead
+        outputs[STRIDES.len() * 2] =
+            Tensor::from_shape(&[n, 3], &vec![0.0f32; n * 3]).expect("bad bbox tensor");
+
+        let err = validate_stride_outputs(&outputs, &layout.metas[0])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("bbox length mismatch"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_stride_outputs_rejects_wrong_kps_length() {
+        let size = InputSize {
+            width: 64,
+            height: 64,
+        };
+        let layout = build_stride_layout(size).expect("build stride layout");
+        let mut outputs = mock_outputs(size);
+        let n = layout.metas[0].cell_count;
+        // kps should be n*10 elements; give n*5 instead
+        outputs[STRIDES.len() * 3] =
+            Tensor::from_shape(&[n, 5], &vec![0.0f32; n * 5]).expect("bad kps tensor");
+
+        let err = validate_stride_outputs(&outputs, &layout.metas[0])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("kps length mismatch"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_stride_outputs_rejects_wrong_obj_length() {
+        let size = InputSize {
+            width: 64,
+            height: 64,
+        };
+        let layout = build_stride_layout(size).expect("build stride layout");
+        let mut outputs = mock_outputs(size);
+        let n = layout.metas[0].cell_count;
+        outputs[STRIDES.len()] =
+            Tensor::from_shape(&[n - 1], &vec![0.0f32; n - 1]).expect("bad obj tensor");
+
+        let err = validate_stride_outputs(&outputs, &layout.metas[0])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("obj length mismatch"), "got: {err}");
+    }
+
+    #[test]
     fn decode_stride_cell_matches_expected_row_values() {
         let decoded = decode_stride_cell(CellDecodeInput {
             row: 1,
