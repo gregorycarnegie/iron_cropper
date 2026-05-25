@@ -643,8 +643,9 @@ pub struct App2 {
     pub model_path_dirty: bool,
     pub clipboard_temp_images: Vec<TempPath>,
     pub clipboard_paste_pending: bool,
-    /// Tracks Ctrl+V held state for rising-edge detection in raw_input_hook.
-    pub prev_ctrl_v_pressed: bool,
+    /// Set when egui handled a text paste (clipboard had text). Cleared on the
+    /// next V-release so we don't also trigger an image paste in that case.
+    pub suppress_image_paste: bool,
     pub webcam_state: WebcamState,
 
     // Canvas zoom / rotation

@@ -226,7 +226,7 @@ impl App2 {
             model_path_dirty: false,
             clipboard_temp_images: Vec::new(),
             clipboard_paste_pending: false,
-            prev_ctrl_v_pressed: false,
+            suppress_image_paste: false,
             webcam_state: WebcamState::default(),
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
@@ -271,40 +271,39 @@ fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineHandles {
 // ── eframe::App ───────────────────────────────────────────────────────────────
 
 impl App for App2 {
-    /// Detects the paste shortcut (Ctrl/Cmd+V) via OS key-state polling because
-    /// egui_winit swallows the Key::V event when the clipboard holds an image
-    /// instead of text, making `key_pressed(Key::V)` permanently false.
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, _raw_input: &mut egui::RawInput) {
-        #[cfg(target_os = "windows")]
-        let pressed = {
-            use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
-            unsafe {
-                let ctrl = GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000 != 0;
-                let v = GetAsyncKeyState(0x56_i32) as u16 & 0x8000 != 0; // VK_V = 0x56
-                ctrl && v
-            }
-        };
-
-        #[cfg(target_os = "macos")]
-        let pressed = {
-            // kCGEventSourceStateHIDSystemState = 1
-            // kVK_ANSI_V = 0x09, kVK_Command = 0x37, kVK_RightCommand = 0x36
-            #[link(name = "CoreGraphics", kind = "framework")]
-            extern "C" {
-                fn CGEventSourceKeyState(state_id: i32, keycode: u16) -> bool;
-            }
-            unsafe {
-                let cmd = CGEventSourceKeyState(1, 0x37) || CGEventSourceKeyState(1, 0x36);
-                let v = CGEventSourceKeyState(1, 0x09);
-                cmd && v
-            }
-        };
-
-        if pressed && !self.prev_ctrl_v_pressed {
-            self.clipboard_paste_pending = true;
+    /// Detects Cmd/Ctrl+V for image paste on every platform, including Wayland.
+    ///
+    /// egui_winit swallows the Key::V *press* event when the clipboard holds an
+    /// image (not text), so `key_pressed(Key::V)` is always false in that case.
+    /// Key *releases* are never swallowed, so we watch for
+    /// `Key::V { pressed: false }` with the command modifier instead.
+    ///
+    /// When the clipboard actually holds text, egui_winit emits `Event::Paste`
+    /// in the press frame. We latch that and skip the image-paste trigger on the
+    /// following release frame, so a normal text paste is never intercepted.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // Latch: text paste succeeded this frame → skip image paste on V release.
+        if raw_input
+            .events
+            .iter()
+            .any(|e| matches!(e, egui::Event::Paste(_)))
+        {
+            self.suppress_image_paste = true;
         }
-        self.prev_ctrl_v_pressed = pressed;
+
+        for event in &raw_input.events {
+            if let egui::Event::Key {
+                key: egui::Key::V,
+                pressed: false,
+                modifiers,
+                ..
+            } = event
+                && modifiers.command
+                && !std::mem::take(&mut self.suppress_image_paste)
+            {
+                self.clipboard_paste_pending = true;
+            }
+        }
     }
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
