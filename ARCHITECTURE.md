@@ -1,6 +1,6 @@
 # Architecture Overview
 
-The Iron Cropper workspace is split into four crates that collaborate to deliver face detection, cropping, and post-processing across CLI and GUI front-ends.
+The Face Crop Studio workspace is split into four crates that collaborate to deliver face detection, cropping, and post-processing across CLI and GUI front-ends.
 
 ```text
 Root Cargo.toml
@@ -9,6 +9,35 @@ Root Cargo.toml
 ├── fcs-cli      # Command-line entry point and batch automation
 └── fcs-gui      # eframe/egui desktop application
 ```
+
+## How the Crates Talk
+
+Dependencies point downward: the two front-ends depend on `fcs-core` and
+`fcs-utils`, `fcs-core` depends on `fcs-utils`, and `fcs-utils` is the
+dependency-free foundation. Nothing depends back up toward the front-ends, so
+the detection/crop/enhance logic stays UI-agnostic and is exercised by both
+surfaces (and the test suite) identically.
+
+```mermaid
+graph TD
+    cli["fcs-cli<br/><i>batch automation, CLI flags</i>"]
+    gui["fcs-gui<br/><i>eframe/egui desktop app</i>"]
+    core["fcs-core<br/><i>YuNet detection, crop geometry,<br/>GPU inference graph</i>"]
+    utils["fcs-utils<br/><i>config, quality scoring, enhancement,<br/>mapping (CSV/XLSX/Parquet/SQLite), export</i>"]
+
+    cli --> core
+    cli -->|features: mapping, webcam| utils
+    gui --> core
+    gui -->|features: mapping, webcam| utils
+    core --> utils
+```
+
+| Crate | Depends on | Role |
+|-------|------------|------|
+| `fcs-utils` | — | Foundation: config structs, Laplacian quality scoring, CPU+GPU enhancement, mapping ingestion, and output encoders. |
+| `fcs-core` | `fcs-utils` | Detection and geometry: YuNet ONNX loading, preprocessing/postprocessing, `calculate_crop_region`, and the custom WGSL inference graph. |
+| `fcs-cli` | `fcs-core`, `fcs-utils` | Synchronous batch front-end with GPU auto-detection and context pooling. |
+| `fcs-gui` | `fcs-core`, `fcs-utils` | Desktop front-end; pushes detection/enhancement onto background Rayon tasks and shares wgpu context with eframe. |
 
 This document focuses on the crop calculation pipeline introduced in Phase 4 and extended through Phase 9.
 
@@ -111,7 +140,8 @@ There's a `log_detection_diag` helper in `fcs-gui/src/core/export.rs` (currently
 
 | Area                 | Location                               | Purpose                                         |
 |----------------------|----------------------------------------|-------------------------------------------------|
-| Crop edge cases      | `fcs-core/src/cropper.rs`              | Unit tests for clamping, aspect ratio, offsets  |
+| Crop edge cases      | `fcs-core/src/cropper.rs`              | Property + unit tests for clamping, aspect ratio, offsets |
+| Golden crop regions  | `fcs-core/tests/golden_crop_regions.rs` | Locks exact `CropRegion` output for representative scenarios |
 | Face extraction      | `fcs-core/src/face_cropper.rs`         | Ensures resize dimensions match configuration   |
 | Quality scoring      | `fcs-utils/src/quality.rs`             | Threshold bucketing, filters, suffix logic      |
 | Enhancement pipeline | `fcs-utils/src/enhance.rs`             | Unit + pipeline parity tests                    |

@@ -5,7 +5,7 @@
 > remains the best route to DirectML/CoreML acceleration if we ever want full ONNX op coverage or
 > hardware-vendor-optimised kernels without maintaining our own shaders.
 
-Phase 12 explored accelerators beyond the current `tract-onnx` CPU backend. This note captures the practical options we can integrate from Rust today, their maturity, and what it would take to adopt them inside Iron Cropper.
+Phase 12 explored accelerators beyond the current `tract-onnx` CPU backend. This note captures the practical options we can integrate from Rust today, their maturity, and what it would take to adopt them inside Face Crop Studio.
 
 ## Comparison Summary
 

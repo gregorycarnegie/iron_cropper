@@ -1,0 +1,266 @@
+[
+  {
+    "name": "center_square_in_bounds",
+    "image": [
+      512,
+      512
+    ],
+    "face_bbox": [
+      160.0,
+      160.0,
+      140.0,
+      140.0
+    ],
+    "output": [
+      256,
+      256
+    ],
+    "face_height_pct": 70.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": 130,
+      "y": 130,
+      "width": 200,
+      "height": 200,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "center_requires_padding_all_sides",
+    "image": [
+      200,
+      200
+    ],
+    "face_bbox": [
+      40.0,
+      40.0,
+      140.0,
+      140.0
+    ],
+    "output": [
+      256,
+      256
+    ],
+    "face_height_pct": 50.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": -30,
+      "y": -30,
+      "width": 280,
+      "height": 280,
+      "pad_left": 30,
+      "pad_top": 30,
+      "pad_right": 50,
+      "pad_bottom": 50
+    }
+  },
+  {
+    "name": "face_top_left_corner",
+    "image": [
+      500,
+      500
+    ],
+    "face_bbox": [
+      0.0,
+      0.0,
+      120.0,
+      120.0
+    ],
+    "output": [
+      256,
+      256
+    ],
+    "face_height_pct": 80.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": -15,
+      "y": -15,
+      "width": 150,
+      "height": 150,
+      "pad_left": 15,
+      "pad_top": 15,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "rule_of_thirds_landscape",
+    "image": [
+      800,
+      600
+    ],
+    "face_bbox": [
+      300.0,
+      200.0,
+      160.0,
+      160.0
+    ],
+    "output": [
+      400,
+      400
+    ],
+    "face_height_pct": 60.0,
+    "positioning": "rule_of_thirds",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": 247,
+      "y": 102,
+      "width": 267,
+      "height": 267,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "custom_offset_right_down",
+    "image": [
+      600,
+      600
+    ],
+    "face_bbox": [
+      250.0,
+      250.0,
+      120.0,
+      120.0
+    ],
+    "output": [
+      300,
+      300
+    ],
+    "face_height_pct": 50.0,
+    "positioning": "custom",
+    "offset": [
+      0.5,
+      0.3
+    ],
+    "region": {
+      "x": 250,
+      "y": 226,
+      "width": 240,
+      "height": 240,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "portrait_output_9x16",
+    "image": [
+      1080,
+      1920
+    ],
+    "face_bbox": [
+      400.0,
+      500.0,
+      300.0,
+      300.0
+    ],
+    "output": [
+      360,
+      640
+    ],
+    "face_height_pct": 70.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": 429,
+      "y": 436,
+      "width": 241,
+      "height": 429,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "landscape_output_16x9",
+    "image": [
+      1920,
+      1080
+    ],
+    "face_bbox": [
+      800.0,
+      400.0,
+      260.0,
+      260.0
+    ],
+    "output": [
+      640,
+      360
+    ],
+    "face_height_pct": 65.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": 574,
+      "y": 330,
+      "width": 711,
+      "height": 400,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  },
+  {
+    "name": "small_face_low_pct",
+    "image": [
+      1000,
+      1000
+    ],
+    "face_bbox": [
+      450.0,
+      450.0,
+      80.0,
+      80.0
+    ],
+    "output": [
+      400,
+      400
+    ],
+    "face_height_pct": 20.0,
+    "positioning": "center",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "region": {
+      "x": 290,
+      "y": 290,
+      "width": 400,
+      "height": 400,
+      "pad_left": 0,
+      "pad_top": 0,
+      "pad_right": 0,
+      "pad_bottom": 0
+    }
+  }
+]

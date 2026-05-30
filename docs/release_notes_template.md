@@ -1,4 +1,4 @@
-# Iron Cropper Release Notes Template
+# Face Crop Studio Release Notes Template
 
 ## Release
 

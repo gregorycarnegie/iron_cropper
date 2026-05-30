@@ -69,17 +69,16 @@ For `v1.0.0`, official binaries are Windows-focused.
    plus `SHA256SUMS.txt` from the GitHub Release page.
 2. Verify checksum in PowerShell:
 
-```powershell
-Get-FileHash .\face-crop-studio-windows-x86_64.msi -Algorithm SHA256
-Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
-```
+   ```powershell
+   Get-FileHash .\face-crop-studio-windows-x86_64.msi -Algorithm SHA256
+   Get-FileHash .\face-crop-studio-windows-x86_64.zip -Algorithm SHA256
+   ```
 
-1. Confirm it matches the hash in `SHA256SUMS.txt`.
-2. If you downloaded the MSI, install with:
-   - `msiexec /i face-crop-studio-windows-x86_64.msi`
-3. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
-4. If you downloaded the zip, extract it to a folder of your choice.
-5. Run:
+3. Confirm it matches the hash in `SHA256SUMS.txt`.
+4. If you downloaded the MSI, install with `msiexec /i face-crop-studio-windows-x86_64.msi`.
+5. If you downloaded the EXE installer, run `face-crop-studio-windows-x86_64-setup.exe`.
+6. If you downloaded the zip, extract it to a folder of your choice.
+7. Run:
    - `fcs-gui.exe` for the desktop app
    - `fcs-cli.exe --help` for CLI usage
 
@@ -142,41 +141,13 @@ The release package includes `models/face_detection_yunet_2023mar_640.onnx` by d
 
 ## Documentation
 
-## Recent Fixes & Enhancements
-
-### Batch Export Log Fix & Enhancements
-
-- Log items with `BatchFileStatus::Failed` AND items with `BatchFileStatus::Completed` where `faces_exported == 0`.
-- Clone the task list (containing file paths) into the logging thread to allow looking up the source `PathBuf` by index.
-- Add a `path` field to the JSON output and a `path` column to the CSV output.
-
-#### Log Format Updates
-
-The `batch_failures.json` (or `.csv`) will now include these entries.
-
-#### JSON Example
-
-```json
-[
-  {
-    "index": 3,
-    "path": "C:\\images\\vacation\\img_003.jpg",
-    "error": "No faces detected",
-    "faces_detected": 0
-  },
-  {
-    "index": 5,
-    "path": "C:\\images\\vacation\\img_005.jpg",
-    "error": "Faces detected but skipped (quality checks)",
-    "faces_detected": 2
-  }
-]
-```
-
-#### CSV Example
-
-```csv
-index,path,error,faces_detected
-3,"C:\images\vacation\img_003.jpg","No faces detected",0
-5,"C:\images\vacation\img_005.jpg","Faces detected but skipped (quality checks)",2
-```
+- [Architecture overview](ARCHITECTURE.md) – how the four crates collaborate, including the GPU inference graph.
+- [Contributing guide](CONTRIBUTING.md) – workspace layout and how to get from clone to a working build.
+- [Changelog](CHANGELOG.md) – release history and notable changes.
+- [CLI recipes](docs/cli_recipes.md) – common `fcs-cli` invocations for detection, cropping, filtering, and enhancement.
+- [GUI crop guide](docs/gui_crop_guide.md) – walkthrough of the desktop crop workflow and keyboard shortcuts.
+- [GPU research notes](docs/gpu_research.md) – design and implementation of the custom WGPU YuNet inference graph.
+- [ONNX runtime options](docs/ONNX_RUNTIME_OPTIONS.md) – inference backend trade-offs and the chosen approach.
+- [Performance guide](docs/PERFORMANCE.md) – performance profile and optimization notes.
+- [OpenCV parity snapshot](docs/parity_report.md) – detection/crop parity against the OpenCV reference.
+- [Release runbook](docs/release_runbook.md) – the Windows-first release process.

@@ -1,4 +1,4 @@
-# Iron Cropper
+# Face Crop Studio
 
 ## Project TODO List: YuNet Face Detection
 

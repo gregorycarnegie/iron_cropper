@@ -7,6 +7,31 @@ Thanks for helping improve Face Crop Studio. This repository is a Rust workspace
 - `fcs-cli`: command-line workflows for batch processing and automation.
 - `fcs-gui`: the egui/eframe desktop application.
 
+## Quick Start (clone → running GUI)
+
+On a machine that already has the [build tools](#development-setup) below:
+
+```powershell
+# 1. Clone
+git clone https://github.com/gregorycarnegie/face-crop-studio
+cd face-crop-studio
+
+# 2. Build and launch the desktop app (auto-detects GPU, falls back to CPU)
+cargo run -p fcs-gui
+
+# ...or the CLI
+cargo run -p fcs-cli -- --help
+```
+
+The YuNet model is **committed to the repository** under `models/`, so detection
+works on a fresh clone with no extra download — `models/face_detection_yunet_2023mar_640.onnx`
+is the default for both the CLI and GUI. The first build is slow (it compiles
+the full dependency graph including wgpu); subsequent runs are incremental.
+
+If `cargo run` fails to compile, you're almost certainly missing one of the
+build tools below (most commonly NASM, or the `dav1d`/`pkg-config` setup for
+AVIF support).
+
 ## Development Setup
 
 Install the usual Rust and Windows build tools first:
@@ -45,13 +70,15 @@ To make the vcpkg settings permanent for new terminals:
 [Environment]::SetEnvironmentVariable("PKG_CONFIG_ALL_STATIC", "1", "User")
 ```
 
-The full test suite expects the YuNet model at:
+The full test suite and both front-ends use the YuNet model at:
 
 ```text
 models/face_detection_yunet_2023mar_640.onnx
 ```
 
-See `models/README.md` for checksum and regeneration details.
+This file is committed to the repo, so no download is needed. See
+`models/README.md` for checksums and regeneration details if you need to
+re-export it.
 
 ## Common Commands
 
