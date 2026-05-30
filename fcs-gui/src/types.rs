@@ -3,9 +3,9 @@
 use egui::TextureHandle;
 use fcs_core::{BoundingBox, Detection};
 use fcs_utils::{
-    CropShape, PolygonCornerStyle, WgpuEnhancer,
+    CropShape, PolygonCornerStyle,
     config::{AppSettings, CropSettings as ConfigCropSettings, ResizeQuality},
-    gpu::{GpuBatchCropper, GpuContext, GpuStatusIndicator},
+    gpu::{GpuContext, GpuStatusIndicator},
     mapping::{
         ColumnSelector, MappingCatalog, MappingEntry, MappingFormat, MappingPreview,
         MappingReadOptions, inspect_mapping_sources, load_mapping_entries, load_mapping_preview,
@@ -583,6 +583,24 @@ impl MappingUiState {
     }
 }
 
+// ── GPU pipeline ──────────────────────────────────────────────────────────────
+
+/// Shared GPU context plus the status indicator describing the active adapter.
+/// Bundled so the app state and detector rebuilds carry one cohesive GPU unit
+/// instead of parallel fields.
+pub struct GpuPipeline {
+    pub status: GpuStatusIndicator,
+    pub context: Option<Arc<GpuContext>>,
+}
+
+impl GpuPipeline {
+    /// Bundles the GPU status indicator with an optional shared GPU context.
+    /// With no context the app runs CPU-only.
+    pub fn from_context(status: GpuStatusIndicator, context: Option<Arc<GpuContext>>) -> Self {
+        Self { status, context }
+    }
+}
+
 // ── Main app struct ───────────────────────────────────────────────────────────
 
 pub struct App2 {
@@ -590,10 +608,7 @@ pub struct App2 {
     pub settings: AppSettings,
     pub default_settings: AppSettings,
     pub settings_path: PathBuf,
-    pub gpu_status: GpuStatusIndicator,
-    pub gpu_context: Option<Arc<GpuContext>>,
-    pub gpu_enhancer: Option<Arc<WgpuEnhancer>>,
-    pub gpu_batch_cropper: Option<Arc<GpuBatchCropper>>,
+    pub gpu: GpuPipeline,
     pub detector: Option<Arc<fcs_core::YuNetDetector>>,
     pub job_tx: mpsc::Sender<JobMessage>,
     pub job_rx: mpsc::Receiver<JobMessage>,

@@ -37,11 +37,12 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
 
                 // GPU adapter name
                 let gpu_label = app
-                    .gpu_status
+                    .gpu
+                    .status
                     .adapter_name
                     .as_deref()
                     .map(|n| {
-                        let backend = app.gpu_status.backend.as_deref().unwrap_or("wgpu");
+                        let backend = app.gpu.status.backend.as_deref().unwrap_or("wgpu");
                         format!("{backend} · {n}")
                     })
                     .unwrap_or_else(|| "wgpu · CPU".to_string());

@@ -7,12 +7,7 @@ use crate::ui;
 use eframe::{App, CreationContext, Frame};
 use egui::{CursorIcon, ResizeDirection, ViewportCommand};
 use fcs_core::CropSettings as CoreCropSettings;
-use fcs_utils::{
-    WgpuEnhancer,
-    config::default_settings_path,
-    configure_telemetry,
-    gpu::{GpuBatchCropper, GpuContext},
-};
+use fcs_utils::{config::default_settings_path, configure_telemetry, gpu::GpuContext};
 use image::DynamicImage;
 use log::info;
 use lru::LruCache;
@@ -25,12 +20,6 @@ use std::{
 
 const SIDEBAR_W: f32 = 300.0;
 const INSPECTOR_W: f32 = 340.0;
-
-type GpuPipelineHandles = (
-    Option<Arc<GpuContext>>,
-    Option<Arc<WgpuEnhancer>>,
-    Option<Arc<GpuBatchCropper>>,
-);
 
 // ── Clipboard image helpers ───────────────────────────────────────────────────
 
@@ -121,22 +110,10 @@ impl App2 {
             settings.telemetry.level_filter(),
         );
 
-        let shared_gpu = cc.wgpu_render_state.as_ref().map(|rs| {
-            info!("Sharing GPU context from eframe renderer");
-            Arc::new(GpuContext::from_existing(
-                None,
-                None,
-                rs.device.clone(),
-                rs.queue.clone(),
-                rs.adapter.get_info(),
-            ))
-        });
+        let shared_gpu = share_gpu_from_eframe(cc);
 
-        let (initial_gpu_status, initial_gpu_context, detector_result) =
-            build_detector(&settings, shared_gpu);
-
-        let (gpu_context, gpu_enhancer, gpu_batch_cropper) =
-            init_gpu_pipelines(initial_gpu_context);
+        let (gpu_status, gpu_context, detector_result) = build_detector(&settings, shared_gpu);
+        let gpu = GpuPipeline::from_context(gpu_status, gpu_context);
 
         let detector = match detector_result {
             Ok(d) => {
@@ -149,44 +126,20 @@ impl App2 {
             }
         };
 
-        let status_line = if detector.is_some() {
-            "Model ready — select an image to detect faces.".to_owned()
-        } else {
-            "Model not loaded — configure model path to begin.".to_owned()
-        };
+        let status_line = initial_status_line(detector.is_some()).to_owned();
 
         let (job_tx, job_rx) = mpsc::channel();
         let default_settings = settings.clone();
         let model_path_input = settings.model_path.clone().unwrap_or_default();
         let crop_history = vec![settings.crop.clone()];
-        let crop_fill_hex_input = format!(
-            "#{:02X}{:02X}{:02X}",
-            settings.crop.fill_color.red,
-            settings.crop.fill_color.green,
-            settings.crop.fill_color.blue
-        );
-        let aspect_ratio_idx = {
-            let w = settings.crop.output_width as f32;
-            let h = settings.crop.output_height as f32;
-            if w == h {
-                1
-            } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
-                2
-            } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
-                3
-            } else {
-                0
-            }
-        };
+        let crop_fill_hex_input = crop_fill_hex(&settings.crop);
+        let aspect_ratio_idx = derive_aspect_ratio_idx(&settings.crop);
 
         Self {
             settings,
             default_settings,
             settings_path,
-            gpu_status: initial_gpu_status,
-            gpu_context,
-            gpu_enhancer,
-            gpu_batch_cropper,
+            gpu,
             detector,
             job_tx,
             job_rx,
@@ -259,13 +212,52 @@ impl App2 {
     }
 }
 
-fn init_gpu_pipelines(context: Option<Arc<GpuContext>>) -> GpuPipelineHandles {
-    let Some(ctx) = context else {
-        return (None, None, None);
-    };
-    let enhancer = WgpuEnhancer::new(ctx.clone()).ok().map(Arc::new);
-    let cropper = GpuBatchCropper::new(ctx.clone()).ok().map(Arc::new);
-    (Some(ctx), enhancer, cropper)
+/// Reuse eframe's wgpu device/queue so the GUI shares one GPU context with the
+/// renderer instead of spinning up a second adapter.
+fn share_gpu_from_eframe(cc: &CreationContext<'_>) -> Option<Arc<GpuContext>> {
+    cc.wgpu_render_state.as_ref().map(|rs| {
+        info!("Sharing GPU context from eframe renderer");
+        Arc::new(GpuContext::from_existing(
+            None,
+            None,
+            rs.device.clone(),
+            rs.queue.clone(),
+            rs.adapter.get_info(),
+        ))
+    })
+}
+
+/// Maps the saved output dimensions onto the sidebar's aspect-ratio selector
+/// index: 1 = 1:1, 2 = 4:5, 3 = 3:4, 0 = custom/other.
+fn derive_aspect_ratio_idx(crop: &fcs_utils::config::CropSettings) -> usize {
+    let w = crop.output_width as f32;
+    let h = crop.output_height as f32;
+    if w == h {
+        1
+    } else if h > 0.0 && (w / h - 4.0 / 5.0).abs() < 0.01 {
+        2
+    } else if h > 0.0 && (w / h - 3.0 / 4.0).abs() < 0.01 {
+        3
+    } else {
+        0
+    }
+}
+
+/// Initial value for the crop fill-color hex input field.
+fn crop_fill_hex(crop: &fcs_utils::config::CropSettings) -> String {
+    format!(
+        "#{:02X}{:02X}{:02X}",
+        crop.fill_color.red, crop.fill_color.green, crop.fill_color.blue
+    )
+}
+
+/// Status-bar text shown immediately after startup.
+fn initial_status_line(has_detector: bool) -> &'static str {
+    if has_detector {
+        "Model ready — select an image to detect faces."
+    } else {
+        "Model not loaded — configure model path to begin."
+    }
 }
 
 // ── eframe::App ───────────────────────────────────────────────────────────────
@@ -450,17 +442,13 @@ fn install_resize_edges(ui: &mut egui::Ui) {
 impl App2 {
     pub fn rebuild_detector(&mut self) {
         self.needs_detector_rebuild = false;
-        let shared = self.gpu_context.clone();
+        let shared = self.gpu.context.clone();
         let (status, new_gpu_ctx, result) = build_detector(&self.settings, shared);
-        self.gpu_status = status;
         if new_gpu_ctx.is_some() {
-            let (ctx, enhancer, cropper) = init_gpu_pipelines(new_gpu_ctx);
-            self.gpu_context = ctx;
-            self.gpu_enhancer = enhancer;
-            self.gpu_batch_cropper = cropper;
-        } else if !self.settings.gpu.enabled {
-            self.gpu_enhancer = None;
-            self.gpu_batch_cropper = None;
+            // New context: adopt it (and its status) as the active GPU unit.
+            self.gpu = GpuPipeline::from_context(status, new_gpu_ctx);
+        } else {
+            self.gpu.status = status;
         }
         self.detector = match result {
             Ok(d) => {

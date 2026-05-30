@@ -118,6 +118,37 @@ The release package includes `models/face_detection_yunet_2023mar_640.onnx` by d
   </p>
 </details>
 
+### Workflow recordings
+
+Animated walkthroughs of the main workflows. See
+[screenshots/README.md](screenshots/README.md) for the recording checklist and
+filenames; once the GIFs are added, uncomment the block below to publish them.
+
+<!-- Uncomment once the workflow GIFs exist in screenshots/ (see screenshots/README.md):
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="screenshots/workflow-detect-crop-export.gif"><img src="screenshots/workflow-detect-crop-export.gif" alt="Detect, crop, and export workflow" width="440"/></a><br/>
+      <sub><strong>Detect → crop → export</strong></sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="screenshots/workflow-batch.gif"><img src="screenshots/workflow-batch.gif" alt="Batch queue and export workflow" width="440"/></a><br/>
+      <sub><strong>Batch processing</strong></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="screenshots/workflow-enhance.gif"><img src="screenshots/workflow-enhance.gif" alt="Live enhancement adjustments" width="440"/></a><br/>
+      <sub><strong>Enhancement (live preview)</strong></sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="screenshots/workflow-mapping.gif"><img src="screenshots/workflow-mapping.gif" alt="Mapping import workflow" width="440"/></a><br/>
+      <sub><strong>Mapping import</strong></sub>
+    </td>
+  </tr>
+</table>
+-->
+
 ## Development Tasks
 
 - `cargo check --workspace` – Fast type checking across all crates.

@@ -94,7 +94,8 @@ pub fn show(ui: &mut Ui, app: &mut App2) {
                 // Right: GPU pill
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let label = app
-                        .gpu_status
+                        .gpu
+                        .status
                         .adapter_name
                         .as_deref()
                         .map(|n| format!("GPU · {n}"))
