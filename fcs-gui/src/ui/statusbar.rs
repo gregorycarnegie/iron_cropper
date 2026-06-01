@@ -75,17 +75,21 @@ pub fn show(ui: &mut egui::Ui, app: &mut App2) {
                     // Clock — local time via Win32 GetLocalTime
                     status_cell(ui, &local_time_str(), None);
 
-                    // GPU — dedicated VRAM usage via DXGI
-                    let vram_label = gpu_vram_mb()
-                        .map(|mb| format!("VRAM {mb} MB"))
-                        .unwrap_or_else(|| "GPU —".to_string());
-                    status_cell(ui, &vram_label, None);
+                    // GPU / RAM stats — only available on macOS and Windows.
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    {
+                        // GPU — dedicated VRAM usage via DXGI
+                        let vram_label = gpu_vram_mb()
+                            .map(|mb| format!("VRAM {mb} MB"))
+                            .unwrap_or_else(|| "GPU —".to_string());
+                        status_cell(ui, &vram_label, None);
 
-                    // RAM — current process working set
-                    let ram_label = process_ram_mb()
-                        .map(|mb| format!("RAM {mb} MB"))
-                        .unwrap_or_else(|| "RAM —".to_string());
-                    status_cell(ui, &ram_label, None);
+                        // RAM — current process working set
+                        let ram_label = process_ram_mb()
+                            .map(|mb| format!("RAM {mb} MB"))
+                            .unwrap_or_else(|| "RAM —".to_string());
+                        status_cell(ui, &ram_label, None);
+                    }
 
                     // Animated indeterminate progress bar when busy
                     if app.is_busy {
@@ -218,6 +222,7 @@ fn local_time_str() -> String {
 
 /// Returns this process's working-set size in MiB, or None if the query fails.
 /// Uses `K32GetProcessMemoryInfo` (kernel32, auto-linked on Windows Vista+).
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn process_ram_mb() -> Option<u64> {
     #[cfg(target_os = "windows")]
     {
@@ -252,6 +257,7 @@ fn process_ram_mb() -> Option<u64> {
 
 /// Returns the dedicated GPU VRAM currently used by this process in MiB.
 /// Uses `IDXGIAdapter3::QueryVideoMemoryInfo` (DXGI, already linked via eframe/wgpu).
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn gpu_vram_mb() -> Option<u64> {
     #[cfg(target_os = "windows")]
     {
